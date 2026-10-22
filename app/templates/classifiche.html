@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+<h1>Classifiche</h1>
+<nav class="segmented">
+  <a href="/classifiche?vista=gironi" class="{{ 'on' if view == 'gironi' }}">Gironi</a>
+  <a href="/classifiche?vista=giocatori" class="{{ 'on' if view == 'giocatori' }}">Giocatori</a>
+  <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Coppie</a>
+  <a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri</a>
+</nav>
+
+{% if view == "gironi" %}
+  {{ ui.progress(progress) }}
+  {% if tables %}
+    <nav class="jump">{% for g in tables %}<a href="#g{{ g.grp }}">{{ g.name|replace("Girone ", "") }}</a>{% endfor %}</nav>
+    <p class="muted small">Vittoria 3, pareggio 1. Pari punti: scontro diretto, poi differenza bicchieri (DB).
+      <span class="pill ok">verde</span> passano{% if thirds %} · <span class="pill warn">giallo</span> passano le {{ thirds }} migliori terze{% endif %}.</p>
+    {% for g in tables %}
+      {% set played = g.matches|selectattr("done")|list|length %}
+      <section class="group anchor" id="g{{ g.grp }}">
+        <div class="group-head">
+          <span class="badge">{{ g.name|replace("Girone ", "") }}</span>
+          <h2>{{ g.name }}</h2>
+          <span class="muted small">{{ played }}/{{ g.matches|length }} partite</span>
+        </div>
+        {{ ui.table(g.rows, T, thirds, mine=me.id if me) }}
+        <details class="results">
+          <summary>Risultati e prossime partite</summary>
+          {% for m in g.matches|sort(attribute="done", reverse=True) %}{{ ui.mini(m, mine=me.id if me) }}{% endfor %}
+        </details>
+      </section>
+    {% endfor %}
+  {% else %}
+    <p class="muted">I gironi vengono sorteggiati all'inizio del torneo.</p>
+  {% endif %}
+
+{% elif view == "giocatori" %}
+  <p class="muted small">Bicchieri di ogni giocatore, quando la coppia li ha divisi.</p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>#</th><th class="name">Giocatore</th><th>Bic.</th><th>Media</th></tr>
+    {% for s in scorers %}
+    <tr class="{{ 'mine' if me and s.team_id == me.id }}">
+      <td>{{ loop.index }}</td>
+      <td class="name"><strong>{{ s.player }}</strong><br><a class="muted small" href="/squadra/{{ s.team_id }}">{{ s.team }}</a></td>
+      <td><strong>{{ s.cups }}</strong></td>
+      <td>{{ "%.1f"|format(s.average) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="name muted">Ancora nessun giocatore.</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+
+{% elif view == "tiri" %}
+  {% if shots.total_shots %}
+    <p class="muted small">Dai tiri segnalati live ({{ shots.total_shots }} tiri). Precisione dal {{ 8 }}° tiro in su.</p>
+    <div class="awards">
+      {% for icon, title, p in shots.awards %}
+        <div class="card award"><div class="aicon">{{ icon }}</div><div class="label">{{ title }}</div>
+          <div class="title"><strong>{{ p.player }}</strong></div><span class="muted small">{{ p.team }}</span>
+          <div class="small">{{ p.hits }}/{{ p.shots }} · {{ (p.accuracy * 100)|round|int }}%{% if p.finishers %} · 🏁 {{ p.finishers }}{% endif %}</div></div>
+      {% endfor %}
+    </div>
+    <h2>Mappa dei bicchieri colpiti</h2>
+    {% set top = shots.heatmap.values()|max %}
+    <div class="rack heat">
+      {% for row in [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] %}
+        <div class="rrow">{% for c in row %}{% set n = shots.heatmap[c] %}
+          <span class="cup up" style="opacity:{{ 0.25 + 0.75 * (n / top if top else 0) }}" title="bicchiere {{ c }}">{{ n }}</span>
+        {% endfor %}</div>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="text-align:center">Il bicchiere in basso è quello più vicino a chi tira.</p>
+    <h2>Precisione</h2>
+    <div class="table-wrap">
+    <table>
+      <tr><th>#</th><th class="name">Giocatore</th><th>Centri</th><th>Tiri</th><th>%</th></tr>
+      {% for p in shots.players %}
+      <tr class="{{ 'mine' if me and p.team_id == me.id }}">
+        <td>{{ loop.index }}</td>
+        <td class="name"><strong>{{ p.player }}</strong><br><a class="muted small" href="/squadra/{{ p.team_id }}">{{ p.team }}</a></td>
+        <td><strong>{{ p.hits }}</strong></td><td>{{ p.shots }}</td><td>{{ (p.accuracy * 100)|round|int }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+  {% else %}
+    <p class="muted">Qui compariranno precisione, premi e mappa dei bicchieri appena il pubblico inizia a segnalare i tiri dalle pagine LIVE.</p>
+  {% endif %}
+
+{% else %}
+  <p class="muted small">Bicchieri di ogni coppia, dai punteggi confermati dagli arbitri.</p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>#</th><th class="name">Coppia</th><th>Bic.</th><th>V/G</th><th>Media</th></tr>
+    {% for s in team_stats %}
+    <tr class="{{ 'mine' if me and s.team == me.id }}">
+      <td>{{ loop.index }}</td>
+      <td class="name"><a href="/squadra/{{ s.team }}">{{ s.name }}</a></td>
+      <td><strong>{{ s.cups_for }}</strong></td>
+      <td>{{ s.won }}/{{ s.played }}</td>
+      <td>{{ "%.1f"|format(s.average) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="name muted">Ancora nessuna coppia.</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+{% endif %}
+{% endblock %}

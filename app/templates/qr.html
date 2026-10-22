@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="qr-sheet">
+  <h1>{{ cfg.title }}</h1>
+  <p style="font-size:1.3rem;font-weight:700">Inquadra per fare il check-in</p>
+  <img src="/admin/qr.svg" alt="QR code di check-in">
+  <p class="muted">Poi segui partite, risultati e classifiche dal telefono</p>
+  <p class="no-print url muted">{{ url }}</p>
+  <p class="no-print"><button onclick="window.print()">Stampa</button></p>
+</div>
+{% endblock %}

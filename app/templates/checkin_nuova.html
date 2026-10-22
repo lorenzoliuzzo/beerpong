@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/checkin">‹ Tutte le squadre</a></p>
+<h1>Siete una coppia?</h1>
+{% if cfg.phase != "setup" %}
+  <div class="card">Il torneo è già iniziato: parlate con l'organizzazione.</div>
+{% elif not allowed %}
+  <div class="card">Per fare il check-in scansionate il <strong>QR code sul tavolo</strong>.</div>
+{% else %}
+  <p class="muted">Per chi si è iscritto al form come «solo serata» e vuole giocare: serve il numero di telefono che avete lasciato nel form.</p>
+  <form method="post" action="/checkin/nuova">
+    <div class="card">
+      <label for="phone1">Numero lasciato nel form</label>
+      <input id="phone1" name="phone1" type="tel" inputmode="tel" autocomplete="tel" required>
+    </div>
+    <div class="card">
+      <label for="name">Nome della squadra</label>
+      <input id="name" name="name" maxlength="40" required autocomplete="off">
+      <label for="p1">Giocatore 1</label>
+      <input id="p1" name="p1" maxlength="40" required autocomplete="off">
+      <label for="p2">Giocatore 2</label>
+      <input id="p2" name="p2" maxlength="40" required autocomplete="off">
+      <label for="phone2">Telefono del compagno (facoltativo)</label>
+      <input id="phone2" name="phone2" type="tel" inputmode="tel">
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Avete pagato il ticket?</h2>
+      <div class="choices">
+        {% for key, label in payments.items() %}
+          <label><input type="radio" name="payment" value="{{ key }}" required> {{ label }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="wide" type="submit">Conferma check-in</button>
+  </form>
+{% endif %}
+{% endblock %}

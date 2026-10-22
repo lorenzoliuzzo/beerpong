@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+<h1>Programma</h1>
+{% if me %}
+<nav class="segmented">
+  <a href="/programma" class="{{ 'on' if not team_id }}">Tutte</a>
+  <a href="/programma?team={{ me.id }}" class="{{ 'on' if team_id == me.id }}">Le nostre</a>
+</nav>
+{% endif %}
+{% if slots %}<p class="muted small">Orari indicativi: si gioca appena il campo si libera.</p>{% endif %}
+{% for slot, time, ms in slots %}
+  <div class="slot-head">{{ time or "—" }} <span class="muted small">turno {{ slot + 1 }}</span></div>
+  {% for m in ms %}{{ ui.match(m, mine=me.id if me) }}{% endfor %}
+{% else %}
+  <p class="muted">Il programma comparirà all'inizio del torneo.</p>
+{% endfor %}
+{% endblock %}

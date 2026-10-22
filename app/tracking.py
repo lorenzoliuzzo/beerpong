@@ -1,0 +1,253 @@
+"""Database side of live tracking: store taps, build the live view, derive tournament-wide shot stats."""
+
+from __future__ import annotations
+
+import sqlite3
+from collections import Counter
+from dataclasses import dataclass, field
+
+from . import live, service
+from .service import TournamentError
+
+UNDO_WINDOW_S = 30.0
+# Many phones poll the same match every couple of seconds: replay only when its reports change,
+# and rebuild tournament-wide context only when any report or result changes.
+_state_cache: dict[int, tuple[tuple[int, int], live.LiveState]] = {}
+_context_cache: list[tuple[tuple, dict]] = []
+
+
+def reports(db: sqlite3.Connection, match_id: int) -> list[live.Report]:
+    return [
+        live.Report(r["id"], r["device"], r["kind"], r["side"], r["player"], r["cup"], r["at"])
+        for r in db.execute("SELECT * FROM reports WHERE match_id = ? ORDER BY at", (match_id,))
+    ]
+
+
+def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
+    """Replayed live state, cached until a report of this match is added or removed."""
+    key = tuple(db.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM reports WHERE match_id = ?", (match_id,)).fetchone())
+    cached = _state_cache.get(match_id)
+    if cached is None or cached[0] != key:
+        cached = (key, live.replay(reports(db, match_id)))
+        _state_cache[match_id] = cached
+    return cached[1]
+
+
+def _context(db: sqlite3.Connection) -> dict:
+    key = tuple(db.execute(
+        "SELECT (SELECT COUNT(*) FROM reports), (SELECT COALESCE(MAX(id), 0) FROM reports),"
+        " (SELECT COUNT(*) FROM matches WHERE done = 1),"
+        " (SELECT COALESCE(SUM(id * (score1 * 31 + score2)), 0) FROM matches WHERE done = 1),"
+        " (SELECT COUNT(*) FROM matches)"
+    ).fetchone())
+    if not _context_cache or _context_cache[0][0] != key:
+        context = {
+            "labels": service.standing_labels(db),
+            "records": {r.team: r for table in service.group_tables(db) for r in table.rows},
+            "totals": _team_side_stats(db),
+        }
+        _context_cache[:] = [(key, context)]
+    return _context_cache[0][1]
+
+
+def add_report(
+    db: sqlite3.Connection, match_id: int, device: str, kind: str, side: int | None, player: int | None,
+    cup: int | None, now: float,
+) -> int:
+    m = service.match(db, match_id)
+    if m is None or m.bye or m.t1 is None or m.t2 is None:
+        raise TournamentError("Partita non disponibile.")
+    if m.done:
+        raise TournamentError("La partita è già conclusa.")
+    if kind == "start":
+        side = player = cup = None
+        if db.execute("SELECT 1 FROM reports WHERE match_id = ? AND device = ? AND kind = 'start'", (match_id, device)).fetchone():
+            raise TournamentError("Hai già segnalato l'inizio.")
+    elif kind == "shot":
+        if side not in (1, 2) or player not in (1, 2) or cup is None or not 0 <= cup <= live.CUPS:
+            raise TournamentError("Tiro non valido.")
+    else:
+        raise TournamentError("Segnalazione non valida.")
+    with db:
+        cur = db.execute(
+            "INSERT INTO reports(match_id, device, kind, side, player, cup, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (match_id, device, kind, side, player, cup, now),
+        )
+    return cur.lastrowid
+
+
+def undo_report(db: sqlite3.Connection, match_id: int, device: str, report_id: int, now: float) -> None:
+    row = db.execute("SELECT * FROM reports WHERE id = ? AND match_id = ?", (report_id, match_id)).fetchone()
+    if row is None or row["device"] != device:
+        raise TournamentError("Segnalazione non trovata.")
+    if now - row["at"] > UNDO_WINDOW_S:
+        raise TournamentError("Troppo tardi per annullare.")
+    with db:
+        db.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+
+
+def _team_side_stats(db: sqlite3.Connection) -> dict[int, list[int]]:
+    """team id -> [hits, shots] over every tracked match."""
+    stats: dict[int, list[int]] = {}
+    for m in service.matches(db):
+        if m.t1 is None or m.t2 is None:
+            continue
+        st = state(db, m.id)
+        for side, team in ((1, m.t1), (2, m.t2)):
+            s = stats.setdefault(team, [0, 0])
+            s[0] += st.side_hits(side)
+            s[1] += st.side_attempts(side)
+    return stats
+
+
+def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | None) -> dict:
+    m = service.match(db, match_id)
+    if m is None or m.bye or m.t1 is None or m.t2 is None:
+        raise TournamentError("Partita non disponibile.")
+    st = state(db, match_id)
+    team_rows = service.teams(db)
+    context = _context(db)
+    labels, records, totals = context["labels"], context["records"], context["totals"]
+    duration = m.duration * 60 if m.duration else None
+
+    rates = tuple(live.hit_rate(*totals.get(t, [0, 0])) for t in (m.t1, m.t2))
+    cups_to_hit = (len(st.racks[2].cups), len(st.racks[1].cups))
+    if m.done:
+        prob1 = 1.0 if m.winner == m.t1 else 0.0 if m.winner == m.t2 else 0.5
+    elif st.winner_side:
+        prob1 = 1.0 if st.winner_side == 1 else 0.0
+    else:
+        left = live.shots_left_per_team(st, now, duration)
+        prob1 = live.win_probability(cups_to_hit, rates, left, seed=match_id)
+
+    def team_block(side: int, team_id: int) -> dict:
+        t = team_rows[team_id]
+        rec = records.get(team_id)
+        hits, shots = totals.get(team_id, [0, 0])
+        return {
+            "id": team_id,
+            "name": t["name"],
+            "players": [t["p1"], t["p2"]],
+            "label": labels.get(team_id, ""),
+            "record": f"{rec.won}V {rec.drawn}N {rec.lost}P" if rec else "",
+            "accuracy": round(100 * hits / shots) if shots else None,
+            "rack": sorted(st.racks[side].cups),
+            "hits": st.side_hits(side),
+            "player_stats": [
+                {"hits": st.hits.get((side, p), 0), "shots": st.attempts.get((side, p), 0)} for p in (1, 2)
+            ],
+        }
+
+    mine = []
+    if device:
+        mine = [
+            {"id": r["id"], "kind": r["kind"], "at": r["at"]}
+            for r in db.execute(
+                "SELECT id, kind, at FROM reports WHERE match_id = ? AND device = ? AND at >= ? ORDER BY at DESC",
+                (match_id, device, now - UNDO_WINDOW_S),
+            )
+        ]
+    return {
+        "now": now,
+        "started_at": st.started_at,
+        "duration": duration,
+        "done": m.done,
+        "label": m.label,
+        "field": m.field,
+        "score": [m.s1, m.s2] if m.done else None,
+        "winner_side": 1 if m.done and m.winner == m.t1 else 2 if m.done and m.winner == m.t2 else st.winner_side,
+        "prob": [round(prob1, 3), round(1 - prob1, 3)],
+        "teams": [team_block(1, m.t1), team_block(2, m.t2)],
+        "shots": [
+            {
+                "at": s.at, "side": s.side, "player": s.player, "cup": s.cup, "removed": s.removed,
+                "votes": s.votes,
+            }
+            for s in reversed(st.shots[-30:])
+        ],
+        "mine": mine,
+    }
+
+
+def live_score(db: sqlite3.Connection, match_id: int) -> tuple[int, int] | None:
+    st = state(db, match_id)
+    if not st.shots:
+        return None
+    return st.side_hits(1), st.side_hits(2)
+
+
+def apply_live_splits(db: sqlite3.Connection, match_id: int) -> None:
+    """After the referee confirms: if the tracked hits match the score, fill in the players' split for them."""
+    m = db.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+    st = state(db, match_id)
+    if m is None or not m["done"] or not st.shots:
+        return
+    with db:
+        for side, (a, b) in ((1, ("c1a", "c1b")), (2, ("c2a", "c2b"))):
+            if m[a] is None and st.side_hits(side) == m[f"score{side}"]:
+                db.execute(
+                    f"UPDATE matches SET {a} = ?, {b} = ? WHERE id = ?",
+                    (st.hits.get((side, 1), 0), st.hits.get((side, 2), 0), match_id),
+                )
+
+
+# --- Tournament-wide shot statistics ------------------------------------------------------
+
+
+@dataclass
+class PlayerShots:
+    player: str
+    team: str
+    team_id: int
+    hits: int = 0
+    shots: int = 0
+    finishers: int = 0  # hits that cleared the opponent's last cup
+
+    @property
+    def accuracy(self) -> float:
+        return self.hits / self.shots if self.shots else 0.0
+
+
+@dataclass
+class ShotStats:
+    players: list[PlayerShots]
+    heatmap: dict[int, int]  # cup position -> hits
+    total_shots: int
+    awards: list[tuple[str, str, PlayerShots]] = field(default_factory=list)
+
+
+MIN_SHOTS_FOR_ACCURACY = 8
+
+
+def shot_stats(db: sqlite3.Connection) -> ShotStats:
+    team_rows = service.teams(db)
+    by_player: dict[tuple[int, int], PlayerShots] = {}
+    heat: Counter[int] = Counter()
+    total = 0
+    for m in service.matches(db):
+        if m.t1 is None or m.t2 is None:
+            continue
+        st = state(db, m.id)
+        last_hit = next((s for s in reversed(st.shots) if s.removed is not None), None) if st.winner_side else None
+        for s in st.shots:
+            team_id = m.t1 if s.side == 1 else m.t2
+            t = team_rows[team_id]
+            p = by_player.setdefault((team_id, s.player), PlayerShots(t[f"p{s.player}"], t["name"], team_id))
+            p.shots += 1
+            total += 1
+            if s.removed is not None:
+                p.hits += 1
+                heat[s.removed] += 1
+                if s is last_hit:
+                    p.finishers += 1
+    players = sorted(by_player.values(), key=lambda p: (-p.hits, -p.accuracy, p.player.lower()))
+    stats = ShotStats(players, {c: heat.get(c, 0) for c in range(1, live.CUPS + 1)}, total)
+    if players:
+        stats.awards.append(("🎯", "Bomber", players[0]))
+        qualified = [p for p in players if p.shots >= MIN_SHOTS_FOR_ACCURACY]
+        if qualified:
+            stats.awards.append(("🔭", "Cecchino", max(qualified, key=lambda p: (p.accuracy, p.hits))))
+        finisher = max(players, key=lambda p: (p.finishers, p.hits))
+        if finisher.finishers:
+            stats.awards.append(("🏁", "Re dell'ultimo bicchiere", finisher))
+    return stats

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/admin">‹ Organizzazione</a></p>
+<h1>Prova i gironi</h1>
+<nav class="segmented">
+  <a href="/admin/gironi?base=presenti" class="{{ 'on' if present_only }}">Coppie presenti</a>
+  <a href="/admin/gironi?base=iscritte" class="{{ 'on' if not present_only }}">Tutte le iscritte</a>
+</nav>
+<p class="muted small">
+  {% if present_only %}Sorteggio di prova con chi ha già fatto il check-in: se ti piace, puoi partire con questi gironi.
+  {% else %}Simulazione con tutte le coppie iscritte complete, anche se non sono ancora arrivate: serve solo a farsi un'idea.{% endif %}
+</p>
+
+{% if error %}
+  <div class="card">{{ error }}</div>
+{% elif preview %}
+  {% set p = preview %}
+  <div class="card stats">
+    <div><div class="big">{{ p.groups|map("length")|sum }}</div><span class="muted small">coppie</span></div>
+    <div><div class="big">{{ p.groups|length }}</div><span class="muted small">gironi</span></div>
+    <div><div class="big">{{ p.matches }}</div><span class="muted small">partite</span></div>
+  </div>
+  <div class="card">
+    <p><strong>Tabellone a {{ p.bracket_size }}</strong>: passano le prime 2 di ogni girone{% if p.thirds %} + le {{ p.thirds }} migliori terze{% endif %}{% if p.byes %} · {{ p.byes }} teste di serie saltano il primo turno{% endif %}.</p>
+    <p class="muted small">Durata stimata su {{ cfg.fields }} campi: gironi ~{{ p.group_minutes }} min, eliminazione ~{{ p.knockout_minutes }} min, poi la finale
+      → circa {{ (p.group_minutes + p.knockout_minutes) // 60 }}h{{ "%02d"|format((p.group_minutes + p.knockout_minutes) % 60) }} + finale.</p>
+  </div>
+
+  {% for g in p.groups %}
+    <h2>Girone {{ "ABCDEFGHIJKLMNOP"[loop.index0] }} <span class="muted small">({{ g|length }})</span></h2>
+    <div class="list">
+      {% for t in g %}
+        <div class="row"><div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ t.p1 }} &amp; {{ t.p2 }}</span></div>
+          {% if not t.checked_in %}<span class="pill">non ancora arrivata</span>{% endif %}</div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <a class="btn ghost wide" href="/admin/gironi?base={{ base }}">🔀 Rimescola</a>
+  {% if present_only and cfg.phase == "setup" %}
+    <form method="post" action="/admin/avvia"
+          onsubmit="return confirm('Partire con questi gironi? Le coppie non presenti resteranno fuori.')">
+      <input type="hidden" name="seed" value="{{ p.seed }}">
+      <button class="wide" type="submit">Avvia con questi gironi</button>
+    </form>
+  {% endif %}
+{% endif %}
+{% endblock %}

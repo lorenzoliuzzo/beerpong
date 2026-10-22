@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+{% set ov = overview %}
+{% set setup = cfg.phase == "setup" %}
+<h1>Organizzazione</h1>
+<a class="banner todo" href="/admin/mancanti">
+  <div class="label">Da sistemare</div>
+  {{ ov.present|length + ov.missing|length - ov.partial|length }} coppie complete · {{ ov.partial|length }} da completare ·
+  {{ (ov.present + ov.missing)|rejectattr("paid")|list|length }} senza pagamento verificato →
+</a>
+
+<details class="section" id="torneo" open>
+  <summary>Torneo <span class="pill accent">{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></summary>
+  <div class="body">
+    {% if setup %}
+      <div class="stats">
+        <div><div class="big">{{ ov.present|length }}</div><span class="muted small">presenti</span></div>
+        <div><div class="big">{{ ov.missing|length }}</div><span class="muted small">mancano</span></div>
+        <div><div class="big">{{ (ov.present + ov.missing)|rejectattr("paid")|list|length }}</div><span class="muted small">non pagate</span></div>
+      </div>
+      <form method="post" action="/admin/avvia"
+            onsubmit='return confirm({{ ("Avviare con " ~ ov.present|length ~ " coppie presenti?" ~ (" Ne mancano " ~ ov.missing|length ~ ": resteranno fuori." if ov.missing else ""))|tojson }})'>
+        <button class="wide" type="submit">Avvia il torneo</button>
+      </form>
+      <a class="btn ghost wide" href="/cartellone" target="_blank">📺 Apri il cartellone (TV / proiettore)</a>
+      <form method="post" action="/admin/cartellone/rimescola" onsubmit="return confirm('Rimescolare i gironi provvisori mostrati sul cartellone?')">
+        <button class="ghost wide" type="submit">🔀 Rimescola i gironi provvisori del cartellone</button>
+      </form>
+      <a class="btn ghost wide" href="/admin/gironi">Prova i gironi prima di partire</a>
+      <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} campi.</p>
+    {% else %}
+      {% if cfg.phase == "groups" %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
+      {% if missing_splits %}<p class="muted small">{{ missing_splits }} punteggi non ancora divisi tra i giocatori.</p>{% endif %}
+      <a class="btn wide" href="/arbitro">Risultati di tutti i campi</a>
+      {% if cfg.phase in ("groups", "knockout") %}
+        <form method="post" action="/admin/sposta">
+          <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
+          <div style="display:flex;gap:8px">
+            <input id="minuti" name="minuti" type="number" inputmode="numeric" value="5" required>
+            <button type="submit" class="ghost">Sposta orari</button>
+          </div>
+        </form>
+      {% endif %}
+      {% if cfg.phase == "knockout" %}
+        <form method="post" action="/admin/riapri" onsubmit="return confirm('Riaprire i gironi? Il tabellone verrà rigenerato.')">
+          <button type="submit" class="ghost wide">Riapri gironi per correggere un risultato</button>
+        </form>
+      {% endif %}
+      <form method="post" action="/admin/annulla" style="margin-top:24px;text-align:center"
+            onsubmit="return confirm('Cancellare gironi, programma e TUTTI i risultati? Check-in e pagamenti restano.') && confirm('Sicuro? Non si torna indietro.')">
+        <button type="submit" class="link" style="color:var(--err)">Annulla sorteggio e risultati…</button>
+      </form>
+    {% endif %}
+  </div>
+</details>
+
+<details class="section" id="checkin" {{ 'open' if setup }}>
+  <summary>Check-in <span class="pill {{ 'ok' if not ov.missing else 'warn' }}">{{ ov.present|length }}/{{ ov.present|length + ov.missing|length }}</span></summary>
+  <div class="body">
+    {% if ov.missing %}
+      <h3>Mancano ({{ ov.missing|length }})</h3>
+      <div class="list">
+        {% for t in ov.missing %}
+          <div class="row">
+            <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></a>
+            {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+            {% if setup and t.p1 and t.p2 %}
+            <form method="post" action="/admin/squadre/{{ t.id }}/presente"><input type="hidden" name="presente" value="1"><button class="small" type="submit">Presente</button></form>
+            {% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <details {{ 'open' if not ov.missing }}>
+    <summary><strong>Presenti ({{ ov.present|length }})</strong></summary>
+    <div class="list">
+      {% for t in ov.present %}
+        <div class="row">
+          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none"><div class="title">{{ t.name }}{% if t.id in ov.guest_teams %} <span class="pill accent">da «solo serata»</span>{% endif %}</div>
+            <span class="muted small">{{ ui.players(t) }}{% if t.phone1 %} · {{ t.phone1 }}{% endif %}</span></a>
+          {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+          {% if setup %}
+          <form method="post" action="/admin/squadre/{{ t.id }}/presente"><input type="hidden" name="presente" value="0"><button class="small ghost" type="submit">Togli</button></form>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="row muted">Ancora nessuno.</div>
+      {% endfor %}
+    </div>
+    </details>
+  </div>
+</details>
+
+<details class="section" id="pagamenti">
+  <summary>Pagamenti <span class="pill {{ 'ok' if not ov.to_verify else 'warn' }}">{{ ov.to_verify|length }} non pagate</span></summary>
+  <div class="body">
+    <p class="muted small">Il ticket si paga con bonifico prima del torneo: segna qui chi ha pagato. Ogni admin può aggiornarlo dal suo telefono.</p>
+    <div class="search" style="top:0"><input type="search" placeholder="Cerca coppia" data-filter="#pay-list" autocomplete="off" aria-label="Cerca"></div>
+    <div class="list" id="pay-list">
+      {% for t in (ov.present + ov.missing)|sort(attribute="name")|sort(attribute="paid") %}
+        <div class="row">
+          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none"><div class="title">{{ t.name }}</div>{{ ui.payment_pill(t, payments) }}</a>
+          {% if t.phone1 and not t.paid %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+          <form method="post" action="/admin/squadre/{{ t.id }}/pagato">
+            <input type="hidden" name="pagato" value="{{ 0 if t.paid else 1 }}"><input type="hidden" name="back" value="/admin#pagamenti">
+            <button class="small {{ 'ghost' if t.paid }}" type="submit">{{ "Annulla" if t.paid else "Pagato ✓" }}</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="row muted">Nessuna coppia iscritta.</div>
+      {% endfor %}
+    </div>
+    <details>
+      <summary><strong>Incolla un elenco di pagamenti</strong></summary>
+      <form method="post" action="/admin/pagamenti/elenco">
+        <label for="elenco-pagati">Una squadra per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
+        <textarea id="elenco-pagati" name="elenco" required></textarea>
+        <button class="wide" type="submit">Segna pagati</button>
+      </form>
+    </details>
+  </div>
+</details>
+
+<details class="section" id="coppie">
+  <summary>Coppie iscritte <span class="pill">{{ ov.present|length + ov.missing|length }}</span></summary>
+  <div class="body">
+    <p class="muted small">{{ ov.partial|length }} coppie da completare ·
+      {{ ov.guests }} iscritti solo serata, di cui {{ ov.guest_teams|length }} diventati coppia al check-in.</p>
+    {% if setup %}
+      <a class="btn wide" href="/admin/squadre/nuova">+ Aggiungi coppia</a>
+    {% endif %}
+    <a class="btn ghost wide" href="/admin/mancanti" style="margin-top:8px">Da sistemare: pagamenti, profili, mancanti</a>
+    <div class="search" style="top:0"><input type="search" placeholder="Cerca coppia o giocatore" data-filter="#all-teams" autocomplete="off" aria-label="Cerca"></div>
+    <div class="list" id="all-teams">
+      {% for t in (ov.present + ov.missing)|sort(attribute="name") %}
+        <a class="row" href="/admin/squadre/{{ t.id }}">
+          <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+          {% if t.note %}<span class="pill accent">da verificare</span>{% endif %}
+          {% if t.checked_in %}<span class="pill ok">presente</span>{% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
+          <span class="chev">›</span>
+        </a>
+      {% else %}
+        <div class="row muted">Nessuna coppia: aggiungile o importa l'elenco.</div>
+      {% endfor %}
+    </div>
+    {% if setup %}
+      <details>
+        <summary><strong>Importa un elenco</strong></summary>
+        <form method="post" action="/admin/squadre/importa">
+          <label for="testo">Una riga per iscrizione: <code>Squadra; Giocatore 1; Giocatore 2; Telefono</code><br>
+            Senza giocatore 2 = coppia parziale. Senza nome squadra = iscritto solo serata (nome in «Giocatore 1»).</label>
+          <textarea id="testo" name="testo" required></textarea>
+          <button class="wide" type="submit">Importa</button>
+        </form>
+      </details>
+    {% endif %}
+  </div>
+</details>
+
+<details class="section" id="qr">
+  <summary>QR e accessi</summary>
+  <div class="body">
+    <a class="btn wide" href="/admin/qr">QR code di check-in da stampare</a>
+    <p class="url muted">{{ checkin_url }}</p>
+    <form method="post" action="/admin/chiave" onsubmit="return confirm('Il QR già stampato smetterà di funzionare. Continuare?')">
+      <button type="submit" class="ghost small">Genera nuova chiave</button>
+    </form>
+    <h3>PIN staff</h3>
+    <div class="list">
+      <div class="row"><span>Admin</span><code>{{ admin_pin }}</code></div>
+      {% for f, pin in pins %}<div class="row"><span>Arbitro campo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
+    </div>
+    <form method="post" action="/admin/pin">
+      <label for="pin">Nuovo PIN admin (almeno 6 cifre)</label>
+      <div style="display:flex;gap:8px"><input id="pin" name="pin" inputmode="numeric" required><button type="submit" class="ghost">Cambia</button></div>
+    </form>
+  </div>
+</details>
+
+<details class="section" id="impostazioni">
+  <summary>Impostazioni</summary>
+  <div class="body">
+    <form method="post" action="/admin/impostazioni">
+      <label for="title">Nome del torneo</label>
+      <input id="title" name="title" value="{{ cfg.title }}" required>
+      <label for="fields">Campi</label>
+      <input id="fields" name="fields" type="number" inputmode="numeric" min="1" max="20" value="{{ cfg.fields }}" required>
+      <label for="group_min">Durata partita girone (min)</label>
+      <input id="group_min" name="group_min" type="number" inputmode="numeric" min="1" value="{{ cfg.group_min }}" required>
+      <label for="ko_min">Durata eliminazione diretta (min)</label>
+      <input id="ko_min" name="ko_min" type="number" inputmode="numeric" min="1" value="{{ cfg.ko_min }}" required>
+      <label for="buffer_min">Cambio campo (min)</label>
+      <input id="buffer_min" name="buffer_min" type="number" inputmode="numeric" min="0" value="{{ cfg.buffer_min }}" required>
+      <label for="public_url">Indirizzo pubblico per il QR (vuoto = indirizzo attuale)</label>
+      <input id="public_url" name="public_url" type="url" inputmode="url" placeholder="https://…" value="{{ cfg.public_url }}">
+      <p class="muted small">Campi e durate valgono quando si generano programma e tabellone. La finale è senza limite di tempo.</p>
+      <button class="wide" type="submit">Salva</button>
+    </form>
+  </div>
+</details>
+
+<div class="foot"><form method="post" action="/logout"><button class="link" type="submit">Esci dall'area staff</button></form></div>
+{% endblock %}

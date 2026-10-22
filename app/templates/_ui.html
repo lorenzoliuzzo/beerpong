@@ -1,0 +1,91 @@
+{% macro match(m, show_label=True, mine=None, actions=True, labels=None) %}
+<div class="match {{ 'mine' if mine and m.side(mine) }}">
+  <div class="meta">
+    <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>Campo {{ m.field }}</strong>{% endif %}</span>
+    <span>{{ m.time }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
+      {%- if m.t1 and m.t2 and not m.bye %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Cronaca" if m.done else "● LIVE" }}</a>{% endif %}</span>
+  </div>
+  <div class="teams">
+    {% if m.t1 %}<a class="t {{ 'win' if m.winner == m.t1 }}" href="/squadra/{{ m.t1 }}">{{ m.n1 }}{% if labels and m.t1 in labels %}<small class="origin">{{ labels[m.t1] }}</small>{% endif %}</a>{% else %}<span class="t muted">{{ m.n1 }}</span>{% endif %}
+    {% if m.done and not m.bye %}<span class="sc">{{ m.s1 }}–{{ m.s2 }}</span>{% else %}<span class="sc vs">vs</span>{% endif %}
+    {% if m.t2 %}<a class="t r {{ 'win' if m.winner == m.t2 }}" href="/squadra/{{ m.t2 }}">{{ m.n2 }}{% if labels and m.t2 in labels %}<small class="origin">{{ labels[m.t2] }}</small>{% endif %}</a>{% else %}<span class="t r muted">{{ m.n2 }}</span>{% endif %}
+  </div>
+  {% if m.split1 or m.split2 %}
+    <div class="splits">
+      <span>{% if m.split1 %}{{ m.split1[0] }} + {{ m.split1[1] }}{% endif %}</span>
+      <span>{% if m.split2 %}{{ m.split2[0] }} + {{ m.split2[1] }}{% endif %}</span>
+    </div>
+  {% endif %}
+  {% set sides = split_sides(m) %}
+  {% if actions and (can_referee(m) or sides) %}
+    <div class="actions">
+      {% if sides and (m.split_missing(sides[0]) or (sides|length > 1 and m.split_missing(sides[1]))) %}
+        <a class="btn small" href="/canestri/{{ m.id }}">Dividi i canestri</a>
+      {% elif sides %}
+        <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica canestri</a>
+      {% endif %}
+      {% if can_referee(m) %}
+        <a class="btn small {{ 'ghost' if m.done }}" href="/partita/{{ m.id }}">{{ "Correggi" if m.done else "Inserisci risultato" }}</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro table(rows, T, thirds=0, mine=None) %}
+<div class="table-wrap">
+<table>
+  <tr><th>#</th><th class="name">Squadra</th><th>G</th><th>V</th><th>N</th><th>P</th><th>DB</th><th>Pt</th></tr>
+  {% for r in rows %}
+  <tr class="{{ 'q' if loop.index <= 2 else ('q3' if loop.index == 3 and thirds > 0) }} {{ 'mine' if r.team == mine }}">
+    <td>{{ loop.index }}</td>
+    <td class="name"><a href="/squadra/{{ r.team }}">{{ T[r.team].name }}</a></td>
+    <td>{{ r.played }}</td><td>{{ r.won }}</td><td>{{ r.drawn }}</td><td>{{ r.lost }}</td>
+    <td>{{ "%+d"|format(r.diff) }}</td>
+    <td><strong>{{ r.points }}</strong></td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% endmacro %}
+
+{% macro stepper(name, value, max=30, label="") %}
+<div class="stepper">
+  <button type="button" data-step="-1" aria-label="meno">−</button>
+  <input name="{{ name }}" type="number" min="0" max="{{ max }}" inputmode="numeric" pattern="[0-9]*" value="{{ value }}" required aria-label="{{ label }}">
+  <button type="button" data-step="1" aria-label="più">+</button>
+</div>
+{% endmacro %}
+
+{% macro payment_pill(t, payments) %}
+  {% if t.paid %}<span class="pill ok">Pagato ✓</span>
+  {% elif t.payment == "cassa" %}<span class="pill warn">Paga in cassa</span>
+  {% elif t.payment %}<span class="pill accent">{{ "Contanti" if t.payment == "contanti" else "Online" }} · da verificare</span>
+  {% else %}<span class="pill warn">Non pagato</span>{% endif %}
+{% endmacro %}
+
+{% macro players(t) %}{% if not t.p1 %}<em>giocatori da definire</em>{% else %}{{ t.p1 }}{% if t.p2 %} &amp; {{ t.p2 }}{% else %} · <em>manca il compagno</em>{% endif %}{% endif %}{% endmacro %}
+
+{% macro progress(steps) %}
+{% if steps %}
+  {% set ns = namespace(current=none) %}
+  {% for s in steps %}{% if ns.current is none and not s.complete %}{% set ns.current = loop.index0 %}{% endif %}{% endfor %}
+  <div class="steps" aria-label="Avanzamento del torneo">
+    {% for s in steps %}
+      <div class="step {{ 'done' if s.complete else ('now' if loop.index0 == ns.current) }}">
+        <span class="dot">{% if s.complete %}✓{% else %}{{ loop.index }}{% endif %}</span>
+        <span class="lbl">{{ s.label|replace(" di finale", "") }}</span>
+        <span class="cnt">{{ s.done }}/{{ s.total }}</span>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endmacro %}
+
+{% macro mini(m, mine=None) %}
+<a class="mini {{ 'mine' if mine and m.side(mine) }}" href="/squadra/{{ m.t1 }}?vs={{ m.t2 }}">
+  <span class="{{ 'win' if m.winner == m.t1 }}">{{ m.n1 }}</span>
+  {% if m.done %}<strong>{{ m.s1 }}–{{ m.s2 }}</strong>{% else %}<span class="muted small">{{ m.time }}{% if m.field %} · C{{ m.field }}{% endif %}</span>{% endif %}
+  <span class="r {{ 'win' if m.winner == m.t2 }}">{{ m.n2 }}</span>
+</a>
+{% endmacro %}

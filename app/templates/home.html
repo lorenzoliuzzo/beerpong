@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+{% set present = overview.present|length %}
+{% set total = present + overview.missing|length %}
+
+{% if dash %}
+  {% set t = dash.team %}
+  {% if cfg.phase == "setup" %}
+    <div class="banner">
+      <div class="label">Check-in fatto ✓</div>
+      <div class="headline">{{ t.name }}</div>
+      <div class="muted">{{ ui.players(t) }}</div>
+      <p>{{ ui.payment_pill(t, payments) }}</p>
+    </div>
+    <div class="card stats">
+      <div><div class="big">{{ present }}</div><span class="muted small">presenti</span></div>
+      <div><div class="big">{{ total }}</div><span class="muted small">iscritte</span></div>
+      <div><div class="big">{{ total - present }}</div><span class="muted small">mancano</span></div>
+    </div>
+    <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
+    <p><a class="btn ghost wide" href="/checkin/{{ t.id }}">Modifica i vostri dati</a></p>
+  {% else %}
+    {% if dash.champion %}
+      <div class="banner gold"><div class="headline">🏆 Campioni!</div>Complimenti {{ t.p1 }} e {{ t.p2 }}</div>
+    {% elif dash.status == "now" %}
+      <div class="banner hot">
+        <div class="label">Tocca a voi</div>
+        <div class="headline">Campo {{ dash.next_match.field }}</div>
+        vs {{ dash.next_match.n2 if dash.next_match.t1 == t.id else dash.next_match.n1 }}
+      </div>
+    {% elif dash.status == "next" %}
+      <div class="banner warm">
+        <div class="label">Preparatevi · prossimo turno</div>
+        <div class="headline">Campo {{ dash.next_match.field }}</div>
+        vs {{ dash.next_match.n2 if dash.next_match.t1 == t.id else dash.next_match.n1 }} · {{ dash.next_match.time }}
+      </div>
+    {% elif dash.eliminated %}
+      <div class="banner">Il vostro torneo è finito: grazie per aver giocato! 🍻</div>
+    {% elif dash.next_match %}
+      <div class="banner">
+        <div class="label">Prossima partita · {{ dash.next_match.time }}</div>
+        <div class="headline">vs {{ dash.next_match.n2 if dash.next_match.t1 == t.id else dash.next_match.n1 }}</div>
+        {% if dash.next_match.field %}Campo {{ dash.next_match.field }}{% endif %}
+      </div>
+    {% endif %}
+
+    {% if dash.to_split %}
+      <a class="banner todo" href="/canestri/{{ dash.to_split[0].id }}">
+        Dividete i canestri tra {{ t.p1 }} e {{ t.p2 }} ({{ dash.to_split|length }} partit{{ 'a' if dash.to_split|length == 1 else 'e' }}) →
+      </a>
+    {% endif %}
+
+    {% if dash.table %}
+      <a class="list" href="/squadra/{{ t.id }}" style="display:block;text-decoration:none">
+        <div class="row">
+          <div class="grow"><div class="title">{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</div>
+            <span class="muted small">Classifica, partite e scontri diretti</span></div>
+          <span class="chev">›</span>
+        </div>
+      </a>
+    {% endif %}
+  {% endif %}
+
+{% elif cfg.phase == "setup" %}
+  <h1>Benvenuti! 🍻</h1>
+  <p>Appena arrivate, fate il <strong>check-in</strong> scansionando il QR code sul tavolo.</p>
+  <div class="card stats">
+    <div><div class="big">{{ present }}</div><span class="muted small">presenti</span></div>
+    <div><div class="big">{{ total }}</div><span class="muted small">iscritte</span></div>
+    <div><div class="big">{{ total - present }}</div><span class="muted small">mancano</span></div>
+  </div>
+  <a class="btn ghost wide" href="/checkin">Il compagno ha già fatto il check-in?</a>
+{% elif cfg.phase == "finished" and final %}
+  <div class="banner gold" style="text-align:center">
+    <div class="label">Campioni</div>
+    <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
+    Finale {{ final.s1 }}–{{ final.s2 }}
+  </div>
+{% else %}
+  <a class="btn ghost wide" href="/checkin">Segui la tua squadra</a>
+{% endif %}
+
+{% if cfg.phase in ("groups", "knockout") %}
+  {{ ui.progress(progress) }}
+  <h2>In campo ora</h2>
+  {% for m in now %}{{ ui.match(m, mine=me.id if me) }}{% else %}<p class="muted">Nessuna partita in corso.</p>{% endfor %}
+  {% if upcoming %}
+    <h2>Prossimo turno</h2>
+    {% for m in upcoming %}{{ ui.match(m, mine=me.id if me) }}{% endfor %}
+  {% endif %}
+{% endif %}
+
+<div class="foot">
+  {% if me %}
+    <form method="post" action="/esci-squadra" onsubmit="return confirm('Scollegare questo telefono dalla squadra?')"><button class="link" type="submit">Scollega telefono</button></form> ·
+  {% endif %}
+  {% if role %}
+    {{ "Admin" if role == "admin" else "Arbitro campo " ~ my_field }} ·
+    <form method="post" action="/logout"><button class="link" type="submit">esci</button></form>
+  {% else %}
+    <a href="/login">Area staff</a>
+  {% endif %}
+</div>
+{% endblock %}

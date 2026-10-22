@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}{{ m.n1 }} vs {{ m.n2 }} · LIVE{% endblock %}
+{% block content %}
+<div id="live" data-match="{{ m.id }}">
+  <p class="muted small" style="margin-top:10px">{{ m.label }}{% if m.field %} · Campo {{ m.field }}{% endif %}</p>
+
+  <section class="arena">
+    <div class="vs">
+      <div class="side s1">
+        <div class="tname" data-f="name1">{{ m.n1 }}</div>
+        <div class="tmeta" data-f="meta1"></div>
+      </div>
+      <div class="clockbox">
+        <div class="clock" id="clock">--:--</div>
+        <div class="clock-sub" id="clock-sub"></div>
+      </div>
+      <div class="side s2">
+        <div class="tname" data-f="name2">{{ m.n2 }}</div>
+        <div class="tmeta" data-f="meta2"></div>
+      </div>
+    </div>
+
+    <div class="odds" aria-label="Probabilità di vittoria">
+      <span class="o1" id="odds1"></span><span class="o2" id="odds2"></span>
+    </div>
+    <div class="odds-labels"><span id="odds1-t"></span><span class="muted small">probabilità di vittoria</span><span id="odds2-t"></span></div>
+
+    <div class="racks">
+      <div class="rack-block">
+        <div class="rack-title"><span class="dot2"></span> Bicchieri di <b data-f="name2b">{{ m.n2 }}</b></div>
+        <div class="rack" id="rack2"></div>
+      </div>
+      <div class="rack-block">
+        <div class="rack-title"><span class="dot1"></span> Bicchieri di <b data-f="name1b">{{ m.n1 }}</b></div>
+        <div class="rack" id="rack1"></div>
+      </div>
+    </div>
+
+    <div id="result" class="banner gold" hidden></div>
+    <button id="start" class="wide" hidden>▶ Inizia la partita</button>
+
+    <div id="shooters">
+      <p class="muted small" style="text-align:center;margin:12px 0 6px">Chi sta tirando? Tocca il giocatore</p>
+      <div class="shooters">
+        <div class="col s1" id="players1"></div>
+        <div class="col s2" id="players2"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-card">
+      <div class="sheet-title" id="sheet-title"></div>
+      <div class="rack big" id="sheet-rack"></div>
+      <div class="sheet-actions">
+        <button class="danger wide" id="miss">❌ Fuori</button>
+        <button class="ghost wide" id="cancel">Annulla</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+
+  <h2>Cronaca</h2>
+  <div class="feed" id="feed"><p class="muted">Ancora nessun tiro segnalato.</p></div>
+  <p class="muted small">Tutti possono segnalare i tiri: vale ciò che segnala la maggioranza dei telefoni che seguono la partita. L'orologio è lo stesso per tutti.</p>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById("live");
+  const id = root.dataset.match;
+  const ROWS = [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]];  // far row first, apex closest to the shooter
+  let data = null, offset = 0, shooter = null, busy = false;
+
+  const $ = (sel) => document.querySelector(sel);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const serverNow = () => (Date.now() + offset) / 1000;
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+  function toast(text, undoId) {
+    const t = $("#toast");
+    t.innerHTML = esc(text) + (undoId ? ` <button class="link" data-undo="${undoId}">Annulla</button>` : "");
+    t.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => (t.hidden = true), 4000);
+  }
+
+  function rackHTML(cups, interactive) {
+    const standing = new Set(cups);
+    return ROWS.map((row) => `<div class="rrow">${row.map((c) => {
+      const up = standing.has(c);
+      return interactive && up
+        ? `<button class="cup up" data-cup="${c}" aria-label="Bicchiere ${c}">${c}</button>`
+        : `<span class="cup ${up ? "up" : "down"}">${c}</span>`;
+    }).join("")}</div>`).join("");
+  }
+
+  function render() {
+    if (!data) return;
+    const [t1, t2] = data.teams;
+    for (const [i, t] of [[1, t1], [2, t2]]) {
+      document.querySelectorAll(`[data-f="name${i}"], [data-f="name${i}b"]`).forEach((el) => (el.textContent = t.name));
+      const bits = [t.label, t.record, t.accuracy != null ? `🎯 ${t.accuracy}%` : ""].filter(Boolean);
+      $(`[data-f="meta${i}"]`).innerHTML = bits.map(esc).join("<br>");
+      $(`#rack${i}`).innerHTML = rackHTML(t.rack, false);
+      $(`#players${i}`).innerHTML = t.players.map((p, k) => {
+        const st = t.player_stats[k];
+        return `<button class="shooter" data-side="${i}" data-player="${k + 1}" ${p ? "" : "disabled"}>
+          <span>${esc(p || "Giocatore " + (k + 1))}</span><small>${st.hits}/${st.shots}</small></button>`;
+      }).join("");
+    }
+    const p1 = Math.round(data.prob[0] * 100);
+    $("#odds1").style.width = p1 + "%";
+    $("#odds2").style.width = 100 - p1 + "%";
+    $("#odds1-t").textContent = p1 + "%";
+    $("#odds2-t").textContent = 100 - p1 + "%";
+
+    const over = data.done || data.winner_side;
+    $("#start").hidden = over || data.started_at != null;
+    $("#shooters").hidden = over || data.started_at == null;
+    const res = $("#result");
+    if (over) {
+      const w = data.teams[data.winner_side - 1];
+      res.hidden = false;
+      res.innerHTML = data.done
+        ? `<div class="label">Risultato finale</div><div class="headline">${esc(t1.name)} ${data.score[0]}–${data.score[1]} ${esc(t2.name)}</div>`
+        : `<div class="label">Bicchieri finiti!</div><div class="headline">🏆 ${esc(w ? w.name : "")}</div>In attesa della conferma dell'arbitro`;
+    } else {
+      res.hidden = true;
+    }
+
+    const feed = data.shots.map((s) => {
+      const t = data.teams[s.side - 1];
+      const who = esc(t.players[s.player - 1] || "Giocatore " + s.player);
+      const when = data.started_at ? mmss(Math.max(0, s.at - data.started_at)) : "";
+      const what = s.removed != null ? `🎯 centra il bicchiere <b>${s.removed}</b>` : "❌ fuori";
+      return `<div class="fitem s${s.side}"><span class="ftime">${when}</span>
+        <span class="ftext"><b>${who}</b> <span class="muted">(${esc(t.name)})</span> ${what}</span>
+        <span class="fvotes" title="segnalazioni">👥${s.votes}</span></div>`;
+    }).join("");
+    $("#feed").innerHTML = feed || '<p class="muted">Ancora nessun tiro segnalato.</p>';
+  }
+
+  function tick() {
+    const clock = $("#clock"), sub = $("#clock-sub");
+    if (!data) return;
+    if (data.started_at == null) {
+      clock.textContent = data.duration ? mmss(data.duration) : "0:00";
+      sub.textContent = "da iniziare";
+      clock.className = "clock";
+      return;
+    }
+    const elapsed = Math.max(0, serverNow() - data.started_at);
+    if (data.duration) {
+      const left = Math.max(0, data.duration - elapsed);
+      clock.textContent = left > 0 ? mmss(left) : "TEMPO!";
+      clock.className = "clock" + (left <= 30 ? " hot" : "");
+      sub.textContent = left > 0 ? "rimanenti" : "fine tempo";
+    } else {
+      clock.textContent = mmss(elapsed);
+      clock.className = "clock";
+      sub.textContent = "senza limite";
+    }
+  }
+
+  async function load() {
+    if (document.hidden || busy) return;
+    try {
+      const r = await fetch(`/api/live/${id}`, { cache: "no-store", credentials: "same-origin" });
+      if (!r.ok) return;
+      accept(await r.json());
+    } catch (_) { /* offline for a moment: the next poll retries */ }
+  }
+
+  function accept(json, t0) {
+    data = json;
+    offset = data.now * 1000 - (t0 ? (t0 + Date.now()) / 2 : Date.now());
+    render();
+    tick();
+  }
+
+  async function send(path, body) {
+    busy = true;
+    const t0 = Date.now();
+    try {
+      const r = await fetch(`/api/live/${id}/${path}`, {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const json = await r.json();
+      if (!r.ok) { toast(json.error || "Errore"); return null; }
+      accept(json, t0);
+      return json;
+    } catch (_) {
+      toast("Connessione assente: riprova");
+      return null;
+    } finally {
+      busy = false;
+    }
+  }
+
+  function openSheet(side, player) {
+    shooter = { side, player };
+    const t = data.teams[side - 1], target = data.teams[2 - side];
+    $("#sheet-title").innerHTML = `<b>${esc(t.players[player - 1])}</b> tira sui bicchieri di <b>${esc(target.name)}</b>`;
+    $("#sheet-rack").innerHTML = rackHTML(target.rack, true);
+    $("#sheet").hidden = false;
+  }
+
+  async function report(cup) {
+    $("#sheet").hidden = true;
+    if (!shooter) return;
+    const { side, player } = shooter;
+    shooter = null;
+    if (navigator.vibrate) navigator.vibrate(30);
+    const json = await send("segnala", { kind: "shot", side, player, cup });
+    if (json) toast(cup ? `🎯 Bicchiere ${cup} segnalato` : "❌ Tiro fuori segnalato", json.mine[0]?.id);
+  }
+
+  document.addEventListener("click", async (e) => {
+    const shooterBtn = e.target.closest(".shooter");
+    if (shooterBtn) return openSheet(+shooterBtn.dataset.side, +shooterBtn.dataset.player);
+    const cupBtn = e.target.closest("#sheet-rack [data-cup]");
+    if (cupBtn) return report(+cupBtn.dataset.cup);
+    if (e.target.closest("#miss")) return report(0);
+    if (e.target.closest("#cancel") || e.target === $("#sheet")) { $("#sheet").hidden = true; shooter = null; return; }
+    if (e.target.closest("#start")) {
+      const json = await send("segnala", { kind: "start" });
+      if (json) toast("▶ Inizio segnalato", json.mine[0]?.id);
+      return;
+    }
+    const undo = e.target.closest("[data-undo]");
+    if (undo) {
+      if (await send("annulla", { id: +undo.dataset.undo })) toast("Segnalazione annullata");
+    }
+  });
+
+  load();
+  setInterval(load, 2000);
+  setInterval(tick, 250);
+  document.addEventListener("visibilitychange", load);
+})();
+</script>
+{% endblock %}

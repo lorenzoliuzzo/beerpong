@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+{% set setup = cfg.phase == "setup" %}
+<h1>{{ "Check-in" if setup else "Trova la tua squadra" }}</h1>
+{% if setup and allowed %}
+  <p class="muted">Cercate la vostra coppia e toccatela.</p>
+{% elif setup %}
+  <p class="muted">Per il check-in scansionate il QR code sul tavolo. Se il compagno l'ha già fatto, toccate la squadra ed entrate con il vostro numero di telefono.</p>
+{% else %}
+  <p class="muted">Toccate la vostra squadra ed entrate con il numero di telefono lasciato al check-in.</p>
+{% endif %}
+<div class="search">
+  <input type="search" placeholder="Cerca squadra o giocatore" data-filter="#teams" autocomplete="off" aria-label="Cerca">
+</div>
+<div class="list" id="teams">
+  {% for t in teams.values() if setup or t.checked_in %}
+    <a class="row" href="/checkin/{{ t.id }}">
+      <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+      {% if t.checked_in %}<span class="pill ok">Presente</span>{% endif %}
+      <span class="chev">›</span>
+    </a>
+  {% else %}
+    <div class="row muted">Nessuna coppia in elenco.</div>
+  {% endfor %}
+</div>
+{% if setup and allowed %}
+  <a class="banner" href="/checkin/nuova">
+    <div class="label">Non trovate la vostra coppia?</div>
+    Vi siete iscritti al form come «solo serata» ma siete in due e volete giocare? Entrate con il numero lasciato nel form →
+  </a>
+{% endif %}
+{% endblock %}

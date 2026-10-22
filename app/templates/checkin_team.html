@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+{% set mine = me and me.id == t.id %}
+<p><a href="/checkin">‹ Tutte le squadre</a></p>
+
+{% if t.checked_in and not mine %}
+  <h1>{{ t.name }}</h1>
+  <p class="muted">{{ ui.players(t) }} hanno già fatto il check-in. Entrate con uno dei numeri di telefono che avete lasciato.</p>
+  <form class="card" method="post" action="/checkin/{{ t.id }}/entra">
+    <label for="phone">Il vostro numero di telefono</label>
+    <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required>
+    <button class="wide" type="submit">Entra</button>
+  </form>
+
+{% elif cfg.phase != "setup" %}
+  <h1>{{ t.name }}</h1>
+  <div class="card">Il torneo è già iniziato e questa coppia non ha fatto il check-in. Parlate con l'organizzazione.</div>
+
+{% elif not allowed and not mine %}
+  <h1>{{ t.name }}</h1>
+  <div class="card">Per fare il check-in scansionate il <strong>QR code sul tavolo</strong>.</div>
+
+{% else %}
+  <h1>{{ "I vostri dati" if t.checked_in else "Check-in" }}</h1>
+  <form method="post" action="/checkin/{{ t.id }}">
+    <div class="card">
+      <label for="name">Nome della squadra</label>
+      <input id="name" name="name" value="{{ t.name }}" maxlength="40" required autocomplete="off">
+      <label for="p1">Giocatore 1</label>
+      <input id="p1" name="p1" value="{{ t.p1 }}" maxlength="40" required autocomplete="off">
+      <label for="p2">Giocatore 2</label>
+      <input id="p2" name="p2" value="{{ t.p2 }}" maxlength="40" required autocomplete="off" placeholder="Nome del compagno">
+    </div>
+    <div class="card">
+      <label for="phone1">Telefono (obbligatorio)</label>
+      <input id="phone1" name="phone1" type="tel" inputmode="tel" autocomplete="tel" value="{{ t.phone1 }}" required>
+      <label for="phone2">Telefono del compagno (facoltativo)</label>
+      <input id="phone2" name="phone2" type="tel" inputmode="tel" value="{{ t.phone2 }}">
+      <p class="muted small">Serve solo all'organizzazione per chiamarvi quando tocca a voi, e al compagno per entrare nella squadra dal suo telefono.</p>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Avete pagato il ticket?</h2>
+      <div class="choices">
+        {% for key, label in payments.items() %}
+          <label><input type="radio" name="payment" value="{{ key }}" required {{ 'checked' if t.payment == key }}> {{ label }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="wide" type="submit">{{ "Salva" if t.checked_in else "Conferma check-in" }}</button>
+  </form>
+{% endif %}
+{% endblock %}

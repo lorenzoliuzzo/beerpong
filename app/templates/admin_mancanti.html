@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+{% set setup = cfg.phase == "setup" %}
+<p><a href="/admin#coppie">‹ Organizzazione</a></p>
+<h1>Da sistemare</h1>
+
+<div class="card">
+  <div class="stats">
+    <div><div class="big">{{ ov.complete }}</div><span class="muted small">complete</span></div>
+    <div><div class="big">{{ ov.incomplete|length }}</div><span class="muted small">da completare</span></div>
+    <div><div class="big">{{ ov.guests|length }}</div><span class="muted small">solo serata da accoppiare</span></div>
+  </div>
+  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ ov.target }}" aria-valuenow="{{ ov.complete }}">
+    <span style="width:{{ [100, (ov.complete * 100 // ov.target) if ov.target else 0]|min }}%"></span>
+  </div>
+  <form method="post" action="/admin/mancanti/obiettivo" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <span class="muted small" style="flex:1">Obiettivo: {{ ov.target }} coppie{% if ov.complete < ov.target %} · ne mancano {{ ov.target - ov.complete }}{% endif %}</span>
+    <input name="obiettivo" type="number" inputmode="numeric" min="4" max="64" value="{{ ov.target }}" style="width:90px" aria-label="Obiettivo">
+    <button class="small ghost" type="submit">OK</button>
+  </form>
+</div>
+
+{% if setup %}
+<details class="section" {{ 'open' if rec or not ov.incomplete }}>
+  <summary>Confronta con l'elenco ufficiale</summary>
+  <div class="body">
+    <form method="post" action="/admin/mancanti/confronta">
+      <label for="elenco">Incolla i nomi delle squadre, separati da virgola o uno per riga</label>
+      <textarea id="elenco" name="elenco" required>{{ elenco }}</textarea>
+      <button class="wide ghost" type="submit">Confronta</button>
+    </form>
+
+    {% if rec %}
+      <form method="post" action="/admin/mancanti/applica">
+        {% if rec.new %}
+          <h3>Nell'elenco ma non registrate ({{ rec.new|length }})</h3>
+          <p class="muted small">Verranno aggiunte con il solo nome: giocatori e telefono si completano dopo (qui sotto o al check-in).</p>
+          <div class="choices">
+            {% for name in rec.new %}
+              <label><input type="checkbox" name="aggiungi" value="{{ name }}" checked> {{ name }}</label>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if rec.extra %}
+          <h3>Registrate ma non nell'elenco ({{ rec.extra|length }})</h3>
+          <p class="muted small">Se è la stessa coppia con un nome nuovo, scegli il nome: viene rinominata invece di aggiungerne un'altra.</p>
+          <div class="list">
+            {% for t in rec.extra %}
+              <div class="row" style="flex-wrap:wrap">
+                <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+                <input type="hidden" name="fuori_elenco" value="{{ t.id }}">
+                <select name="rinomina_{{ t.id }}" aria-label="Cosa fare con {{ t.name }}">
+                  <option value="">Lascia, segna «da verificare»</option>
+                  {% for name in rec.new %}<option value="{{ name }}">È «{{ name }}»</option>{% endfor %}
+                </select>
+              </div>
+            {% endfor %}
+          </div>
+          <p class="muted small">Per eliminarne una, aprila dalla lista coppie.</p>
+        {% endif %}
+
+        {% if rec.new or rec.extra %}
+          <button class="wide" type="submit">Applica</button>
+        {% else %}
+          <p class="flash">L'elenco coincide con le coppie registrate.</p>
+        {% endif %}
+      </form>
+
+      <details>
+        <summary class="muted">Corrispondono ({{ rec.matched|length }})</summary>
+        <div class="list">
+          {% for name, t in rec.matched %}
+            <div class="row"><div class="grow"><div class="title">{{ t.name }}</div>
+              {% if name != t.name %}<span class="muted small">nell'elenco: «{{ name }}»</span>{% endif %}</div></div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+  </div>
+</details>
+{% endif %}
+
+<h2 id="non-pagato" class="anchor">Non hanno ancora pagato ({{ ov.unpaid|length }})</h2>
+<div class="list">
+  {% for t in ov.unpaid %}
+    <div class="row">
+      <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+        <div class="title">{{ t.name }}</div>{{ ui.payment_pill(t, payments) }}</a>
+      {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+      <form method="post" action="/admin/squadre/{{ t.id }}/pagato">
+        <input type="hidden" name="pagato" value="1"><input type="hidden" name="back" value="/admin/mancanti#non-pagato">
+        <button class="small" type="submit">Pagato ✓</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="row muted">Hanno pagato tutte. 🍻</div>
+  {% endfor %}
+</div>
+
+<h2 id="da-sistemare" class="anchor">Profili da completare o verificare ({{ ov.incomplete|length }})</h2>
+<div class="list">
+  {% for t in ov.incomplete %}
+    <a class="row" href="/admin/squadre/{{ t.id }}">
+      <div class="grow">
+        <div class="title">{{ t.name }}</div>
+        <span class="muted small">{{ ui.players(t) }}</span>
+        <div class="pills">
+          {% if t.note %}<span class="pill accent">da verificare</span>{% endif %}
+          {% if not (t.p1 and t.p2) %}<span class="pill warn">giocatori</span>{% endif %}
+          {% if not t.phone1 %}<span class="pill">telefono</span>{% endif %}
+        </div>
+        {% if t.note %}<div class="small muted">📝 {{ t.note }}</div>{% endif %}
+      </div>
+      <span class="chev">›</span>
+    </a>
+  {% else %}
+    <div class="row muted">Tutte le coppie hanno giocatori e telefono.</div>
+  {% endfor %}
+</div>
+
+<h2>Iscritti «solo serata» da accoppiare ({{ ov.guests|length }})</h2>
+{% for gv in ov.guests %}
+  {% set g = gv.guest %}
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+      <div><div class="title"><strong>{{ g.name or "Senza nome" }}</strong></div>
+        <span class="muted small">{{ g.phone }}{% if g.registered_at %} · iscritto il {{ g.registered_at[8:10] }}/{{ g.registered_at[5:7] }} alle {{ g.registered_at[11:16] }}{% endif %}</span></div>
+      <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama">📞</a>
+    </div>
+    {% for hint in gv.hints %}<p class="small" style="margin:6px 0 0">💡 {{ hint }}</p>{% endfor %}
+    {% if setup %}
+      <details style="margin-top:8px">
+        <summary class="small"><strong>Mettilo in una coppia</strong></summary>
+        <form method="post" action="/admin/iscritti/{{ g.id }}/collega" style="display:flex;gap:8px;margin-top:8px">
+          <select name="team_id" required aria-label="Coppia">
+            <option value="">Coppia esistente…</option>
+            {% for t in ov.incomplete %}<option value="{{ t.id }}">{{ t.name }} (da completare)</option>{% endfor %}
+          </select>
+          <button class="small" type="submit">Collega</button>
+        </form>
+        <form method="post" action="/admin/iscritti/{{ g.id }}/nuova-coppia" style="margin-top:8px">
+          <input name="name" placeholder="Nome nuova squadra" aria-label="Nome nuova squadra">
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <input name="compagno" placeholder="Compagno (se lo sai)" aria-label="Compagno">
+            <button class="small" type="submit">Crea</button>
+          </div>
+        </form>
+      </details>
+    {% endif %}
+  </div>
+{% else %}
+  <p class="muted">Nessun iscritto da accoppiare.</p>
+{% endfor %}
+{% endblock %}

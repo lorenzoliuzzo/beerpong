@@ -1,0 +1,11 @@
+# Real participant data (registrations, phones, payments) lives only on the server, never in git.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.csv
+.env
+
+.venv/
+__pycache__/
+.pytest_cache/

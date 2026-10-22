@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+{% set setup = cfg.phase == "setup" %}
+<p><a href="/admin#coppie">‹ Organizzazione</a></p>
+<h1>{{ t.name if t else "Nuova coppia" }}</h1>
+{% if guest_team %}<p><span class="pill accent">creata al check-in da un iscritto «solo serata»</span></p>{% endif %}
+{% if t and t.note %}<div class="banner todo">📝 {{ t.note }}</div>{% endif %}
+{% if t and not setup %}<p class="muted small">Torneo in corso: puoi correggere nomi, telefoni e pagamento. Presenza ed eliminazione sono bloccate dopo il sorteggio.</p>{% endif %}
+
+<form method="post" action="{{ '/admin/squadre/' ~ t.id if t else '/admin/squadre/nuova' }}">
+  <div class="card">
+    <label for="name">Nome della squadra</label>
+    <input id="name" name="name" value="{{ t.name if t }}" maxlength="40" autocomplete="off" placeholder="Se vuoto: «Squadra di …»">
+    <label for="p1">Giocatore 1</label>
+    <input id="p1" name="p1" value="{{ t.p1 if t }}" maxlength="40" autocomplete="off" placeholder="Se non lo sai, lascia vuoto">
+    <label for="p2">Giocatore 2</label>
+    <input id="p2" name="p2" value="{{ t.p2 if t }}" maxlength="40" autocomplete="off" placeholder="Vuoto = coppia parziale">
+  </div>
+  <div class="card">
+    <label for="phone1">Telefono</label>
+    <input id="phone1" name="phone1" type="tel" inputmode="tel" value="{{ t.phone1 if t }}">
+    <label for="phone2">Secondo telefono</label>
+    <input id="phone2" name="phone2" type="tel" inputmode="tel" value="{{ t.phone2 if t }}">
+    {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">📞 Chiama</a></p>{% endif %}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Ticket</h2>
+    <div class="choices">
+      <label><input type="radio" name="payment" value="" {{ 'checked' if not t or not t.payment }}> Non dichiarato</label>
+      {% for key, label in payments.items() %}
+        <label><input type="radio" name="payment" value="{{ key }}" {{ 'checked' if t and t.payment == key }}> {{ label }}</label>
+      {% endfor %}
+    </div>
+    <div class="choices" style="margin-top:12px">
+      <label><input type="checkbox" name="pagato" value="1" {{ 'checked' if t and t.paid }}> Pagamento verificato</label>
+      {% if setup %}
+        <label><input type="checkbox" name="presente" value="1" {{ 'checked' if t and t.checked_in }}> Presente (check-in fatto)</label>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <label for="note">Note / da verificare</label>
+    <textarea id="note" name="note" style="min-height:80px" placeholder="Es. giocatori da confermare">{{ t.note if t }}</textarea>
+  </div>
+  <button class="wide" type="submit">{{ "Salva" if t else "Aggiungi coppia" }}</button>
+  {% if t and t.note %}
+    <button class="wide ghost" type="submit" name="verificata" value="1">✓ Verificata: salva e togli la nota</button>
+  {% endif %}
+</form>
+
+{% if t and setup and guests %}
+  <div class="card" style="margin-top:16px">
+    <h2 style="margin-top:0">Collega un iscritto «solo serata»</h2>
+    <p class="muted small">Il suo nome va nel posto giocatore libero e il suo numero nel telefono mancante.</p>
+    {% for g in guests %}
+      <form method="post" action="/admin/iscritti/{{ g.id }}/collega" class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0">
+        <input type="hidden" name="team_id" value="{{ t.id }}"><input type="hidden" name="back" value="/admin/squadre/{{ t.id }}">
+        <span><strong>{{ g.name or "Senza nome" }}</strong> <span class="muted small">{{ g.phone }}</span></span>
+        <button class="small ghost" type="submit">Collega</button>
+      </form>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if t and setup %}
+  <form method="post" action="/admin/squadre/{{ t.id }}/elimina" style="margin-top:24px;text-align:center"
+        onsubmit='return confirm({{ ("Eliminare " ~ t.name ~ "?")|tojson }})'>
+    <button type="submit" class="link" style="color:var(--err)">Elimina coppia</button>
+  </form>
+{% endif %}
+{% endblock %}

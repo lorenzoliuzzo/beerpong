@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+<h1>Tabellone</h1>
+<p><a href="/cartellone">📺 Versione cartellone (schermo grande)</a></p>
+{{ ui.progress(progress) }}
+
+{% if rounds %}
+  {% set final = rounds[-1][1][0] %}
+  {% if final.done %}
+    <div class="banner gold" style="text-align:center">
+      <div class="label">Campioni</div>
+      <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
+      Finale {{ final.s1 }}–{{ final.s2 }}
+    </div>
+  {% endif %}
+  <nav class="jump">
+    {% for name, ms in rounds %}<a href="#r{{ loop.index }}">{{ name|replace(" di finale", "") }}</a>{% endfor %}
+  </nav>
+  {% for name, ms in rounds %}
+    <h2 id="r{{ loop.index }}" class="anchor">{{ name }}</h2>
+    {% for m in ms if not m.bye %}{{ ui.match(m, show_label=False, mine=me.id if me, labels=labels) }}{% endfor %}
+  {% endfor %}
+
+{% elif projection %}
+  <div class="banner warm">
+    <div class="label">Anteprima live</div>
+    Se i gironi finissero adesso, il primo turno sarebbe così. Cambia a ogni risultato.
+  </div>
+  {% for a, b in projection %}
+    <div class="match ghost-match {{ 'mine' if me and me.id in (a, b) }}">
+      <div class="teams">
+        <span class="t">{% if a %}{{ T[a].name }}<small class="origin">{{ labels[a] }}</small>{% else %}<span class="muted">Passa il turno</span>{% endif %}</span>
+        <span class="sc vs">vs</span>
+        <span class="t r">{% if b %}{{ T[b].name }}<small class="origin">{{ labels[b] }}</small>{% else %}<span class="muted">Passa il turno</span>{% endif %}</span>
+      </div>
+    </div>
+  {% endfor %}
+
+{% else %}
+  <p class="muted">Il tabellone si genera da solo alla fine dei gironi: passano le prime due di ogni girone, più le migliori terze se servono. Durante i gironi qui vedrai l'anteprima in tempo reale.</p>
+{% endif %}
+{% endblock %}

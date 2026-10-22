@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Cartellone · {{ cfg.title }}{% endblock %}
+{% block body_class %}board{% endblock %}
+{% block header %}{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}
+{% set ko_started = rounds and rounds[0].matches and rounds[0].matches[0].id is defined %}
+<header class="board-top">
+  <div>
+    <div class="board-title">🍺 {{ cfg.title }}</div>
+    <div class="board-sub">
+      {% if provisional %}Gironi provvisori · sorteggio di prova con tutte le {{ groups|map(attribute="teams")|map("length")|sum }} coppie iscritte
+      {% elif cfg.phase == "groups" %}Fase a gironi
+      {% elif cfg.phase == "knockout" %}Eliminazione diretta
+      {% else %}Torneo concluso{% endif %}
+    </div>
+  </div>
+  <div class="board-clock" id="board-clock"></div>
+  <div class="board-qr"><img src="/qr-sito.svg" alt="QR del sito"><span>Segui dal telefono</span></div>
+</header>
+
+{% if progress %}<div class="board-steps">{{ ui.progress(progress) }}</div>{% endif %}
+
+{% if final and final.done %}
+  <div class="board-champion">
+    <div class="label">Campioni</div>
+    <div class="name">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
+    <div>Finale {{ final.n1 }} {{ final.s1 }}–{{ final.s2 }} {{ final.n2 }}</div>
+  </div>
+{% endif %}
+
+{% if now and not provisional %}
+  <section class="board-now">
+    <div class="board-h">In campo ora</div>
+    <div class="board-now-list">
+      {% for m in now %}
+        <div class="nowcard"><span class="field">Campo {{ m.field }}</span>
+          <b>{{ m.n1 }}</b> <span class="vs">vs</span> <b>{{ m.n2 }}</b><span class="lbl">{{ m.label }}</span></div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{% macro bracket_tree() %}
+  <section class="board-bracket">
+    <div class="board-h">Tabellone{% if not ko_started %} <span class="hint">{{ "anteprima: se i gironi finissero adesso" if cfg.phase == "groups" else "si riempie alla fine dei gironi" }}</span>{% endif %}</div>
+    <div class="tree">
+      {% for r in rounds %}
+        <div class="tcol">
+          <div class="tround">{{ r.name|replace(" di finale", "") }}</div>
+          <div class="tmatches">
+            {% for m in r.matches %}
+              {% if m.id is defined %}
+                {% if not m.bye %}
+                <div class="tm {{ 'done' if m.done }}">
+                  <div class="{{ 'w' if m.winner and m.winner == m.t1 }}"><span>{{ m.n1 }}</span><b>{{ m.s1 if m.done }}</b></div>
+                  <div class="{{ 'w' if m.winner and m.winner == m.t2 }}"><span>{{ m.n2 }}</span><b>{{ m.s2 if m.done }}</b></div>
+                </div>
+                {% else %}
+                <div class="tm bye"><div class="w"><span>{{ m.n1 if m.t1 else m.n2 }}</span><b></b></div><div><span>passa il turno</span><b></b></div></div>
+                {% endif %}
+              {% else %}
+                <div class="tm empty"><div><span>{{ m[0] or "—" }}</span></div><div><span>{{ m[1] or "—" }}</span></div></div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+      <div class="tcol champ"><div class="tround">Campioni</div><div class="tmatches"><div class="tm trophy">🏆<span>{{ (final.n1 if final.winner == final.t1 else final.n2) if final and final.done else "?" }}</span></div></div></div>
+    </div>
+  </section>
+{% endmacro %}
+
+{% if ko_started %}{{ bracket_tree() }}{% endif %}
+
+{% if groups %}
+  <section>
+    <div class="board-h">{{ "Gironi provvisori" if provisional else ("Gironi" if not ko_started else "Classifiche finali dei gironi") }}
+      <span class="hint">passano le prime 2{% if thirds %} + le {{ thirds }} migliori terze{% endif %}</span></div>
+    <div class="board-groups">
+      {% for g in groups %}
+        <div class="gcard">
+          <div class="ghead"><span class="gletter">{{ g.letter }}</span><span>Girone {{ g.letter }}</span>
+            {% if g.table %}<span class="gcount">{{ g.table.matches|selectattr("done")|list|length }}/{{ g.table.matches|length }}</span>{% endif %}</div>
+          {% if g.table %}
+            <div class="grow head"><span>#</span><span>Squadra</span><span>G</span><span>DB</span><span>Pt</span></div>
+            {% for r in g.table.rows %}
+              <div class="grow {{ 'q' if loop.index <= 2 else ('q3' if loop.index == 3 and thirds) }}">
+                <span>{{ loop.index }}</span><span class="n">{{ g.teams[loop.index0].name }}</span>
+                <span>{{ r.played }}</span><span>{{ "%+d"|format(r.diff) }}</span><span class="pt">{{ r.points }}</span>
+              </div>
+            {% endfor %}
+          {% else %}
+            {% for t in g.teams %}
+              <div class="grow plain"><span class="n">{{ t.name }}</span>
+                <span class="pl">{% if t.p1 %}{{ t.p1 }}{% if t.p2 %} &amp; {{ t.p2 }}{% endif %}{% else %}giocatori da definire{% endif %}</span></div>
+            {% endfor %}
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% else %}
+  <p class="board-sub">Servono almeno 4 coppie iscritte per mostrare i gironi.</p>
+{% endif %}
+
+{% if not ko_started and rounds %}{{ bracket_tree() }}{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (() => {
+    // Look the element up each time: live refresh swaps the page content under us.
+    const tick = () => {
+      const el = document.getElementById("board-clock");
+      if (el) el.textContent = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    };
+    tick(); setInterval(tick, 10000);
+  })();
+</script>
+{% endblock %}

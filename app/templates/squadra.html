@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+{% set t = dash.team %}
+<h1>{{ t.name }}</h1>
+<p class="muted">{{ ui.players(t) }}
+  {% if dash.champion %}· <span class="pill ok">Campioni 🏆</span>{% elif dash.eliminated %}· <span class="pill">Eliminata</span>{% endif %}</p>
+
+{% if dash.table %}
+  <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
+  {{ ui.table(dash.table.rows, T, mine=t.id) }}
+{% endif %}
+
+{% if dash.matches %}
+  <h2>Partite</h2>
+  {% for m in dash.matches %}{{ ui.match(m, mine=t.id) }}{% endfor %}
+{% elif cfg.phase == "setup" %}
+  <p class="muted">Il calendario comparirà all'inizio del torneo.</p>
+{% endif %}
+
+{% if rivals %}
+  <h2>Scontri diretti</h2>
+  <form method="get">
+    <select name="vs" onchange="this.form.submit()" aria-label="Confronta con">
+      <option value="">Confronta con…</option>
+      {% for r in rivals %}<option value="{{ r.id }}" {{ 'selected' if r.id == other }}>{{ r.name }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit">Confronta</button></noscript>
+  </form>
+  {% if h2h %}
+    <div class="card stats">
+      <div><div class="big">{{ h2h.wins_a }}</div><span class="muted small">vittorie {{ t.name }}</span></div>
+      <div><div class="big">{{ h2h.draws }}</div><span class="muted small">pareggi</span></div>
+      <div><div class="big">{{ h2h.wins_b }}</div><span class="muted small">vittorie {{ T[other].name }}</span></div>
+    </div>
+    <p class="muted small" style="text-align:center">Bicchieri {{ h2h.cups_a }} – {{ h2h.cups_b }}</p>
+    {% for m in h2h.matches %}{{ ui.match(m, mine=t.id, actions=False) }}{% else %}<p class="muted">Non si sono (ancora) affrontate.</p>{% endfor %}
+  {% endif %}
+{% endif %}
+{% endblock %}
