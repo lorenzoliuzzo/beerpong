@@ -67,6 +67,8 @@ header.top {
   border-bottom: 1px solid var(--line);
 }
 header.top .brand { font-weight: 800; color: var(--text); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+header.top .staff { font-size: .85rem; font-weight: 700; color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; }
+.own-actions { margin-top: 22px; text-align: center; display: grid; gap: 10px; }
 header.top .me {
   flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: .85rem; font-weight: 700; text-decoration: none;

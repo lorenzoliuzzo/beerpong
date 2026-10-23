@@ -148,12 +148,9 @@ def home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response
     total_valid_matches = len([m for m in views if not m.bye])
     recent_matches = done_matches[-4:][::-1]
     dash = service.team_dashboard(db, team_id) if team_id else None
-    spot = service.provisional_spot(db, team_id, datetime.now()) if dash and service.load_config(db).phase == "setup" else None
-    my_field = next((m.field for m in dash.matches if m.stage == "group" and m.field), None) if dash else None
-    my_table = next((tv for tv in service.table_views(db) if tv.field == my_field), None) if my_field else None
     return page(
         request, db, "home.html", now=now, upcoming=upcoming, overview=service.checkin_overview(db),
-        dash=dash, spot=spot, my_table=my_table,
+        dash=dash,
         final=ko[-1][1][0] if ko else None, progress=service.tournament_progress(db),
         total_cups=total_cups, played_count=len(done_matches), total_matches=total_valid_matches,
         top_scorer=scorers[0] if scorers else None, shots=shots, recent_matches=recent_matches,
@@ -360,8 +357,7 @@ def site_qr(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Respo
     return Response(buf.getvalue(), media_type="image/svg+xml")
 
 
-@router.get("/squadra/{team_id}")
-def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3.Connection = Depends(get_db)) -> Response:
+def _team_page(request: Request, db: sqlite3.Connection, team_id: int, vs: str | None, own: bool) -> Response:
     dash = service.team_dashboard(db, team_id)
     if dash is None:
         raise HTTPException(404)
@@ -369,10 +365,31 @@ def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3
     other = _int(vs)
     h2h = service.head_to_head(db, team_id, other) if other and other != team_id else None
     rivals = [t for t in service.teams(db).values() if t["checked_in"] and t["id"] != team_id]
+    spot = my_table = None
+    if own:
+        if get_setting(db, "phase") == "setup":
+            spot = service.provisional_spot(db, team_id, datetime.now())
+        my_field = next((m.field for m in dash.matches if m.stage == "group" and m.field), None)
+        my_table = next((tv for tv in service.table_views(db) if tv.field == my_field), None) if my_field else None
     return page(
-        request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db),
-        thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
+        request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db), own=own, spot=spot,
+        my_table=my_table, thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
     )
+
+
+@router.get("/io")
+def my_profile(request: Request, vs: str | None = None, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    team_id = my_team_id(request)
+    if team_id is None or service.team(db, team_id) is None:
+        return page(request, db, "io.html")
+    return _team_page(request, db, team_id, vs, own=True)
+
+
+@router.get("/squadra/{team_id}")
+def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if team_id == my_team_id(request):
+        return redirect("/io" + (f"?vs={vs}" if vs else ""))
+    return _team_page(request, db, team_id, vs, own=False)
 
 
 # --- Live tracking ---------------------------------------------------------
@@ -500,7 +517,7 @@ def guest_team_save(
         return redirect("/checkin/nuova")
     request.session["team"] = team_id
     flash(request, "Check-in fatto! Siete in gara.")
-    return redirect("/")
+    return redirect("/io")
 
 
 @router.get("/checkin/{team_id}")
@@ -540,7 +557,7 @@ def checkin_save(
         return redirect(f"/checkin/{team_id}")
     request.session["team"] = team_id
     flash(request, "Check-in fatto! Ci vediamo al tavolo.")
-    return redirect("/")
+    return redirect("/io")
 
 
 @router.post("/checkin/{team_id}/entra")
@@ -559,7 +576,7 @@ def checkin_join(
         return redirect(f"/checkin/{team_id}")
     request.session["team"] = team_id
     flash(request, f"Benvenuto in «{t['name']}»!")
-    return redirect("/")
+    return redirect("/io")
 
 
 @router.post("/esci-squadra")
@@ -599,7 +616,7 @@ def split_save(
         flash(request, str(e), "err")
         return redirect(f"/canestri/{match_id}")
     flash(request, "Canestri assegnati.")
-    return redirect("/" if my_team_id(request) else "/arbitro")
+    return redirect("/io" if my_team_id(request) else "/arbitro")
 
 
 # --- Staff -----------------------------------------------------------------

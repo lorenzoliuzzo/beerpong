@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
-{% block title %}{{ dash.team.name }} · Profilo Squadra{% endblock %}
+{% block title %}{{ "Profilo" if own else dash.team.name ~ " · Profilo Squadra" }}{% endblock %}
 {% block content %}
 {% set t = dash.team %}
 
@@ -28,8 +28,8 @@
       <h1 style="margin:6px 0 2px">{{ t.name }}</h1>
       <p class="muted" style="margin:0;font-size:1rem">👥 {{ ui.players(t) }}</p>
     </div>
-    {% if me and me.id == t.id %}
-      <span class="badge" title="Questa è la tua squadra">LA TUA SQUADRA ★</span>
+    {% if own %}
+      <span class="badge" title="Il vostro profilo">★ VOI</span>
     {% endif %}
   </div>
 
@@ -55,6 +55,45 @@
     </div>
   {% endif %}
 </div>
+
+{% if own %}
+  {% if cfg.phase == "setup" %}
+    <div class="banner" style="margin-top:12px">
+      <div class="label">Check-in fatto ✓</div>
+      {{ ui.payment_pill(t, payments) }}
+    </div>
+    {% if spot %}
+      <div class="card">
+        <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
+        <div class="headline" style="font-size:1.3rem;font-weight:900;margin:4px 0">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
+        {% if spot.first_time %}<p style="margin:0 0 8px">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
+        <div class="list">
+          {% for m in spot.group.teams %}
+            <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
+              {% if m.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
+          {% endfor %}
+        </div>
+        <p class="muted small" style="margin:8px 0 0">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
+      </div>
+      <p><a class="btn ghost wide" href="/gironi">Tutti i gironi e le presenze</a></p>
+    {% else %}
+      <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
+    {% endif %}
+  {% endif %}
+    {% if my_table and cfg.phase == "groups" and (my_table.current or my_table.next_match) %}
+      <h2>Al vostro tavolo · 🏓 Tavolo {{ my_table.field }}</h2>
+      <div class="list table-queue">
+        {% for m in ([my_table.current, my_table.next_match] + my_table.upcoming[:3])|select %}
+          <a class="row {{ 'mine' if m.side(t.id) }}" href="/live/{{ m.id }}" style="text-decoration:none">
+            <span class="when">{{ "Ora" if loop.first and my_table.current else m.time }}</span>
+            <div class="grow"><div class="title">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</div><span class="muted small">{{ m.label }}</span></div>
+          </a>
+        {% endfor %}
+      </div>
+      <p><a class="btn ghost wide" href="/gironi?tavolo={{ my_table.field }}">Tutto il tavolo e le classifiche</a></p>
+    {% endif %}
+
+{% endif %}
 
 {% if me and me.id == t.id %}{{ ui.push_box() }}{% endif %}
 
@@ -235,6 +274,15 @@
   {% endif %}
 {% elif profile %}
   <p class="muted small" style="margin-top:18px">Statistiche di coppia e dei giocatori compariranno dopo la prima partita.</p>
+{% endif %}
+
+{% if own %}
+  <div class="own-actions">
+    <a class="btn ghost wide" href="/checkin/{{ t.id }}">Modifica i vostri dati</a>
+    <form method="post" action="/esci-squadra" onsubmit="return confirm('Uscire dal profilo di {{ t.name }} su questo telefono?')">
+      <button class="link" type="submit">Non siete voi? Esci</button>
+    </form>
+  </div>
 {% endif %}
 
 <!-- SEZIONE 6: SCONTRI DIRETTI (H2H) -->

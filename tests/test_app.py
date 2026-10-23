@@ -99,11 +99,10 @@ def test_navigation_tabs_structure(client: TestClient) -> None:
     client.post("/logout")
     r = client.get("/")
     assert r.status_code == 200
-    # Setup/groups phase: Gironi, Statistiche live, Classifica, Admin
-    assert "Gironi" in r.text
-    assert "Statistiche live" in r.text
-    assert "Classifica" in r.text
-    assert "Admin" in r.text
+    # Profilo, Tavoli, Live, Classifica; staff reach admin from the header
+    for tab in ('href="/io"', ">Tavoli", ">Live", ">Classifica"):
+        assert tab in r.text
+    assert 'class="staff" href="/login">Staff' in r.text and ">Admin\n" not in r.text
     # Programma is no longer in tabbar
     assert '<a href="/programma"' not in r.text
 
@@ -802,7 +801,8 @@ def test_player_journey_checkin_then_group_presence(client: TestClient) -> None:
     me = db_call(service.team, 1)
     client.post("/checkin/1", data=checkin_form(me, phone1=f"+39 333 000 {1:04d}"))
 
-    home = client.get("/").text
+    assert "★ Squadra 0 · il vostro profilo" in client.get("/").text
+    home = client.get("/io").text
     spot = db_call(lambda db: service.provisional_spot(db, 1, datetime(2026, 10, 23, 18, 0)))
     assert f"Girone {spot.group.letter} · 🏓 Tavolo {spot.table}" in home
     assert f"contro <strong>{spot.first_rival['name']}</strong>" in home and "✓ arrivata" in home
@@ -820,7 +820,7 @@ def test_home_shows_the_queue_at_my_table(client: TestClient) -> None:
     for t in sorted(db_call(service.teams).values(), key=lambda t: t["id"] == 1):  # couple 1 last: its session stays
         client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
     client.post("/admin/avvia")
-    home = client.get("/").text
+    home = client.get("/io").text
     field = next(m.field for m in db_call(service.matches) if m.side(1))
     assert f"Al vostro tavolo · 🏓 Tavolo {field}" in home and '<span class="when">Ora</span>' in home
 
@@ -834,7 +834,22 @@ def test_rankings_default_to_groups_with_my_position(client: TestClient) -> None
     page = client.get("/classifiche").text
     assert 'href="/classifiche?vista=gironi" class="on">Gironi' in page
     assert "La vostra posizione · Squadra 0" in page and '<span class="pill accent">il vostro</span>' in page
-    mine = next(m for m in db_call(service.matches) if m.side(1))
-    later = [m for m in db_call(service.matches) if m.side(1) and not m.playing]
-    assert later and f'href="/live/{later[0].id}"' not in client.get("/squadra/1").text  # no LIVE pill for later matches
-    assert "Attiva le notifiche" in client.get("/squadra/1").text and mine
+    mine = [m for m in db_call(service.matches) if m.side(1)]
+    profile = client.get("/io").text
+    assert profile.count("● LIVE") == sum(m.playing for m in mine) <= 1  # later matches get no LIVE pill
+    assert "Attiva le notifiche" in profile
+
+
+def test_profile_page_logged_out_and_own_team_redirect(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    assert "Entrate nel profilo della vostra coppia" in client.get("/io").text
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    r = client.post("/checkin/1", data=checkin_form(db_call(service.team, 1)), follow_redirects=False)
+    assert r.headers["location"] == "/io"
+    assert client.get("/squadra/1", follow_redirects=False).headers["location"] == "/io"
+    page = client.get("/io").text
+    assert "★ VOI" in page and "Non siete voi? Esci" in page and "Modifica i vostri dati" in page
+    assert client.get("/squadra/2").status_code == 200 and "★ VOI" not in client.get("/squadra/2").text
+    client.post("/esci-squadra")
+    assert "Entrate nel profilo" in client.get("/io").text
