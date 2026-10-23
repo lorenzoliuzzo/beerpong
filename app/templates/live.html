@@ -89,7 +89,7 @@
   function rackHTML(cups, rows) {
     const standing = new Set(cups);
     return (rows || ROWS).map((row) => `<div class="rrow">${row.map((c) =>
-      `<span class="cup ${standing.has(c) ? "up" : "down"}">${c}</span>`).join("")}</div>`).join("");
+      `<span class="cup ${standing.has(c) ? "up" : "down"}"></span>`).join("")}</div>`).join("");
   }
 
   function render() {

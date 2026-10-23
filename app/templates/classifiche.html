@@ -7,17 +7,15 @@
 </div>
 
 <nav class="segmented" style="margin-bottom:12px">
-  {% if tables %}<a href="/classifiche?vista=gironi" class="{{ 'on' if view == 'gironi' }}">Gironi</a>{% endif %}
   <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Squadre</a>
   <a href="/classifiche?vista=giocatori" class="{{ 'on' if view == 'giocatori' }}">Marcatori</a>
   <a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri</a>
 </nav>
 
-{% if mine and (mine.group_pos or mine.cups_pos or mine.players) %}
+{% if mine and (mine.cups_pos or mine.players) %}
   <a class="card my-rank" href="/squadra/{{ me.id }}">
     <div class="label muted small">La vostra posizione · {{ me.name }}</div>
     <div class="my-rank-row">
-      {% if mine.group_pos %}<div><div class="big">{{ mine.group_pos }}°</div><span class="muted small">nel {{ mine.group.name }}</span></div>{% endif %}
       {% if mine.cups_pos %}<div><div class="big">#{{ mine.cups_pos }}</div><span class="muted small">per bicchieri</span></div>{% endif %}
       {% for pos, s in mine.players %}<div><div class="big">#{{ pos }}</div><span class="muted small">{{ s.player }} · {{ s.cups }} 🥤</span></div>{% endfor %}
     </div>
@@ -35,9 +33,9 @@
   </div>
   {% endif %}
 
-  <p class="muted small">Ordinate per bicchieri fatti: chi ha giocato di più è avvantaggiato. Per chi passa il turno guarda <a href="/classifiche?vista=gironi">Gironi</a>.</p>
+  <p class="muted small">Ordinate per bicchieri fatti: chi ha giocato di più è avvantaggiato. Chi passa il turno lo decidono i <a href="/gironi">gironi</a>, poi il <a href="/tabellone">tabellone</a>.</p>
   <div class="table-wrap">
-  <table class="compact">
+  <table class="compact ranked">
     <thead>
       <tr>
         <th>#</th>
@@ -49,7 +47,8 @@
     </thead>
     <tbody id="teams-stats-body">
       {% for s in team_stats %}
-      <tr class="{{ 'mine' if me and s.team == me.id }} stat-row" data-grp="g{{ s.grp if s.grp is not none else 'none' }}">
+      {% set mine_row = me and s.team == me.id %}
+      <tr class="{{ 'mine' if mine_row }} {{ 'beyond' if loop.index > 10 and not mine_row }} {{ 'gap' if mine_row and loop.index > 11 }} stat-row" data-grp="g{{ s.grp if s.grp is not none else 'none' }}">
         <td>
           {% if loop.index == 1 %}🥇
           {% elif loop.index == 2 %}🥈
@@ -70,6 +69,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if team_stats|length > 10 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ team_stats|length }})</button>{% endif %}
   </div>
 
 {% elif view == "giocatori" %}
@@ -85,7 +85,7 @@
   {% endif %}
 
   <div class="table-wrap">
-  <table class="compact">
+  <table class="compact ranked">
     <thead>
       <tr>
         <th>#</th>
@@ -96,7 +96,9 @@
     </thead>
     <tbody id="scorers-stats-body">
       {% for s in scorers %}
-      <tr class="{{ 'mine' if me and s.team_id == me.id }} stat-row" data-grp="g{{ s.grp if s.grp is not none else 'none' }}">
+      {% set mine_row = me and s.team_id == me.id %}
+      {% set prev_mine = loop.previtem is defined and me and loop.previtem.team_id == me.id %}
+      <tr class="{{ 'mine' if mine_row }} {{ 'beyond' if loop.index > 10 and not mine_row }} {{ 'gap' if mine_row and loop.index > 11 and not prev_mine }} stat-row" data-grp="g{{ s.grp if s.grp is not none else 'none' }}">
         <td>
           {% if loop.index == 1 %}🥇
           {% elif loop.index == 2 %}🥈
@@ -116,6 +118,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if scorers|length > 10 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ scorers|length }})</button>{% endif %}
   </div>
 
 {% elif view == "tiri" %}
@@ -136,15 +139,17 @@
     <h2>Mappa dei bicchieri colpiti</h2>
     <div class="card">{{ ui.heat_rack(shots.heatmap) }}</div>
 
-    <h2>Classifica Precisione</h2>
+    <h2>I più precisi</h2>
     <div class="table-wrap">
-    <table>
+    <table class="ranked">
       <thead>
         <tr><th>#</th><th class="name">Giocatore</th><th>Centri</th><th>Tiri</th><th>% Precisione</th></tr>
       </thead>
       <tbody>
         {% for p in shots.players %}
-        <tr class="{{ 'mine' if me and p.team_id == me.id }}">
+        {% set mine_row = me and p.team_id == me.id %}
+        {% set prev_mine = loop.previtem is defined and me and loop.previtem.team_id == me.id %}
+        <tr class="{{ 'mine' if mine_row }} {{ 'beyond' if loop.index > 5 and not mine_row }} {{ 'gap' if mine_row and loop.index > 6 and not prev_mine }}">
           <td>{{ loop.index }}</td>
           <td class="name"><strong>{{ p.player }}</strong><br><a class="muted small" href="/squadra/{{ p.team_id }}">{{ p.team }}</a></td>
           <td><strong>{{ p.hits }}</strong></td>
@@ -154,39 +159,16 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if shots.players|length > 5 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ shots.players|length }})</button>{% endif %}
     </div>
   {% else %}
     <div class="card" style="padding:24px 16px;text-align:center">
       <div style="font-size:2rem;margin-bottom:8px">🎯</div>
       <div class="title">Nessun tiro segnalato finora</div>
-      <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli spettatori o i tavoli segnalano i tiri nelle pagine LIVE delle partite.</p>
+      <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli arbitri iniziano a segnare i tiri.</p>
     </div>
   {% endif %}
 
-{% elif view == "gironi" %}
-  {{ ui.progress(progress) }}
-  {% if tables %}
-    <nav class="jump">{% for g in tables %}<a href="#g{{ g.grp }}">{{ g.name|replace("Girone ", "") }}</a>{% endfor %}</nav>
-    <p class="muted small">Vittoria 3, pareggio 1, sconfitta 0. A pari punti: scontri diretti, poi canestri fatti, poi canestri subiti.
-      <span class="pill ok">verde</span> passano{% if thirds %} · <span class="pill warn">giallo</span> passano le {{ thirds }} migliori terze{% endif %}.</p>
-    {% for g in tables %}
-      {% set played = g.matches|selectattr("done")|list|length %}
-      <section class="group anchor" id="g{{ g.grp }}">
-        <div class="group-head">
-          <span class="badge">{{ g.name|replace("Girone ", "") }}</span>
-          <h2>{{ g.name }}{% if mine and mine.group is sameas g %} <span class="pill accent">il vostro</span>{% endif %}</h2>
-          <span class="muted small">{{ played }}/{{ g.matches|length }} partite</span>
-        </div>
-        {{ ui.table(g.rows, T, thirds, mine=me.id if me) }}
-        <details class="results" {{ 'open' if mine and mine.group is sameas g }}>
-          <summary>Risultati e prossime partite</summary>
-          {% for m in g.matches|sort(attribute="done", reverse=True) %}{{ ui.mini(m, mine=me.id if me) }}{% endfor %}
-        </details>
-      </section>
-    {% endfor %}
-  {% else %}
-    <p class="muted">I gironi vengono sorteggiati all'inizio del torneo.</p>
-  {% endif %}
 {% endif %}
 {% endblock %}
 
@@ -196,6 +178,8 @@ function filterStatsByGrp(groupId) {
   document.querySelectorAll('.filter-chips .chip').forEach(c => {
     c.classList.toggle('on', c.dataset.grp === groupId);
   });
+  // A group is short: show all of it; "every group" goes back to the top ones plus yours.
+  document.querySelectorAll('table.ranked').forEach(t => t.classList.toggle('all', groupId !== 'all'));
   document.querySelectorAll('.stat-row').forEach(row => {
     if (groupId === 'all' || row.dataset.grp === groupId) {
       row.style.display = '';
@@ -204,5 +188,11 @@ function filterStatsByGrp(groupId) {
     }
   });
 }
+document.addEventListener('click', (e) => {
+  const more = e.target.closest('[data-show-all]');
+  if (!more) return;
+  more.closest('.table-wrap').querySelector('table.ranked').classList.add('all');
+  more.hidden = true;
+});
 </script>
 {% endblock %}

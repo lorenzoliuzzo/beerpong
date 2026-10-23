@@ -296,6 +296,10 @@ button.small, .btn.small { min-height: 38px; padding: 6px 12px; font-size: .88re
 .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .total { font-size: 2rem; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
 
+table.ranked:not(.all) tr.beyond { display: none; }
+table.ranked:not(.all) tr.gap td { border-top: 3px dotted var(--muted); }
+table.ranked tr.mine td { background: var(--accent-soft); font-weight: 700; }
+.show-all { display: block; margin: 8px auto 0; }
 .my-rank { display: block; text-decoration: none; color: var(--text); background: var(--accent-soft); border-color: var(--accent); }
 .my-rank .label { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .my-rank-row { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; }
@@ -1459,6 +1463,7 @@ a.ref-overview.running .ref-go { background: var(--accent); }
   .heat-cup.h1, .heat-cup.h2, .heat-cup.h3 { color: var(--h-ink-low); }
 }
 .heat-cup:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.heat-cup.top { box-shadow: 0 0 0 3px var(--accent); }
 .heat-legend { display: flex; align-items: center; gap: 8px; font-size: .75rem; color: var(--muted); }
 .heat-scale { width: 140px; height: 10px; border-radius: 999px; background: linear-gradient(90deg, var(--h1), var(--h4), var(--h7)); }
 .heat-note { margin: 0; }

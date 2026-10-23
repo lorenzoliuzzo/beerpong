@@ -146,26 +146,20 @@
   {% if title %}<figcaption class="heat-title">{{ title }}</figcaption>{% endif %}
   {% if total %}
     {% set best = heat|dictsort(by="value", reverse=true)|first %}
-    {% if not compact %}<p class="heat-headline">Bicchiere più colpito: <strong>{{ best[0] }}</strong> · {{ best[1] }} colpi ({{ (100 * best[1] / total)|round|int }}%)</p>{% endif %}
+    {% if not compact %}<p class="heat-headline">Il più colpito, cerchiato: <strong>{{ best[1] }} colpi</strong> ({{ (100 * best[1] / total)|round|int }}%)</p>{% endif %}
     <div class="heat-rack" role="img" aria-label="Mappa dei bicchieri colpiti, {{ total }} colpi">
       {% for row in rows %}<div class="heat-row">
         {% for c in row %}{% set n = heat.get(c, 0) %}
           {% set level = 0 if not n else (4 if hi == lo else [7, 1 + (6 * (n - lo) / (hi - lo))|int]|min) %}
-          <span class="heat-cup h{{ level }}" tabindex="0" title="Bicchiere {{ c }}: {{ n }} colp{{ 'o' if n == 1 else 'i' }}{% if total %} ({{ (100 * n / total)|round|int }}%){% endif %}">
-            <b>{{ n }}</b>{% if not compact %}<small>{{ (100 * n / total)|round|int }}%</small>{% endif %}<i>#{{ c }}</i>
+          <span class="heat-cup h{{ level }} {{ 'top' if c == best[0] }}" tabindex="0" title="{{ n }} colp{{ 'o' if n == 1 else 'i' }} ({{ (100 * n / total)|round|int }}%)">
+            <b>{{ n }}</b>{% if not compact %}<small>{{ (100 * n / total)|round|int }}%</small>{% endif %}
           </span>
         {% endfor %}
       </div>{% endfor %}
     </div>
     {% if not compact %}
       <div class="heat-legend" aria-hidden="true"><span>{{ lo }} colpi</span><span class="heat-scale"></span><span>{{ hi }} colpi</span></div>
-      <p class="muted small heat-note">La punta (bicchiere 1) è il più vicino a chi tira.</p>
-      <details class="heat-table">
-        <summary>Vedi come tabella</summary>
-        <table><tr><th>Bicchiere</th><th>Colpi</th><th>%</th></tr>
-          {% for c, n in heat|dictsort(by="value", reverse=true) if n %}<tr><td>{{ c }}</td><td>{{ n }}</td><td>{{ (100 * n / total)|round|int }}%</td></tr>{% endfor %}
-        </table>
-      </details>
+      <p class="muted small heat-note">In basso la punta, il bicchiere più vicino a chi tira.</p>
     {% endif %}
   {% else %}
     <p class="muted small">Ancora nessun bicchiere colpito.</p>

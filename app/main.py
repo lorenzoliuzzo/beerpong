@@ -267,27 +267,21 @@ def schedule(request: Request, team: str | None = None, db: sqlite3.Connection =
 
 @router.get("/classifiche")
 def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if vista == "gironi":  # the group standings live on their own page
+        return RedirectResponse("/gironi", status_code=303)
     tables = service.group_tables(db)
-    # During the group stage the standings that decide who goes through are the groups'.
-    default = "gironi" if tables and get_setting(db, "phase") == "groups" else "coppie"
-    view = vista if vista in ("coppie", "giocatori", "tiri", "gironi") else default
+    view = vista if vista in ("coppie", "giocatori", "tiri") else "coppie"
     team_stats, scorers = service.team_ranking(db), service.scorers(db)
     team_id = my_team_id(request)
     mine = None
     if team_id is not None:
-        my_group = next((g for g in tables if any(r.team == team_id for r in g.rows)), None)
         mine = {
-            "group": my_group,
-            "group_pos": next((i for i, r in enumerate(my_group.rows, 1) if r.team == team_id), None) if my_group else None,
             "cups_pos": next((i for i, s in enumerate(team_stats, 1) if s.team == team_id and s.played), None),
             "players": [(i, s) for i, s in enumerate(scorers, 1) if s.team_id == team_id and s.cups],
         }
-        if my_group:
-            tables = [my_group] + [g for g in tables if g is not my_group]
     return page(
-        request, db, "classifiche.html", view=view, tables=tables, T=service.teams(db), mine=mine,
-        thirds=service.thirds_needed(db), scorers=scorers, team_stats=team_stats,
-        progress=service.tournament_progress(db), shots=tracking.shot_stats(db) if view == "tiri" else None,
+        request, db, "classifiche.html", view=view, tables=tables, mine=mine, scorers=scorers, team_stats=team_stats,
+        shots=tracking.shot_stats(db) if view == "tiri" else None,
         live=True,
     )
 

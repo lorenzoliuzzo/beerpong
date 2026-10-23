@@ -585,7 +585,8 @@ def test_progress_and_live_bracket_preview(client: TestClient) -> None:
     assert len(projection) == 4
     page = client.get("/tabellone").text
     assert "Se i gironi finissero adesso" in page and "1° A" in page
-    assert "Risultati e prossime partite" in client.get("/classifiche?vista=gironi").text
+    old = client.get("/classifiche?vista=gironi", follow_redirects=False)
+    assert old.status_code == 303 and old.headers["location"] == "/gironi"
 
     play_all(client, "group", random.Random(5))
     steps = db_call(service.tournament_progress)
@@ -831,15 +832,15 @@ def test_profile_stays_short_without_the_table_queue(client: TestClient) -> None
     assert f"Tavolo {field}" in home and "Partite di Squadra 0" in home
 
 
-def test_rankings_default_to_groups_with_my_position(client: TestClient) -> None:
+def test_rankings_are_stats_only(client: TestClient) -> None:
     import_teams(client, 8)
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     for t in sorted(db_call(service.teams).values(), key=lambda t: t["id"] == 1):
         client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
     client.post("/admin/avvia")
     page = client.get("/classifiche").text
-    assert 'href="/classifiche?vista=gironi" class="on">Gironi' in page
-    assert "La vostra posizione · Squadra 0" in page and '<span class="pill accent">il vostro</span>' in page
+    assert "vista=gironi" not in page and 'href="/classifiche?vista=coppie" class="on">Squadre' in page
+    assert '<tr class="mine' in page and "Mostra tutta la classifica" not in page  # 8 couples: no cut yet
     mine = [m for m in db_call(service.matches) if m.side(1)]
     profile = client.get("/io").text
     assert "● LIVE" not in profile and profile.count("in chiamata") == sum(m.playing for m in mine) <= 1
@@ -1049,7 +1050,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     assert rv.hit_by[1] == {5: 2}  # couple 1's cup 5, taken by couple 2's second player
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 0})
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": 0})
-    assert f'title="Colpito da {p2}">5<small>{p2[:2]}</small>' in client.get(f"/segna/{m.id}").text
+    assert f'title="Colpito da {p2}"><small>{p2[:2]}</small>' in client.get(f"/segna/{m.id}").text
     client.post(f"/partita/{m.id}/annulla-tiro")
     client.post(f"/partita/{m.id}/annulla-tiro")
     assert "Quel bicchiere non c" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 7}).text  # 6 cups
@@ -1233,7 +1234,7 @@ def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
         db_call(lambda db: tracking.referee_shot(db, m.id, pl, cup, time.time() - 50 + n, n))
     client.post(f"/partita/{m.id}", data={"s1": 3, "s2": 0})  # the profile's statistics start after a match
     shots = client.get("/classifiche?vista=tiri").text
-    assert "Bicchiere più colpito" in shots and "heat-cup h7" in shots and "Vedi come tabella" in shots
+    assert "Il più colpito, cerchiato" in shots and "heat-cup h7" in shots and "heat-cup h7 top" in shots
     profile = client.get(f"/squadra/{m.t1}").text
     assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
-    assert 'title="Bicchiere 4: 1 colpo' in profile
+    assert 'title="1 colpo (' in profile and "<i>#" not in profile

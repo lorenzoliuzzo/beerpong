@@ -81,7 +81,7 @@
                 <span class="ref-role">bicchieri ({{ standing|length }})</span>
                 <div class="ref-rack {{ 'big' if rv.rows[s]|length > 3 }}">
                   {% for col in cols %}<div class="ref-col">
-                    {% for c in col %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}{% set by = rv.hit_by[s].get(c) %}{% set who = team[shooter]["p" ~ by] if by else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{{ c }}{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
+                    {% for c in col %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere centrato"></button>{% else %}{% set by = rv.hit_by[s].get(c) %}{% set who = team[shooter]["p" ~ by] if by else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
                   </div>{% endfor %}
                 </div>
                 {% if 0 < standing|length < st.rack_cups and standing|length <= 6 %}
@@ -103,7 +103,7 @@
       {% elif rv.last_shot %}
         {% set ls = rv.last_shot %}
         <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
-          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "💨 soffiato" if rv.last_blown else ("🎯 " ~ ls.removed if ls.removed else "✗ fuori") }}</button>
+          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "💨 soffiato" if rv.last_blown else ("🎯 centrato" if ls.removed else "✗ fuori") }}</button>
         </form>
       {% endif %}
       <details class="ref-more">
