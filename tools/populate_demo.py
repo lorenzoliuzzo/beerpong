@@ -102,22 +102,19 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
     live_now_ts = time.time()
     target_scores = [(7, 5), (6, 8), (4, 4), (3, 1)]
     for idx, m in enumerate(now_matches):
-        s1_hits, s2_hits = target_scores[idx % len(target_scores)]
-        service.start_match(db_conn, m.id, live_now_ts - 240)
-
-        cups1 = rng.sample(range(1, 11), s1_hits)
-        for i, c in enumerate(cups1):
-            p = 1 if i % 2 == 0 else 2
-            tracking.add_report(db_conn, m.id, "fan1", "shot", 1, p, c, live_now_ts - (220 - i * 15))
-        for _ in range(2):
-            tracking.add_report(db_conn, m.id, "fan1", "shot", 1, rng.choice([1, 2]), 0, live_now_ts - 35)
-
-        cups2 = rng.sample(range(1, 11), s2_hits)
-        for i, c in enumerate(cups2):
-            p = 1 if i % 2 == 0 else 2
-            tracking.add_report(db_conn, m.id, "fan2", "shot", 2, p, c, live_now_ts - (210 - i * 15))
-        for _ in range(2):
-            tracking.add_report(db_conn, m.id, "fan2", "shot", 2, rng.choice([1, 2]), 0, live_now_ts - 25)
+        targets = target_scores[idx % len(target_scores)]
+        started = live_now_ts - 240
+        service.start_match(db_conn, m.id, started)
+        # Scored by the table's referee, turn by turn, until both couples reach their target.
+        at = started + 5
+        while at < live_now_ts:
+            rv = tracking.referee_view(db_conn, m.id)
+            side = rv.turn_side
+            behind = rv.state.side_hits(side) < targets[side - 1]
+            standing = sorted(rv.state.racks[3 - side].cups)
+            cup = rng.choice(standing) if behind and rng.random() < 0.5 else 0
+            tracking.referee_shot(db_conn, m.id, rv.next_player, cup, at)
+            at += 5
 
     print(
         f"Demo created successfully! {finished_count} matches finished asynchronously across 4 tables, "

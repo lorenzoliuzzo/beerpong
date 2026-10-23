@@ -984,7 +984,7 @@ def test_admin_control_room_during_the_groups(client: TestClient) -> None:
     assert len(current) == 4 and all(f'href="/partita/{m.id}">Risultato</a>' in page for m in current)
 
     referee = client.get("/arbitro").text
-    assert referee.count("▶ Inizia partita") == 4  # only the matches on a table, the queue is a list
+    assert referee.count("▶ Inizia: parte il tempo") == 4  # only the matches on a table, the queue is a list
     m = current[0]
     form = client.get(f"/partita/{m.id}").text
     assert f"{m.n1} <span class=\"muted\">vs</span> {m.n2}" in form and f"‹ Tavolo {m.field}" in form
@@ -995,14 +995,15 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     login(client, db_call(service.referee_pin, 1))
     page = client.get("/arbitro").text
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    assert "▶ Inizia partita" in page and f"{m.n1}</strong>" in page
+    assert "▶ Inizia: parte il tempo" in page and "Chi tira per primo?" in page and f"{m.n1}</strong>" in page
 
     later = sorted((x for x in db_call(service.matches) if x.field == 1 and not x.done and x.id != m.id), key=lambda x: x.slot)
     client.post(f"/partita/{m.id}/inizia")
     started = db_call(service.match, m.id)
     assert started.started_at is not None and db_call(lambda db: tracking.state(db, m.id)).started_at == started.started_at
     page = client.get("/arbitro").text
-    assert "🏁 Fine: inserisci risultato" in page and 'class="ref-clock"' in page and "● LIVE" in client.get("/").text
+    assert "Tocca il bicchiere centrato" in page and "Risultato a mano" in page and 'class="ref-clock"' in page
+    assert "● LIVE" in client.get("/").text
     assert "già iniziata" in client.post(f"/partita/{m.id}/inizia").text
     assert db_call(service.match, later[0].id).time >= started.time  # the table's next times run from the start
 
@@ -1011,7 +1012,53 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     client.post(f"/partita/{m.id}/inizia")
     client.post(f"/partita/{m.id}", data={"s1": 10, "s2": 6})
     nxt = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
-    assert nxt.id != m.id and "▶ Inizia partita" in client.get("/arbitro").text
+    assert nxt.id != m.id and "▶ Inizia: parte il tempo" in client.get("/arbitro").text
 
     other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
     assert client.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    login(client, db_call(service.referee_pin, 1))
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    # a fan's tap before the referee scores: it must not count once the referee does
+    with TestClient(client.app) as fan:
+        fan.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 5})
+
+    client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
+    page = client.get("/arbitro").text
+    assert f"Tira <strong>{m.n2}</strong>" in page and "Tocca il bicchiere centrato" in page
+    script = page[page.rindex("<script>"):page.rindex("</script>")]
+    assert script.count("(() => {") == script.count("})();")  # the scoring script is closed, so it runs
+
+    def shoot(player: int, cup: int) -> None:
+        client.post(f"/partita/{m.id}/tiro", data={"giocatore": player, "bicchiere": cup})
+
+    shoot(1, 0)
+    shoot(2, 7)  # couple 2 is done with its turn: couple 1 shoots next
+    rv = db_call(lambda db: tracking.referee_view(db, m.id))
+    assert rv.turn_side == 1 and rv.next_player == 1 and rv.state.side_hits(2) == 1 and rv.state.side_hits(1) == 0
+    assert "già" not in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 7}).text
+    client.post(f"/partita/{m.id}/annulla-tiro")
+    assert db_call(lambda db: tracking.referee_view(db, m.id)).turn_side == 1
+
+    swapped = client.post(f"/partita/{m.id}/lati").text
+    assert swapped.index(m.n2) < swapped.index(m.n1)  # mirrored: couple 2 on the left for this referee
+
+    for cup in range(1, 11):  # couple 1 clears couple 2's rack, alternating with misses
+        shoot(1, cup)
+        shoot(2, 0)
+        if db_call(lambda db: tracking.referee_view(db, m.id)).state.winner_side:
+            break
+        shoot(1, 0)
+        shoot(2, 0)
+    page = client.get("/arbitro").text
+    assert "Bicchieri finiti: vince" in page and "✓ Conferma 10–1" in page
+    client.post(f"/partita/{m.id}", data={"s1": 10, "s2": 1, "vincitore": 1})
+    done = db_call(service.match, m.id)
+    assert (done.s1, done.s2, done.winner) == (10, 1, m.t1) and done.split1 == (10, 0)
+    stats = {(p.team_id, p.player): p for p in db_call(tracking.shot_stats).players}
+    p1 = db_call(service.team, m.t1)["p1"]
+    assert stats[(m.t1, p1)].hits == 10  # the referee's shots are the players' statistics
+    assert "I tiri di questa partita li segna l" in client.get(f"/live/{m.id}").text

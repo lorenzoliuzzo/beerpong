@@ -92,6 +92,55 @@ def undo_report(db: sqlite3.Connection, match_id: int, device: str, report_id: i
         db.execute("DELETE FROM reports WHERE id = ?", (report_id,))
 
 
+@dataclass
+class RefereeView:
+    """What the referee's scoring screen needs: whose turn it is and who still has to shoot in it."""
+
+    state: live.LiveState
+    turn_side: int
+    shot_in_turn: set[int]
+    next_player: int
+    last_shot: live.Shot | None
+
+
+def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
+    st = state(db, match_id)
+    first = db.execute("SELECT first_side FROM matches WHERE id = ?", (match_id,)).fetchone()[0] or 1
+    official = [s for s in st.shots if live.REFEREE in s.devices]
+    # Two balls per turn, one per player; the couples alternate.
+    turn = len(official) // 2
+    side = first if turn % 2 == 0 else 3 - first
+    in_turn = {s.player for s in official[2 * turn:]}
+    nxt = next((p for p in (1, 2) if p not in in_turn), 1)
+    return RefereeView(st, side, in_turn, nxt, official[-1] if official else None)
+
+
+def referee_shot(db: sqlite3.Connection, match_id: int, player: int, cup: int, now: float) -> None:
+    """The referee records a shot of the couple whose turn it is: a cup of the opponents' rack, or 0 for a miss."""
+    m = service.match(db, match_id)
+    if m is None or m.started_at is None:
+        raise TournamentError("Avvia prima la partita.")
+    view = referee_view(db, match_id)
+    if view.state.winner_side:
+        raise TournamentError("I bicchieri sono finiti: conferma il risultato.")
+    if player not in (1, 2):
+        raise TournamentError("Scegli chi ha tirato.")
+    if cup and cup not in view.state.racks[3 - view.turn_side].cups:
+        raise TournamentError("Quel bicchiere non c'è più.")
+    add_report(db, match_id, live.REFEREE, "shot", view.turn_side, player, cup, now)
+
+
+def referee_undo(db: sqlite3.Connection, match_id: int) -> None:
+    row = db.execute(
+        "SELECT id FROM reports WHERE match_id = ? AND device = ? AND kind = 'shot' ORDER BY at DESC, id DESC LIMIT 1",
+        (match_id, live.REFEREE),
+    ).fetchone()
+    if row is None:
+        raise TournamentError("Nessun tiro da annullare.")
+    with db:
+        db.execute("DELETE FROM reports WHERE id = ?", (row["id"],))
+
+
 def _team_side_stats(db: sqlite3.Connection) -> dict[int, list[int]]:
     """team id -> [hits, shots] over every tracked match."""
     stats: dict[int, list[int]] = {}
@@ -155,6 +204,8 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
         ]
     return {
         "now": now,
+        # The referee scores this match: the crowd watches, its taps would not count.
+        "official": m.started_at is not None or any(live.REFEREE in s.devices for s in st.shots),
         "started_at": st.started_at,
         "duration": duration,
         "done": m.done,

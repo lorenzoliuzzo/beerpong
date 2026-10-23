@@ -17,6 +17,7 @@ ACTIVE_WINDOW_S = 60.0  # a device "is watching" a shot if it reported anything 
 DEFAULT_SECONDS_PER_SHOT = 12.0  # per team, until the match itself gives a better estimate
 PRIOR_HITS, PRIOR_SHOTS = 3, 10  # Beta prior: an unknown team hits about 30% of its shots
 SIMULATIONS = 1000
+REFEREE = "arbitro"  # device id of the table's referee: once they score a match, only their shots count
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,13 @@ def cluster_shots(reports: list[Report]) -> list[Shot]:
 
 
 def accepted_shots(reports: list[Report]) -> list[Shot]:
-    """A shot counts when at least half of the devices following the match around that moment reported it."""
+    """A shot counts when at least half of the devices following the match around that moment reported it.
+
+    When the referee scores the match, their shots are the official record and the crowd's are ignored:
+    every referee tap is one shot."""
+    official = sorted((r for r in reports if r.kind == "shot" and r.device == REFEREE), key=lambda r: (r.at, r.id))
+    if official:
+        return [Shot(r.side, r.player, r.cup, r.at, 1, frozenset({r.device})) for r in official]
     accepted = []
     for shot in cluster_shots(reports):
         watching = {r.device for r in reports if abs(r.at - shot.at) <= ACTIVE_WINDOW_S}

@@ -1,5 +1,7 @@
-"""Keep the demo alive: the "referee" starts each called match, every few seconds it gets a shot, and
-finished matches get their result.
+"""Keep the demo alive: a "referee" scores every match on a table as a real one would.
+
+It picks who shoots first and starts the match, records each shot of the couple whose turn it is, and
+confirms the result when a rack is empty or time is up.
 
 It goes through the real paths (live reports, record_result, notices), so the demo shows racks emptying,
 tables moving on, the bracket filling and "tocca a voi" notifications. When the final is over it waits a
@@ -20,7 +22,6 @@ from datetime import datetime
 from app import db, push, service, tracking
 from tools.populate_demo import setup_demo
 
-DEVICE = "demo-sim"
 HIT_RATE = 0.38
 
 log = logging.getLogger("beerpong.demo")
@@ -40,21 +41,19 @@ def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:
     for m in now_ms:
         if m.done or m.t1 is None or m.t2 is None:
             continue
-        if m.started_at is None:  # the couples were called: the referee starts the match
-            service.start_match(conn, m.id, now)
+        if m.started_at is None:  # the couples were called: the referee picks who shoots first and starts
+            service.start_match(conn, m.id, now, rng.choice([1, 2]))
             continue
-        st = tracking.state(conn, m.id)
+        rv = tracking.referee_view(conn, m.id)
+        st = rv.state
         out_of_time = m.duration is not None and now - st.started_at >= m.duration * 60
         if st.winner_side or out_of_time:
             _finish(conn, m, st, rng)
             finished += 1
             continue
-        # Two-shot turns, the two players of a side taking one shot each.
-        side = 1 if len(st.shots) % 4 < 2 else 2
-        player = 1 + len(st.shots) % 2
-        standing = sorted(st.racks[3 - side].cups)
+        standing = sorted(st.racks[3 - rv.turn_side].cups)
         cup = rng.choice(standing) if standing and rng.random() < HIT_RATE else 0
-        tracking.add_report(conn, m.id, DEVICE, "shot", side, player, cup, now)
+        tracking.referee_shot(conn, m.id, rv.next_player, cup, now)
     if finished:
         push.send(push.due(conn))
     return finished

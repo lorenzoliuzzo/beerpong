@@ -571,8 +571,10 @@ def recalc_table_schedule(
             db.execute("UPDATE matches SET start = ? WHERE id = ?", (_fmt(base + idx * step), r["id"]))
 
 
-def start_match(db: sqlite3.Connection, match_id: int, now: float) -> None:
+def start_match(db: sqlite3.Connection, match_id: int, now: float, first_side: int = 1) -> None:
     """The referee starts the match on the table: its clock runs from now, and so do the table's next times."""
+    if first_side not in (1, 2):
+        raise TournamentError("Scegli chi tira per primo.")
     m = db.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
     if m is None or m["bye"] or m["team1"] is None or m["team2"] is None:
         raise TournamentError("Partita non disponibile.")
@@ -581,7 +583,7 @@ def start_match(db: sqlite3.Connection, match_id: int, now: float) -> None:
     if m["started_at"] is not None:
         raise TournamentError("La partita è già iniziata.")
     with db:
-        db.execute("UPDATE matches SET started_at = ? WHERE id = ?", (now, match_id))
+        db.execute("UPDATE matches SET started_at = ?, first_side = ? WHERE id = ?", (now, first_side, match_id))
     pending = db.execute(
         "SELECT field, team1, team2 FROM matches WHERE stage = ? AND done = 0 AND bye = 0", (m["stage"],)
     ).fetchall()
@@ -591,7 +593,8 @@ def start_match(db: sqlite3.Connection, match_id: int, now: float) -> None:
 
 def undo_start(db: sqlite3.Connection, match_id: int) -> None:
     with db:
-        db.execute("UPDATE matches SET started_at = NULL WHERE id = ? AND done = 0", (match_id,))
+        db.execute("UPDATE matches SET started_at = NULL, first_side = NULL WHERE id = ? AND done = 0", (match_id,))
+        db.execute("DELETE FROM reports WHERE match_id = ? AND device = ?", (match_id, "arbitro"))
 
 
 def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winner_side: int | None = None) -> None:

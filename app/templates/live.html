@@ -44,6 +44,7 @@
     <div id="result" class="banner gold" hidden></div>
     <button id="start" class="wide" hidden>▶ Inizia la partita</button>
 
+    <p id="official" class="muted small" style="text-align:center" hidden>🧑‍⚖️ I tiri di questa partita li segna l'arbitro.</p>
     <div id="shooters">
       <p class="muted small" style="text-align:center;margin:12px 0 6px">Chi sta tirando? Tocca il giocatore</p>
       <div class="shooters">
@@ -121,8 +122,9 @@
     $("#odds2-t").textContent = 100 - p1 + "%";
 
     const over = data.done || data.winner_side;
-    $("#start").hidden = over || data.started_at != null;
-    $("#shooters").hidden = over || data.started_at == null;
+    $("#start").hidden = over || data.started_at != null || data.official;
+    $("#shooters").hidden = over || data.started_at == null || data.official;
+    $("#official").hidden = over || !data.official;
     const res = $("#result");
     if (over) {
       const w = data.teams[data.winner_side - 1];

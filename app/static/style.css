@@ -81,6 +81,23 @@ a.ref-end { background: var(--accent); color: var(--accent-ink); }
 .ref-clock-time { display: block; font: 900 3.4rem/1 ui-monospace, Menlo, monospace; }
 .ref-clock-label { color: var(--muted); font-size: .85rem; font-weight: 700; }
 .ref-clock.over .ref-clock-time { color: var(--err); }
+.ref-q { text-align: center; margin: 4px 0; font-size: 1.05rem; }
+.ref-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ref-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.ref-pick span { display: flex; align-items: center; justify-content: center; min-height: 56px; padding: 6px; border-radius: 14px; border: 2px solid var(--line); font-weight: 800; text-align: center; cursor: pointer; }
+.ref-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ref-pick.shot span { color: var(--muted); }
+.ref-board { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ref-team { border: 2px solid var(--line); border-radius: 14px; padding: 8px; text-align: center; }
+.ref-team.turn { border-color: var(--accent); background: var(--accent-soft); }
+.ref-team strong { display: block; overflow-wrap: anywhere; }
+.ref-player { font-size: .82rem; color: var(--muted); }
+.ref-player b { color: var(--text); }
+.ref-shot .rack.big { margin: 8px 0; }
+.ref-shot .rack.big .cup { width: 60px; height: 60px; font-size: 1.2rem; }
+button.ref-miss { width: 100%; min-height: 60px; font-size: 1.2rem; background: var(--err); color: #fff; }
+.ref-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+.ref-clock .ref-clock-time { font-size: 2.4rem; }
 .queue .row .when, .regia .when { font-weight: 800; min-width: 3.2em; }
 .ko-preview .teams a, .tabellone .teams a, .teams .t a { color: inherit; text-decoration: none; }
 .demo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 16px; background: var(--accent); color: var(--accent-ink); font-size: .82rem; }

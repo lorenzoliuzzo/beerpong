@@ -749,23 +749,71 @@ def referee(request: Request, campo: str | None = None, db: sqlite3.Connection =
     current = [m for m in views if m.id in now_ids]
     pending = [m for m in views if not m.done and m.id not in now_ids]
     pending = sorted(pending, key=lambda m: (m.time or "", m.field or 0))  # each table runs its own queue
+    scoring = {m.id: tracking.referee_view(db, m.id) for m in current if m.started_at is not None}
     return page(
-        request, db, "arbitro.html", current=current, pending=pending,
+        request, db, "arbitro.html", current=current, pending=pending, scoring=scoring,
+        flipped=set(request.session.get("flip", [])), players=service.teams(db),
         played=[m for m in views if m.done][::-1], field_no=field_no, live=True, now_ts=time.time(),
     )
 
 
-@router.post("/partita/{match_id}/inizia")
-def match_start(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+def _refereed(request: Request, db: sqlite3.Connection, match_id: int) -> service.MatchView | None:
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
-    if not can_referee(request, m):
+    return m if can_referee(request, m) else None
+
+
+@router.post("/partita/{match_id}/inizia")
+def match_start(
+    request: Request, match_id: int, primo: int = Form(1), db: sqlite3.Connection = Depends(get_db)
+) -> Response:
+    m = _refereed(request, db, match_id)
+    if m is None:
         return redirect("/login")
     try:
-        service.start_match(db, match_id, time.time())
+        service.start_match(db, match_id, time.time(), primo)
     except TournamentError as e:
         flash(request, str(e), "err")
+    return redirect(_referee_back(request, m))
+
+
+@router.post("/partita/{match_id}/tiro")
+def match_shot(
+    request: Request, match_id: int, giocatore: int = Form(...), bicchiere: int = Form(...),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    m = _refereed(request, db, match_id)
+    if m is None:
+        return redirect("/login")
+    try:
+        tracking.referee_shot(db, match_id, giocatore, bicchiere, time.time())
+    except TournamentError as e:
+        flash(request, str(e), "err")
+    return redirect(_referee_back(request, m))
+
+
+@router.post("/partita/{match_id}/annulla-tiro")
+def match_undo_shot(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    m = _refereed(request, db, match_id)
+    if m is None:
+        return redirect("/login")
+    try:
+        tracking.referee_undo(db, match_id)
+    except TournamentError as e:
+        flash(request, str(e), "err")
+    return redirect(_referee_back(request, m))
+
+
+@router.post("/partita/{match_id}/lati")
+def match_swap_sides(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """Mirror left and right on this phone, to match where the couples stand at the table."""
+    m = _refereed(request, db, match_id)
+    if m is None:
+        return redirect("/login")
+    flipped = set(request.session.get("flip", []))
+    flipped ^= {match_id}
+    request.session["flip"] = sorted(flipped)[-20:]
     return redirect(_referee_back(request, m))
 
 

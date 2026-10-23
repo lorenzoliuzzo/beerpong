@@ -10,29 +10,76 @@
 {% endif %}
 
 {% macro ref_card(m) %}
+  {% set rv = scoring.get(m.id) %}
+  {% set flip = m.id in flipped %}
+  {% set order = [2, 1] if flip else [1, 2] %}
+  {% set team = {1: players[m.t1], 2: players[m.t2]} %}
   <div class="ref-card {{ 'running' if m.started_at }}">
     <div class="ref-meta">{{ m.label }} · Tavolo {{ m.field }}{% if not m.started_at and m.time %} · ore {{ m.time }}{% endif %}</div>
-    <div class="ref-teams">
-      <div><strong>{{ m.n1 }}</strong>{% if m.live_score %}<span class="ref-score">{{ m.live_score[0] }}</span>{% endif %}</div>
-      <span class="muted">vs</span>
-      <div><strong>{{ m.n2 }}</strong>{% if m.live_score %}<span class="ref-score">{{ m.live_score[1] }}</span>{% endif %}</div>
-    </div>
     {% if not m.started_at %}
-      <p class="muted small">Le coppie sono state chiamate al tavolo: avvia quando sono pronte.</p>
-      <form method="post" action="/partita/{{ m.id }}/inizia">
-        <button class="ref-go" type="submit">▶ Inizia partita</button>
+      <div class="ref-teams">{% for s in order %}<div><strong>{{ team[s].name }}</strong></div>{% if loop.first %}<span class="muted">vs</span>{% endif %}{% endfor %}</div>
+      <form method="post" action="/partita/{{ m.id }}/inizia" data-ajax>
+        <p class="ref-q">Chi tira per primo?</p>
+        <div class="ref-picks">
+          {% for s in order %}<label class="ref-pick"><input type="radio" name="primo" value="{{ s }}" {{ 'checked' if s == 1 }}><span>{{ team[s].name }}</span></label>{% endfor %}
+        </div>
+        <button class="ref-go" type="submit">▶ Inizia: parte il tempo</button>
       </form>
     {% else %}
+      {% set st = rv.state %}
       <div class="ref-clock" data-started="{{ m.started_at }}" data-duration="{{ (m.duration or 0) * 60 }}" data-now="{{ now_ts }}">
         <span class="ref-clock-time">--:--</span>
         <span class="ref-clock-label">{{ "rimanenti" if m.duration else "senza limite di tempo" }}</span>
       </div>
-      <a class="ref-end" href="/partita/{{ m.id }}">🏁 Fine: inserisci risultato</a>
-      <form method="post" action="/partita/{{ m.id }}/annulla-inizio" style="text-align:center;margin-top:10px">
-        <button class="link" type="submit">Annulla inizio</button>
-      </form>
+      <div class="ref-board">
+        {% for s in order %}
+          <div class="ref-team {{ 'turn' if rv.turn_side == s and not st.winner_side }}">
+            <strong>{{ team[s].name }}</strong>
+            <span class="ref-score">{{ st.side_hits(s) }}</span>
+            {% for pl in ([2, 1] if flip else [1, 2]) %}
+              <div class="ref-player">{{ team[s]["p" ~ pl] }} <b>{{ st.hits.get((s, pl), 0) }}/{{ st.attempts.get((s, pl), 0) }}</b></div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if st.winner_side %}
+        {% set w = st.winner_side %}
+        <form method="post" action="/partita/{{ m.id }}" class="ref-win">
+          <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
+          <input type="hidden" name="vincitore" value="{{ w }}">
+          <p class="ref-q">🏆 Bicchieri finiti: vince <strong>{{ team[w].name }}</strong></p>
+          <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+        </form>
+      {% else %}
+        <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-shot">
+          <p class="ref-q">Tira <strong>{{ team[rv.turn_side].name }}</strong> · chi?</p>
+          <div class="ref-picks">
+            {% for pl in ([2, 1] if flip else [1, 2]) %}
+              <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>{{ team[rv.turn_side]["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
+            {% endfor %}
+          </div>
+          <p class="muted small" style="text-align:center;margin:4px 0 0">Tocca il bicchiere centrato di {{ team[3 - rv.turn_side].name }}</p>
+          <div class="rack big">
+            {% for row in [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] %}<div class="rrow">
+              {% for c in row %}{% if c in st.racks[3 - rv.turn_side].cups %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}<span class="cup down">{{ c }}</span>{% endif %}{% endfor %}
+            </div>{% endfor %}
+          </div>
+          <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
+        </form>
+        {% if rv.last_shot %}
+          {% set ls = rv.last_shot %}
+          <p class="muted small" style="text-align:center;margin:0">Ultimo tiro: {{ team[ls.side]["p" ~ ls.player] }} {{ "🎯 bicchiere " ~ ls.removed if ls.removed else "✗ fuori" }}</p>
+        {% endif %}
+      {% endif %}
+      <div class="ref-tools">
+        {% if rv.last_shot %}<form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax><button class="small ghost" type="submit">↶ Annulla ultimo</button></form>{% endif %}
+        <a class="btn small ghost" href="/partita/{{ m.id }}">Risultato a mano</a>
+      </div>
     {% endif %}
-    <a class="small" href="/live/{{ m.id }}">Pagina live della partita ›</a>
+    <div class="ref-tools">
+      <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="small ghost" type="submit">⇄ Scambia lati</button></form>
+      {% if m.started_at %}<form method="post" action="/partita/{{ m.id }}/annulla-inizio" onsubmit="return confirm('Annullare l\'inizio? I tiri segnati si perdono.')"><button class="link" type="submit">Annulla inizio</button></form>{% endif %}
+    </div>
   </div>
 {% endmacro %}
 
@@ -83,6 +130,28 @@
       el.classList.toggle("over", Boolean(total) && left < 0);
     });
     tick(); setInterval(tick, 500);
+
+    // Scoring taps post in the background and swap the page in place: no reload between shots.
+    document.addEventListener("submit", async (e) => {
+      const form = e.target.closest("form[data-ajax]");
+      if (!form) return;
+      e.preventDefault();
+      const body = new FormData(form, e.submitter);
+      try {
+        const r = await fetch(form.action, { method: "POST", body, credentials: "same-origin" });
+        if (!r.ok || new URL(r.url).pathname === "/login") throw new Error(r.status);
+        const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
+        document.querySelector("main").replaceWith(fresh);
+        tick();
+      } catch (_) {
+        if (e.submitter && e.submitter.name) {
+          const keep = document.createElement("input");
+          keep.type = "hidden"; keep.name = e.submitter.name; keep.value = e.submitter.value;
+          form.appendChild(keep);
+        }
+        form.submit();
+      }
+    });
   })();
 </script>
 {% endblock %}
