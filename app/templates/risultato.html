@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Risultato · {{ m.n1 }} vs {{ m.n2 }}{% endblock %}
+{% block content %}
+<p><a href="{{ '/gironi?tavolo=' ~ m.field if m.field else '/gironi' }}">‹ {{ "Tavolo " ~ m.field if m.field else "Tavoli" }}</a></p>
+<h1 style="margin-bottom:2px">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</h1>
+<p class="muted" style="margin-top:0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.done %} · <strong>già inserito {{ m.s1 }}–{{ m.s2 }}</strong>, puoi correggerlo{% endif %}</p>
+
+<form method="post" action="/risultato/{{ m.id }}" id="res-form">
+  <p class="small">Toccate i bicchieri <strong>centrati</strong> sul rack degli avversari: il conteggio si fa da solo.</p>
+  {% for side in (1, 2) %}
+    {% set team = T[m.t1 if side == 1 else m.t2] %}
+    <div class="card {{ 'mine' if my_side == side }}">
+      <div class="section-head" style="margin:0 0 8px">
+        <h2 style="margin:0">{{ team.name }}{% if my_side == side %} <span class="badge">VOI</span>{% endif %}</h2>
+        <span class="pill"><strong data-count="{{ side }}">{{ hits[side]|length }}</strong> / {{ cups }} 🥤</span>
+      </div>
+      <p class="muted small" style="margin:0 0 6px">Bicchieri messi da {{ team.name }} (rack avversario, punta verso di voi)</p>
+      <div class="heat-rack res-rack">
+        {% for row in rows %}<div class="heat-row">
+          {% for c in row %}
+            <label class="res-cup"><input type="checkbox" name="c{{ side }}" value="{{ c }}" {{ 'checked' if c in hits[side] }}><span>{{ c }}</span></label>
+          {% endfor %}
+        </div>{% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+  {% if m.stage == "ko" %}
+    <div class="card">
+      <h2 style="margin-top:0">Solo se finisce pari: chi vince all'overtime?</h2>
+      <div class="choices">
+        <label><input type="radio" name="vincitore" value="1" {{ 'checked' if m.done and m.winner == m.t1 }}> {{ m.n1 }}</label>
+        <label><input type="radio" name="vincitore" value="2" {{ 'checked' if m.done and m.winner == m.t2 }}> {{ m.n2 }}</label>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted small">Nei gironi il pari vale come pareggio (1 punto a testa).</p>
+  {% endif %}
+  <button class="wide" type="submit">✓ Conferma risultato</button>
+</form>
+<style>
+  .res-rack .heat-row { display:flex; justify-content:center; gap:8px; margin:4px 0; }
+  .res-cup input { position:absolute; opacity:0; pointer-events:none; }
+  .res-cup span { display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%;
+    border:3px solid #e03131; background:#fff5f5; color:#c92a2a; font-weight:800; cursor:pointer; user-select:none; }
+  .res-cup input:checked + span { background:#868e96; border-color:#495057; color:#fff; text-decoration:line-through; opacity:.7; }
+</style>
+<script>
+  document.getElementById("res-form").addEventListener("change", (e) => {
+    for (const s of [1, 2]) {
+      document.querySelector(`[data-count="${s}"]`).textContent = document.querySelectorAll(`input[name="c${s}"]:checked`).length;
+    }
+  });
+</script>
+{% endblock %}

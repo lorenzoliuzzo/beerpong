@@ -37,29 +37,29 @@ def _finish(conn: sqlite3.Connection, m: service.MatchView, st: object, rng: ran
 
 
 def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:
-    """One step for every match on a table. Returns how many results were recorded."""
+    """Each match on a table lasts a few minutes, then a couple enters the result (cups sunk and where)."""
     finished = 0
     now_ms, _ = service.live(service.matches(conn))
     for m in now_ms:
         if m.done or m.t1 is None or m.t2 is None:
             continue
-        if now - float(db.get_setting(conn, f"demo_ref_{m.field}") or 0) < HUMAN_IDLE_S:
-            continue  # someone is refereeing this table in the demo
-        if m.started_at is None:  # the couples were called: the referee picks who shoots first and starts
+        if m.started_at is None:  # the couples reach the table: the match is on
             service.start_match(conn, m.id, now, rng.choice([1, 2]))
             continue
-        rv = tracking.referee_view(conn, m.id)
-        st = rv.state
-        # Time only runs out in normal play: salvezza and overtime are played to the end.
-        out_of_time = m.duration is not None and st.phase == "play" and now - st.started_at >= m.duration * 60
-        if st.winner_side or out_of_time:
-            _finish(conn, m, st, rng)
-            finished += 1
+        if now - m.started_at < rng.uniform(90, 240):
             continue
-        standing = sorted(st.racks[3 - rv.turn_side].cups)
-        cup = rng.choice(standing) if standing and rng.random() < HIT_RATE else 0
-        blown = bool(cup) and rng.random() < BLOW_RATE  # the defenders blow it out now and then (rule 5)
-        tracking.referee_shot(conn, m.id, rv.next_player, cup, now, blown=blown)
+        cups = service.cups_in_play(conn, m.id)
+        winner_side = rng.choice([1, 2])
+        loser = rng.randint(0, cups - 1)
+        s = {winner_side: cups, 3 - winner_side: loser}
+        service.record_result(conn, m.id, s[1], s[2], winner_side if s[1] == s[2] else None)
+        with conn:
+            conn.execute("DELETE FROM cup_hits WHERE match_id = ?", (m.id,))
+            conn.executemany(
+                "INSERT INTO cup_hits(match_id, side, cup) VALUES (?, ?, ?)",
+                [(m.id, side, c) for side in (1, 2) for c in rng.sample(range(1, cups + 1), s[side])],
+            )
+        finished += 1
     if finished:
         push.send(push.due(conn))
     return finished

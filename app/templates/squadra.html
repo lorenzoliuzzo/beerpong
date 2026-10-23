@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
-{% block title %}{{ "Profilo" if own else dash.team.name ~ " · Profilo Squadra" }}{% endblock %}
+{% block title %}{{ "Squadra" if own else dash.team.name ~ " · Squadra" }}{% endblock %}
 {% block content %}
 {% set t = dash.team %}
 
@@ -37,7 +37,10 @@
     <div class="banner live" style="margin-top:12px;margin-bottom:0">
       <div class="label">🔴 In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
-      <p style="margin-top:6px"><a class="btn small" href="/live/{{ dash.next_match.id }}">🎥 Segui / Segna i tiri live</a></p>
+      {% if dash.next_match.live_score %}
+        <div class="headline" style="margin-top:4px">{{ dash.next_match.live_score[0] }}–{{ dash.next_match.live_score[1] }}</div>
+      {% endif %}
+      {% if own %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
     </div>
   {% elif dash.status == "next" and dash.next_match %}
     <div class="banner next" style="margin-top:12px;margin-bottom:0">
@@ -55,6 +58,22 @@
     </div>
   {% endif %}
 </div>
+
+<!-- BIRRA BEVUTA LIVE (COPPIA E TORNEO) -->
+{% if profile %}
+  <div class="stats-grid" style="margin-top:12px">
+    <div class="stat-box">
+      <span class="lbl">Litri bevuti ({{ t.name }})</span>
+      <div class="val">{{ "%.2f"|format(profile.liters_drunk)|replace(".", ",") }} L 🍺</div>
+      <span class="sub">{{ profile.cups_drunk_live }} bicchieri bevuti live</span>
+    </div>
+    <div class="stat-box">
+      <span class="lbl">Litri bevuti nel torneo</span>
+      <div class="val">{{ "%.1f"|format(profile.tournament_liters)|replace(".", ",") }} L 🍻</div>
+      <span class="sub">{{ profile.total_cups_live }} bicchieri totali (1 L/squadra)</span>
+    </div>
+  </div>
+{% endif %}
 
 {% if own and not t.q_at %}
   <a class="banner todo" href="/questionario">
@@ -95,12 +114,11 @@
       <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
     {% endif %}
   {% endif %}
-
 {% endif %}
 
 {% if me and me.id == t.id %}{{ ui.push_box() }}{% endif %}
 
-<!-- SEZIONE 4: CLASSIFICA DEL GIRONE -->
+<!-- CLASSIFICA DEL GIRONE -->
 {% if dash.table %}
   <div class="section-head" style="margin-top:22px">
     <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
@@ -109,10 +127,51 @@
   {{ ui.table(dash.table.rows, T, thirds, mine=t.id) }}
 {% endif %}
 
-<!-- SEZIONE 5: PARTITE DELLA SQUADRA -->
+<!-- PARTITE DELLA SQUADRA: ORGANIZZATE PER FASE + TUTTE LE PARTITE FATTE -->
 {% if dash.matches %}
-  <h2 style="margin-top:22px">📅 Partite di {{ t.name }}</h2>
-  {% for m in dash.matches %}{{ ui.match(m, mine=t.id) }}{% endfor %}
+  {% set group_matches = dash.matches|selectattr("stage", "equalto", "group")|list %}
+  {% set ko_matches = dash.matches|selectattr("stage", "equalto", "ko")|list %}
+  {% set done_matches = dash.matches|selectattr("done")|list %}
+
+  <div class="section-head" style="margin-top:22px">
+    <h2>📅 Partite di {{ t.name }}</h2>
+    <span class="muted small">{{ done_matches|length }}/{{ dash.matches|length }} giocate</span>
+  </div>
+
+  <nav class="segmented" style="margin-bottom:12px">
+    <a href="#per-fase" id="tab-matches-phase" class="on" onclick="switchTeamMatches('phase'); return false;">Per fase</a>
+    <a href="#fatte" id="tab-matches-done" onclick="switchTeamMatches('done'); return false;">Partite fatte ({{ done_matches|length }})</a>
+  </nav>
+
+  <div id="pane-matches-phase">
+    {% if group_matches %}
+      <h3 style="margin:10px 0 6px;font-size:0.95rem">🏁 Fase a Gironi · {{ dash.table.name if dash.table else "Girone" }}</h3>
+      {% for m in group_matches %}
+        <div class="muted small" style="margin:6px 0 2px;font-weight:700">Giornata {{ loop.index }}</div>
+        {{ ui.match(m, show_label=False, mine=t.id) }}
+      {% endfor %}
+    {% endif %}
+
+    {% if ko_matches %}
+      <h3 style="margin:16px 0 6px;font-size:0.95rem">🏆 Fase a Eliminazione Diretta</h3>
+      {% for m in ko_matches %}
+        <div class="muted small" style="margin:6px 0 2px;font-weight:700">{{ m.label }}</div>
+        {{ ui.match(m, show_label=False, mine=t.id) }}
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  <div id="pane-matches-done" style="display:none">
+    {% if done_matches %}
+      {% for m in done_matches %}
+        {{ ui.match(m, mine=t.id) }}
+      {% endfor %}
+    {% else %}
+      <div class="card" style="padding:16px;text-align:center">
+        <p class="muted small" style="margin:0">Nessuna partita ancora conclusa per {{ t.name }}.</p>
+      </div>
+    {% endif %}
+  </div>
 {% elif cfg.phase == "setup" %}
   <p class="muted" style="margin-top:18px">Il calendario comparirà all'inizio del torneo.</p>
 {% endif %}
@@ -164,6 +223,10 @@
       <div>
         <div class="ck-num">{{ profile.cups_against }}</div>
         <div class="ck-lbl">Bicchieri Subiti</div>
+      </div>
+      <div>
+        <div class="ck-num">🍺 {{ "%.2f"|format(profile.liters_drunk)|replace(".", ",") }} L</div>
+        <div class="ck-lbl">Litri Bevuti</div>
       </div>
       <div>
         <div class="ck-num">💨 {{ profile.blows }}</div>
@@ -288,24 +351,16 @@
   </div>
 {% endif %}
 
-<!-- SEZIONE 6: SCONTRI DIRETTI (H2H) -->
-{% if rivals %}
-  <h2 style="margin-top:22px">⚔️ Scontri diretti (Testa a Testa)</h2>
-  <form method="get">
-    <select name="vs" onchange="this.form.submit()" aria-label="Confronta con">
-      <option value="">Confronta con…</option>
-      {% for r in rivals %}<option value="{{ r.id }}" {{ 'selected' if r.id == other }}>{{ r.name }} ({{ r.p1 }} &amp; {{ r.p2 }})</option>{% endfor %}
-    </select>
-    <noscript><button type="submit">Confronta</button></noscript>
-  </form>
-  {% if h2h %}
-    <div class="card stats" style="margin-top:10px">
-      <div><div class="big">{{ h2h.wins_a }}</div><span class="muted small">vittorie {{ t.name }}</span></div>
-      <div><div class="big">{{ h2h.draws }}</div><span class="muted small">pareggi</span></div>
-      <div><div class="big">{{ h2h.wins_b }}</div><span class="muted small">vittorie {{ T[other].name }}</span></div>
-    </div>
-    <p class="muted small" style="text-align:center">Bicchieri {{ h2h.cups_a }} – {{ h2h.cups_b }}</p>
-    {% for m in h2h.matches %}{{ ui.match(m, mine=t.id, actions=False) }}{% else %}<p class="muted">Non si sono (ancora) affrontate.</p>{% endfor %}
-  {% endif %}
-{% endif %}
+<script>
+function switchTeamMatches(mode) {
+  const pPhase = document.getElementById('pane-matches-phase');
+  const pDone = document.getElementById('pane-matches-done');
+  const tPhase = document.getElementById('tab-matches-phase');
+  const tDone = document.getElementById('tab-matches-done');
+  if (pPhase) pPhase.style.display = (mode === 'phase') ? '' : 'none';
+  if (pDone) pDone.style.display = (mode === 'done') ? '' : 'none';
+  if (tPhase) tPhase.classList.toggle('on', mode === 'phase');
+  if (tDone) tDone.classList.toggle('on', mode === 'done');
+}
+</script>
 {% endblock %}

@@ -87,6 +87,13 @@ CREATE TABLE IF NOT EXISTS reports (
     at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS reports_match ON reports(match_id, at);
+-- The couples enter their own result: which cups of the opponents' rack each couple sank.
+CREATE TABLE IF NOT EXISTS cup_hits (
+    match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    side INTEGER NOT NULL CHECK (side IN (1, 2)),
+    cup INTEGER NOT NULL CHECK (cup BETWEEN 1 AND 10),
+    PRIMARY KEY (match_id, side, cup)
+);
 CREATE TABLE IF NOT EXISTS matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     stage TEXT NOT NULL CHECK (stage IN ('group', 'ko')),

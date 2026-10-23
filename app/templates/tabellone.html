@@ -12,7 +12,23 @@
 
 {{ ui.progress(progress) }}
 
-{% if rounds %}
+{% if by_table %}
+<nav class="segmented">
+  <a href="/tabellone" class="{{ 'on' if view == 'turni' }}">Per turno</a>
+  <a href="/tabellone?vista=tavoli" class="{{ 'on' if view == 'tavoli' }}">Per tavolo</a>
+</nav>
+{% endif %}
+
+{% if view == "tavoli" and by_table %}
+  {% if plan %}<p class="muted small">Orari previsti. Il primo turno mostra chi passerebbe se i gironi finissero adesso.</p>{% endif %}
+  {% for f, ms in by_table %}
+    <section class="tavolo-matches-card ko-plan">
+      <h3>🏓 Tavolo {{ f }}</h3>
+      {{ ui.ko_queue(ms, me.id if me) }}
+    </section>
+  {% endfor %}
+
+{% elif rounds %}
   {% set final = rounds[-1][1][0] %}
   {% if final.done %}
     <div class="banner gold" style="text-align:center">

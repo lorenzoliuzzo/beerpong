@@ -23,17 +23,22 @@
     </div>
   {% endif %}
   {% set sides = split_sides(m) %}
-  {% if actions and (can_referee(m) or sides) %}
+  {% set ref_ok = can_referee(m) %}
+  {% set mine_side = me and not m.bye and m.t1 and m.t2 and m.side(me.id) %}
+  {% if actions and (ref_ok or mine_side or sides) %}
     <div class="actions">
+      {% if mine_side and not m.done %}
+        <a class="btn small" href="/risultato/{{ m.id }}">📝 Inserisci risultato</a>
+      {% elif mine_side and m.done %}
+        <a class="btn small ghost" href="/risultato/{{ m.id }}">Correggi risultato</a>
+      {% endif %}
       {% if sides and (m.split_missing(sides[0]) or (sides|length > 1 and m.split_missing(sides[1]))) %}
         <a class="btn small" href="/canestri/{{ m.id }}">Dividi i canestri</a>
       {% elif sides %}
         <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica canestri</a>
       {% endif %}
-      {% if can_referee(m) and m.playing and not m.started_at and not m.done %}
-        <form method="post" action="/partita/{{ m.id }}/inizia"><button class="small" type="submit">▶ Inizia</button></form>
-      {% elif can_referee(m) %}
-        <a class="btn small {{ 'ghost' if m.done }}" href="/partita/{{ m.id }}">{{ "Correggi" if m.done else "Inserisci risultato" }}</a>
+      {% if ref_ok and not mine_side %}
+        <a class="btn small ghost" href="/partita/{{ m.id }}">{{ "Correggi" if m.done else "Inserisci risultato" }}</a>
       {% endif %}
     </div>
   {% endif %}
@@ -119,6 +124,20 @@
     {% endfor %}
   </div>
 {% endif %}
+{% endmacro %}
+
+{# The knockout matches of one table in order: real matches link to their live page, planned ones
+   (during the groups) say who would play if the groups ended now. #}
+{% macro ko_queue(items, mine=None) %}
+<div class="matches-list">
+  {% for m in items %}
+    <div class="queue-item {{ 'mine-q' if mine and mine in (m.t1, m.t2) }}">
+      <div class="qi-meta"><span>{{ m.label }}</span><span class="qi-time">{% if not m.done %}~{{ m.time }}{{ countdown(m) }}{% endif %}</span></div>
+      {% if m.id is defined %}{{ mini(m, mine=mine) }}
+      {% else %}<div class="mini planned"><span>{{ m.n1 }}</span><span class="muted small">vs</span><span class="r">{{ m.n2 }}</span></div>{% endif %}
+    </div>
+  {% endfor %}
+</div>
 {% endmacro %}
 
 {% macro mini(m, mine=None) %}

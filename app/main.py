@@ -100,6 +100,22 @@ def team_referee_table(request: Request, db: sqlite3.Connection) -> int | None:
     return request.state.ref_table
 
 
+def can_volunteer_referee(request: Request, m: service.MatchView, db: sqlite3.Connection) -> bool:
+    """Any person not playing in this match (and not currently playing on another table) may volunteer to referee it."""
+    if m.done or m.bye or m.t1 is None or m.t2 is None:
+        return False
+    if not (m.playing or m.started_at is not None):
+        return False
+    if request.session.get("role") == "referee":
+        return request.session.get("field") == m.field
+    team_id = my_team_id(request)
+    if team_id is not None and team_id in (m.t1, m.t2):
+        return False
+    if playing_now(request, db):
+        return False
+    return True
+
+
 def can_referee(request: Request, m: service.MatchView, db: sqlite3.Connection) -> bool:
     if m.bye or m.t1 is None or m.t2 is None:
         return False
@@ -107,6 +123,8 @@ def can_referee(request: Request, m: service.MatchView, db: sqlite3.Connection) 
         return True
     if request.session.get("role") == "referee":
         return request.session.get("field") == m.field
+    if m.id in request.session.get("vol_matches", []) and can_volunteer_referee(request, m, db):
+        return True
     return m.field is not None and team_referee_table(request, db) == m.field
 
 
@@ -138,6 +156,7 @@ def page(request: Request, db: sqlite3.Connection, name: str, **ctx: object) -> 
         "flash": request.session.pop("flash", None),
         "path": request.url.path,
         "can_referee": lambda m: can_referee(request, m, db),
+        "can_volunteer": lambda m: can_volunteer_referee(request, m, db),
         "ref_table": team_referee_table(request, db),
         "split_sides": lambda m: split_sides(request, m),
         "payments": service.PAYMENTS,
@@ -168,25 +187,7 @@ def checkin_url(request: Request, db: sqlite3.Connection) -> str:
 
 @router.get("/")
 def home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
-    views = service.matches(db)
-    now, upcoming = service.live(views)
-    ko = service.knockout_rounds(db)
-    team_id = my_team_id(request)
-    scorers = service.scorers(db)
-    shots = tracking.shot_stats(db)
-    done_matches = [m for m in views if m.done and not m.bye]
-    total_cups = sum((m.s1 or 0) + (m.s2 or 0) for m in done_matches)
-    total_valid_matches = len([m for m in views if not m.bye])
-    recent_matches = done_matches[-4:][::-1]
-    dash = service.team_dashboard(db, team_id) if team_id else None
-    return page(
-        request, db, "home.html", now=now, upcoming=upcoming, overview=service.checkin_overview(db),
-        dash=dash,
-        final=ko[-1][1][0] if ko else None, progress=service.tournament_progress(db),
-        total_cups=total_cups, played_count=len(done_matches), total_matches=total_valid_matches,
-        top_scorer=scorers[0] if scorers else None, shots=shots, recent_matches=recent_matches,
-        live=True,
-    )
+    return groups_page(request, db=db)
 
 
 @router.get("/live")
@@ -203,21 +204,27 @@ def groups_page(
     archivio: str = "",
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
+    all_views = service.matches(db)
     tables = service.group_tables(db)
     cfg = service.load_config(db)
-    if cfg.phase in ("knockout", "finished") and not archivio and not g and not tavolo and not sez:
-        return redirect("/tabellone")
-    t_views = service.table_views(db, g_tables=tables)
+    t_views = service.table_views(db, g_tables=tables, all_matches=all_views)
     team_id = my_team_id(request)
     me_team = service.team(db, team_id) if team_id else None
+    is_ko_phase = cfg.phase in ("knockout", "finished") and not archivio
     my_table = None
-    if me_team and me_team["grp"] is not None and tables:
-        my_table = next((tv.field for tv in t_views if any(g.grp == me_team["grp"] for g in tv.groups)), None)
+    if team_id and is_ko_phase:
+        my_table = next(
+            (tv.field for tv in t_views if any(team_id in (m.t1, m.t2) for m in tv.phase_matches)), None
+        )
+    if my_table is None and me_team and me_team["grp"] is not None and tables:
+        my_table = next((tv.field for tv in t_views if any(gt.grp == me_team["grp"] for gt in tv.groups)), None)
 
     if tavolo.isdecimal() and any(tv.field == int(tavolo) for tv in t_views):
         active_tavolo = int(tavolo)
-    elif my_table:
+    elif my_table and any(tv.field == my_table for tv in t_views):
         active_tavolo = my_table
+    elif t_views:
+        active_tavolo = t_views[0].field
     else:
         active_tavolo = 1
 
@@ -246,11 +253,27 @@ def groups_page(
         spot = service.provisional_spot(db, team_id, datetime.now()) if team_id else None
         if not tavolo.isdecimal() and spot and spot.table:
             active_tavolo = spot.table
+
+    ko = service.knockout_rounds(db)
+    dash = service.team_dashboard(db, team_id) if team_id else None
+    t_liters, t_cups_live, _ = service.beer_stats(db, all_views)
+    done_matches = [m for m in all_views if m.done and not m.bye]
+    total_valid_matches = len([m for m in all_views if not m.bye])
+    all_group_fields = sorted({m.field for m in all_views if m.stage == "group" and m.field}) or list(range(1, cfg.fields + 1))
+    active_fields = {tv.field for tv in t_views}
+    removed_tables = [f for f in all_group_fields if f not in active_fields] if is_ko_phase else []
+    current_phase_label = t_views[0].phase_label if t_views else ("Fase a Gironi" if cfg.phase == "groups" else "Eliminazione diretta")
+
     return page(
         request, db, "gironi.html", tables=tables, table_views=t_views, T=service.teams(db), setup_tables=setup_tables,
         active_grp=active_grp, active_tavolo=active_tavolo, active_sez=active_sez, my_table=my_table,
         thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
         projection=service.projected_first_round(db), labels=service.standing_labels(db),
+        ko_plan=service.planned_knockout(db) if cfg.phase == "groups" else [],
+        dash=dash, overview=service.checkin_overview(db), final=ko[-1][1][0] if ko else None,
+        tournament_liters=t_liters, total_cups=t_cups_live,
+        played_count=len(done_matches), total_matches=total_valid_matches,
+        is_ko_phase=is_ko_phase, current_phase_label=current_phase_label, removed_tables=removed_tables,
         live=True,
     )
 
@@ -267,11 +290,11 @@ def schedule(request: Request, team: str | None = None, db: sqlite3.Connection =
 
 @router.get("/classifiche")
 def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
-    if vista == "gironi":  # the group standings live on their own page
-        return RedirectResponse("/gironi", status_code=303)
     tables = service.group_tables(db)
-    view = vista if vista in ("coppie", "giocatori", "tiri") else "coppie"
+    rounds = service.knockout_rounds(db)
+    view = vista if vista in ("gironi", "eliminazione", "coppie", "giocatori", "tiri") else "gironi"
     team_stats, scorers = service.team_ranking(db), service.scorers(db)
+    t_liters, t_cups_live, _ = service.beer_stats(db)
     team_id = my_team_id(request)
     mine = None
     if team_id is not None:
@@ -280,16 +303,28 @@ def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends
             "players": [(i, s) for i, s in enumerate(scorers, 1) if s.team_id == team_id and s.cups],
         }
     return page(
-        request, db, "classifiche.html", view=view, tables=tables, mine=mine, scorers=scorers, team_stats=team_stats,
+        request, db, "classifiche.html", view=view, tables=tables, rounds=rounds,
+        thirds=service.thirds_needed(db), T=service.teams(db),
+        labels=service.standing_labels(db), projection=service.projected_first_round(db),
+        mine=mine, scorers=scorers, team_stats=team_stats,
+        tournament_liters=t_liters, total_cups_live=t_cups_live,
         shots=tracking.shot_stats(db) if view == "tiri" else None,
         live=True,
     )
 
 
 @router.get("/tabellone")
-def knockout(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+def knockout(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
+    rounds = service.knockout_rounds(db)
+    ko = [m for _, ms in rounds for m in ms if not m.bye]
+    plan = [] if ko else service.planned_knockout(db)
+    by_table: dict[int, list] = defaultdict(list)
+    for m in sorted(ko, key=lambda m: m.slot or 0) or plan:
+        if m.field:
+            by_table[m.field].append(m)
     return page(
-        request, db, "tabellone.html", rounds=service.knockout_rounds(db),
+        request, db, "tabellone.html", rounds=rounds, view="tavoli" if vista == "tavoli" else "turni",
+        by_table=sorted(by_table.items()), plan=plan,
         table_views=service.table_views(db), tables=service.group_tables(db),
         thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
         labels=service.standing_labels(db), projection=service.projected_first_round(db), T=service.teams(db),
@@ -410,7 +445,11 @@ def _team_page(request: Request, db: sqlite3.Connection, team_id: int, vs: str |
 def my_profile(request: Request, vs: str | None = None, db: sqlite3.Connection = Depends(get_db)) -> Response:
     team_id = my_team_id(request)
     if team_id is None or service.team(db, team_id) is None:
-        return page(request, db, "io.html")
+        t_liters, t_cups_live, _ = service.beer_stats(db)
+        return page(
+            request, db, "io.html", teams=service.teams(db),
+            tournament_liters=t_liters, total_cups_live=t_cups_live, live=True,
+        )
     return _team_page(request, db, team_id, vs, own=True)
 
 
@@ -911,7 +950,7 @@ def match_undo_start(request: Request, match_id: int, db: sqlite3.Connection = D
     if not can_referee(request, m, db):
         return redirect("/login")
     service.undo_start(db, match_id)
-    return redirect(_table_page(request, m))
+    return redirect(_table_page(request, m, db))
 
 
 def _referee_back(request: Request, m: service.MatchView) -> str:
@@ -919,8 +958,28 @@ def _referee_back(request: Request, m: service.MatchView) -> str:
     return f"/segna/{m.id}"
 
 
-def _table_page(request: Request, m: service.MatchView) -> str:
-    return f"/arbitro?campo={m.field}" if is_admin(request) else "/arbitro"
+def _table_page(request: Request, m: service.MatchView, db: sqlite3.Connection | None = None) -> str:
+    if is_admin(request):
+        return f"/arbitro?campo={m.field}"
+    if request.session.get("role") == "referee" or (db is not None and team_referee_table(request, db) == m.field):
+        return "/arbitro"
+    return f"/gironi?tavolo={m.field}" if m.field else "/gironi"
+
+
+@router.post("/partita/{match_id}/arbitra")
+def match_volunteer_referee(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """Any non-playing person offers to referee this match and record all shots."""
+    m = service.match(db, match_id)
+    if m is None:
+        raise HTTPException(404)
+    if not can_referee(request, m, db) and not can_volunteer_referee(request, m, db):
+        flash(request, "Può arbitrare chi non è in campo in questo momento.", "err")
+        return redirect(f"/gironi?tavolo={m.field}" if m.field else "/gironi")
+    vols = set(request.session.get("vol_matches", []))
+    vols.add(match_id)
+    request.session["vol_matches"] = sorted(vols)[-20:]
+    _claim_demo_table(db, m.field)
+    return redirect(f"/segna/{match_id}")
 
 
 @router.get("/segna/{match_id}")
@@ -930,12 +989,13 @@ def scoring(request: Request, match_id: int, db: sqlite3.Connection = Depends(ge
     if m is None:
         return redirect("/login")
     if m.done:
-        return redirect(_table_page(request, m))
+        return redirect(_table_page(request, m, db))
     scoring = {m.id: tracking.referee_view(db, m.id)} if m.started_at is not None else {}
     return page(
         request, db, "segna.html", m=m, scoring=scoring, players=service.teams(db),
         flipped=set(request.session.get("flip", [])), now_ts=time.time(),
         official_counts={k: tracking.official_count(v) for k, v in scoring.items()},
+        back_url=_table_page(request, m, db),
     )
 
 
@@ -944,9 +1004,72 @@ def match_form(request: Request, match_id: int, db: sqlite3.Connection = Depends
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
+    if not can_referee(request, m, db) and can_enter_result(request, m):
+        return redirect(f"/risultato/{match_id}")
     if not can_referee(request, m, db):
         return redirect("/login")
     return page(request, db, "partita.html", m=m, live_score=None if m.done else tracking.live_score(db, match_id))
+
+
+# --- Result entered by the couples themselves ------------------------------
+
+
+def can_enter_result(request: Request, m: service.MatchView) -> bool:
+    """The two couples of the match (and the admin) enter how many cups they sank and where."""
+    if m.bye or m.t1 is None or m.t2 is None:
+        return False
+    return is_admin(request) or m.side(my_team_id(request)) is not None
+
+
+@router.get("/risultato/{match_id}")
+def result_form(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    m = service.match(db, match_id)
+    if m is None:
+        raise HTTPException(404)
+    if not can_enter_result(request, m):
+        flash(request, "Il risultato lo inseriscono le due coppie della partita.", "err")
+        return redirect(f"/gironi?tavolo={m.field}" if m.field else "/gironi")
+    hits = {1: set(), 2: set()}
+    for r in db.execute("SELECT side, cup FROM cup_hits WHERE match_id = ?", (match_id,)):
+        hits[r["side"]].add(r["cup"])
+    cups = service.cups_in_play(db, match_id)
+    rows = [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] if cups == 10 else [[4, 5, 6], [2, 3], [1]]
+    return page(
+        request, db, "risultato.html", m=m, hits=hits, rows=rows, cups=cups, T=service.teams(db),
+        my_side=m.side(my_team_id(request)),
+    )
+
+
+@router.post("/risultato/{match_id}")
+async def result_save(request: Request, match_id: int, background: BackgroundTasks, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    m = service.match(db, match_id)
+    if m is None:
+        raise HTTPException(404)
+    if not can_enter_result(request, m):
+        return redirect("/")
+    form = await request.form()
+    cups = service.cups_in_play(db, match_id)
+    hits: dict[int, set[int]] = {}
+    for side in (1, 2):
+        hits[side] = {int(c) for c in form.getlist(f"c{side}") if str(c).isdecimal() and 1 <= int(c) <= cups}
+    try:
+        service.record_result(db, match_id, len(hits[1]), len(hits[2]), _int(str(form.get("vincitore") or "")))
+    except TournamentError as e:
+        flash(request, str(e), "err")
+        return redirect(f"/risultato/{match_id}")
+    with db:
+        db.execute("DELETE FROM cup_hits WHERE match_id = ?", (match_id,))
+        db.executemany(
+            "INSERT INTO cup_hits(match_id, side, cup) VALUES (?, ?, ?)",
+            [(match_id, s, c) for s in (1, 2) for c in sorted(hits[s])],
+        )
+    background.add_task(push.send, push.due(db))
+    msg = f"Risultato salvato: {m.n1} {len(hits[1])}–{len(hits[2])} {m.n2}"
+    if m.stage == "group" and get_setting(db, "phase") == "knockout":
+        msg += ". Gironi conclusi: tabellone generato!"
+    flash(request, msg)
+    side = m.side(my_team_id(request))
+    return redirect(f"/canestri/{match_id}" if side else f"/gironi?tavolo={m.field}" if m.field else "/gironi")
 
 
 @router.post("/partita/{match_id}")
@@ -975,7 +1098,7 @@ def match_save(
     if m.stage == "group" and get_setting(db, "phase") == "knockout":
         msg += ". Gironi conclusi: tabellone generato!"
     flash(request, msg)
-    return redirect(_table_page(request, m))
+    return redirect(_table_page(request, m, db))
 
 
 # --- Admin -----------------------------------------------------------------

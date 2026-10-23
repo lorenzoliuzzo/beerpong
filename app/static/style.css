@@ -1471,3 +1471,9 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 .heat-table summary { text-align: center; font-size: .85rem; color: var(--accent); cursor: pointer; }
 .heat-table table { margin: 8px auto 0; }
 .heat-players { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* Knockout timetable of a table */
+.ko-plan h3 { margin: 0 0 4px; font-size: 1rem; }
+.ko-plan .muted.small { margin: 0 0 6px; }
+.mini.planned { color: var(--ink); cursor: default; }
+.queue-item.mine-q { background: var(--accent-soft); margin: 0 -8px; padding: 8px; border-radius: 8px; }

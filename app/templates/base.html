@@ -29,7 +29,7 @@
     <h2 style="margin-top:0">Come vuoi provare la demo?</h2>
     <p class="muted small">Le squadre sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
     <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
-      <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: profilo, prossima partita, notifiche «tocca a voi» e tifo nel live.</span></button></form>
+      <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: squadra, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
     <form method="post" action="/demo/arbitro" class="demo-role"><button type="submit">
       <strong>🧑‍⚖️ Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
     <form method="post" action="/demo/admin" class="demo-role"><button type="submit">
@@ -39,7 +39,7 @@
 </div>
 {% set demo_tip = ("arbitro", "Tocca «Segna la partita», scegli chi tira per primo e poi tocca il giocatore e il bicchiere centrato. Il simulatore lascia a te questo tavolo.") if role == "referee" and path.startswith("/arbitro")
   else (("admin", "Guarda la regia dei tavoli in «Torneo», tocca «Arbitra» su un tavolo per segnare tu, oppure manda una notifica a tutti da «Notifiche».") if role == "admin" and path == "/admin"
-  else (("coppia", "Tocca «Attiva le notifiche»: tra un paio di minuti arriva «Preparatevi», poi «Tocca a voi». Nel Live puoi tifare le altre coppie.") if me and not role and path == "/io" else none)) %}
+  else (("coppia", "Tocca «Attiva le notifiche»: tra un paio di minuti arriva «Preparatevi», poi «Tocca a voi». In Tavoli segui tutte le partite in corso.") if me and not role and path == "/io" else none)) %}
 {% if demo_tip %}
   <div class="demo-tip" data-demo-tip="{{ demo_tip[0] }}" hidden>
     <span>💡 {{ demo_tip[1] }}</span>
@@ -60,20 +60,14 @@
 </main>
 
 {% block tabbar %}
-{% set is_ko = cfg.phase in ("knockout", "finished") %}
-{% set main_tab_url = "/tabellone" if is_ko else "/gironi" %}
-{% set main_tab_label = "Tabellone" if is_ko else "Tavoli" %}
-{% set main_tab_icon = '<path d="M3 5h5v6h5M3 19h5v-6M13 12h8"/>' if is_ko else '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' %}
-
 {% set tabs = [
-  ("/io", me.name|truncate(12, True, "…", 0) if me else "Profilo", '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.4 6.6 19.4l1.2-6L3.3 9.3l6.1-.7z"/>'),
-  (main_tab_url, main_tab_label, main_tab_icon),
-  ("/", "Live", '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'),
+  ("/io", me.name|truncate(12, True, "…", 0) if me else "Squadra", '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.4 6.6 19.4l1.2-6L3.3 9.3l6.1-.7z"/>'),
+  ("/gironi", "Tavoli", '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
   ("/classifiche", "Classifica", '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
 ] %}
 <nav class="tabbar">
   {% for href, label, icon in tabs %}
-    {% set on = (href == "/" and (path == "/" or path.startswith("/live"))) or (href == "/io" and (path == "/io" or path.startswith("/checkin"))) or (href not in ("/", "/io") and (path == href or path.startswith(href ~ "/") or (href == "/gironi" and path in ("/tabellone", "/programma") and not is_ko) or (href == "/tabellone" and path == "/gironi" and is_ko) or (href == "/classifiche" and path.startswith("/squadra")))) %}
+    {% set on = (href == "/io" and (path == "/io" or path.startswith("/checkin") or path.startswith("/squadra"))) or (href == "/gironi" and (path in ("/", "/gironi", "/tabellone", "/programma") or path.startswith("/gironi/") or path.startswith("/live"))) or (href == "/classifiche" and (path == "/classifiche" or path.startswith("/classifiche/"))) %}
     <a href="{{ href }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}>
       <svg viewBox="0 0 24 24" aria-hidden="true">{{ icon|safe }}</svg>{{ label }}
     </a>

@@ -128,7 +128,7 @@ def _referee_replay(
         in_turn.append(shot.player)
         if phase == "salvezza":
             saving_hits += hit
-            if taken < 2:
+            if taken < 2 and target.cups:
                 continue
             if not saving_hits:
                 winner, phase = pending, "over"

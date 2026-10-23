@@ -13,8 +13,17 @@ class Seed:
     grp: int
 
 
+# One match of a round, to say where a team comes from: "Vincente quarto 2".
+MATCH_NAMES = {4: "semifinale", 8: "quarto", 16: "ottavo", 32: "sedicesimo"}
+
+
 def round_name(round_no: int, total_rounds: int) -> str:
     return ROUND_NAMES.get(2 ** (total_rounds - round_no + 1), f"Turno {round_no}")
+
+
+def winner_of(round_no: int, pos: int, total_rounds: int) -> str:
+    """The placeholder for a team still to come out of match `pos` (from 0) of a round."""
+    return f"Vincente {MATCH_NAMES.get(2 ** (total_rounds - round_no + 1), f'turno {round_no}')} {pos + 1}"
 
 
 def seed_order(size: int) -> list[int]:

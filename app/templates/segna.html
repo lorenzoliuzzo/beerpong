@@ -3,7 +3,7 @@
 {% block title %}Segna · {{ m.n1 }} vs {{ m.n2 }}{% endblock %}
 {% block header %}
   <header class="top ref-top">
-    <a href="/arbitro{{ '?campo=' ~ m.field if role == 'admin' }}">‹ Tavolo {{ m.field }}</a>
+    <a href="{{ back_url or ('/arbitro' ~ ('?campo=' ~ m.field if role == 'admin' else '')) }}">‹ Tavolo {{ m.field }}</a>
     <strong>{{ m.label }}</strong>
   </header>
 {% endblock %}
@@ -84,7 +84,7 @@
                     {% for c in col %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere centrato"></button>{% else %}{% set by = rv.hit_by[s].get(c) %}{% set who = team[shooter]["p" ~ by] if by else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
                   </div>{% endfor %}
                 </div>
-                {% if 0 < standing|length < st.rack_cups and standing|length <= 6 %}
+                {% if 0 < standing|length < st.rack_cups and standing|length <= 6 and standing|length < (rv.rows[s]|map('length')|sum) %}
                   <button class="small ghost ref-rerack" type="submit" formaction="/partita/{{ m.id }}/riordina" name="lato" value="{{ s }}">⟲ Riordina</button>
                 {% endif %}
               </div>

@@ -26,13 +26,14 @@ def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
     """Replayed live state, cached until a report of this match is added or removed."""
     reracks = [(r["side"], r["at"]) for r in db.execute("SELECT side, at FROM reracks WHERE match_id = ? ORDER BY at, id", (match_id,))]
     key = tuple(db.execute(
-        "SELECT COUNT(r.id), COALESCE(MAX(r.id), 0), m.started_at, m.first_side, m.stage"
+        "SELECT COUNT(r.id), COALESCE(MAX(r.id), 0), COALESCE(SUM(r.side * 31 + r.player * 17 + r.cup), 0),"
+        " COALESCE(MAX(r.at), 0), m.started_at, m.first_side, m.stage"
         " FROM matches m LEFT JOIN reports r ON r.match_id = m.id WHERE m.id = ?",
         (match_id,),
     ).fetchone()) + (service.cups_in_play(db, match_id), tuple(reracks))
     cached = _state_cache.get(match_id)
     if cached is None or cached[0] != key:
-        _, _, started, first, stage, cups, _ = key
+        _, _, _, _, started, first, stage, cups, _ = key
         # The tiro della salvezza is a knockout rule (the final included).
         st = live.replay(reports(db, match_id), cups, first or 1, salvezza=stage == "ko", reracks=reracks)
         st.started_at = started  # the referee's start is the match clock
@@ -44,6 +45,7 @@ def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
 def _context(db: sqlite3.Connection) -> dict:
     key = tuple(db.execute(
         "SELECT (SELECT COUNT(*) FROM reports), (SELECT COALESCE(MAX(id), 0) FROM reports),"
+        " (SELECT COUNT(*) FROM reracks), (SELECT COALESCE(MAX(id), 0) FROM reracks),"
         " (SELECT COUNT(*) FROM matches WHERE done = 1),"
         " (SELECT COALESCE(SUM(id * (score1 * 31 + score2)), 0) FROM matches WHERE done = 1),"
         " (SELECT COUNT(*) FROM matches)"
@@ -53,6 +55,7 @@ def _context(db: sqlite3.Connection) -> dict:
             "labels": service.standing_labels(db),
             "records": {r.team: r for table in service.group_tables(db) for r in table.rows},
             "totals": _team_side_stats(db),
+            "shot_stats": _compute_shot_stats(db),
         }
         _context_cache[:] = [(key, context)]
     return _context_cache[0][1]
@@ -122,7 +125,7 @@ def _last_referee_action(db: sqlite3.Connection, match_id: int) -> tuple[str, in
         (match_id, live.REFEREE),
     ).fetchone()
     rerack = db.execute("SELECT id, at, side FROM reracks WHERE match_id = ? ORDER BY at DESC, id DESC LIMIT 1", (match_id,)).fetchone()
-    if rerack and (shot is None or rerack["at"] >= shot["at"]):
+    if rerack and (shot is None or rerack["at"] > shot["at"]):
         return ("rerack", rerack["id"], rerack["side"])
     return ("shot", shot["id"], None) if shot else None
 
@@ -135,8 +138,11 @@ def referee_rerack(db: sqlite3.Connection, match_id: int, side: int, now: float)
     st = state(db, match_id)
     if st.winner_side or side not in (1, 2):
         raise TournamentError("Riordino non possibile.")
-    if len(st.racks[side].cups) not in live.FORMATIONS:
+    n = len(st.racks[side].cups)
+    if n not in live.FORMATIONS or n >= st.rack_cups:
         raise TournamentError("Si riordina con 6 bicchieri o meno.")
+    if st.rows.get(side) == live.FORMATIONS[n] and st.racks[side].cups == set(range(1, n + 1)):
+        return
     with db:
         db.execute("INSERT INTO reracks(match_id, side, at) VALUES (?, ?, ?)", (match_id, side, now))
 
@@ -161,10 +167,11 @@ def referee_shot(
     if m is None or m.started_at is None:
         raise TournamentError("Avvia prima la partita.")
     view = referee_view(db, match_id)
+    recorded_cup = 0 if blown else cup
     if number is not None:
         recorded = official_count(view)
         last = view.last_shot
-        if number == recorded - 1 and last and (last.player, last.cup, view.last_blown) == (player, cup, blown):
+        if number == recorded - 1 and last and (last.player, last.cup, view.last_blown) == (player, recorded_cup, blown):
             return False  # this very shot is already in
         if number != recorded:
             raise TournamentError("La schermata non era aggiornata: controlla l'ultimo tiro e riprova.")
@@ -174,7 +181,7 @@ def referee_shot(
         raise TournamentError("Scegli chi ha tirato.")
     if cup and cup not in view.state.racks[3 - view.turn_side].cups:
         raise TournamentError("Quel bicchiere non c'è più.")
-    report_id = add_shot(db, match_id, view.turn_side, player, 0 if blown else cup, now)
+    report_id = add_shot(db, match_id, view.turn_side, player, recorded_cup, now)
     if blown:
         with db:
             db.execute("INSERT INTO blows(report_id, match_id, side) VALUES (?, ?, ?)", (report_id, match_id, 3 - view.turn_side))
@@ -230,7 +237,7 @@ def _on_tables(db: sqlite3.Connection, now: float) -> list[dict]:
     """Every match on a table now, for the strip on top of the live page. Shared for a few seconds: every
     viewer polls every two seconds, and the full match list is the costly part."""
     global _others_cache
-    if now - _others_cache[0] > 5:
+    if abs(now - _others_cache[0]) > 5:
         _others_cache = (now, [
             {"id": m.id, "field": m.field, "n1": m.n1, "n2": m.n2, "score": list(m.live_score) if m.live_score else None,
              "label": m.label}
@@ -242,11 +249,13 @@ def _on_tables(db: sqlite3.Connection, now: float) -> list[dict]:
 def _team_side_stats(db: sqlite3.Connection) -> dict[int, list[int]]:
     """team id -> [hits, shots] over every tracked match."""
     stats: dict[int, list[int]] = {}
-    for m in service.matches(db):
-        if m.t1 is None or m.t2 is None:
-            continue
-        st = state(db, m.id)
-        for side, team in ((1, m.t1), (2, m.t2)):
+    rows = db.execute(
+        "SELECT id, team1, team2 FROM matches WHERE team1 IS NOT NULL AND team2 IS NOT NULL"
+        " AND id IN (SELECT DISTINCT match_id FROM reports)"
+    ).fetchall()
+    for r in rows:
+        st = state(db, r["id"])
+        for side, team in ((1, r["team1"]), (2, r["team2"])):
             s = stats.setdefault(team, [0, 0])
             s[0] += st.side_hits(side)
             s[1] += st.side_attempts(side)
@@ -384,17 +393,23 @@ MIN_SHOTS_FOR_ACCURACY = 8
 
 
 def shot_stats(db: sqlite3.Connection) -> ShotStats:
+    return _context(db)["shot_stats"]
+
+
+def _compute_shot_stats(db: sqlite3.Connection) -> ShotStats:
     team_rows = service.teams(db)
     by_player: dict[tuple[int, int], PlayerShots] = {}
     heat: Counter[int] = Counter()
     total = 0
-    for m in service.matches(db):
-        if m.t1 is None or m.t2 is None:
-            continue
-        st = state(db, m.id)
+    rows = db.execute(
+        "SELECT id, team1, team2 FROM matches WHERE team1 IS NOT NULL AND team2 IS NOT NULL"
+        " AND id IN (SELECT DISTINCT match_id FROM reports)"
+    ).fetchall()
+    for r in rows:
+        st = state(db, r["id"])
         last_hit = next((s for s in reversed(st.shots) if s.removed is not None), None) if st.winner_side else None
         for s in st.shots:
-            team_id = m.t1 if s.side == 1 else m.t2
+            team_id = r["team1"] if s.side == 1 else r["team2"]
             t = team_rows[team_id]
             p = by_player.setdefault((team_id, s.player), PlayerShots(t[f"p{s.player}"], t["name"], team_id))
             p.shots += 1

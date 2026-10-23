@@ -653,8 +653,10 @@ def start_match(db: sqlite3.Connection, match_id: int, now: float, first_side: i
 
 def undo_start(db: sqlite3.Connection, match_id: int) -> None:
     with db:
-        db.execute("UPDATE matches SET started_at = NULL, first_side = NULL WHERE id = ? AND done = 0", (match_id,))
-        db.execute("DELETE FROM reports WHERE match_id = ? AND device = ?", (match_id, "arbitro"))
+        cur = db.execute("UPDATE matches SET started_at = NULL, first_side = NULL WHERE id = ? AND done = 0", (match_id,))
+        if cur.rowcount:
+            db.execute("DELETE FROM reports WHERE match_id = ? AND device = ?", (match_id, "arbitro"))
+            db.execute("DELETE FROM reracks WHERE match_id = ?", (match_id,))
 
 
 def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winner_side: int | None = None) -> None:
@@ -680,7 +682,7 @@ def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winne
         else:
             winner = m["team1"] if s1 > s2 else m["team2"]
         nxt = _next_match(db, m)
-        if nxt is not None and nxt["done"]:
+        if nxt is not None and (nxt["done"] or nxt["started_at"] is not None):
             raise TournamentError("Il turno successivo è già stato giocato: risultato non più modificabile.")
 
     with db:
@@ -735,10 +737,11 @@ def generate_bracket(db: sqlite3.Connection) -> None:
     first = bracket.first_round(bracket.qualifier_seeds(tables, qualifiers), size)
     total_rounds = size.bit_length() - 1
 
-    last = db.execute("SELECT MAX(slot) AS slot, MAX(start) AS start FROM matches WHERE stage = 'group'").fetchone()
+    last = db.execute("SELECT MAX(slot) AS slot FROM matches WHERE stage = 'group'").fetchone()
     slot = last["slot"] + 1
-    # Start right after the last group slot as actually scheduled (it may have been shifted).
-    t = datetime.fromisoformat(last["start"]) + timedelta(minutes=cfg.group_min + cfg.buffer_min)
+    # The groups are over now, whatever the timetable said: the knockout starts from the next minute,
+    # as a table's queue does when its referee starts or closes a match (recalc_table_schedule).
+    t = _next_minute(datetime.now())
 
     with db:
         for r in range(1, total_rounds + 1):
@@ -757,29 +760,85 @@ def generate_bracket(db: sqlite3.Connection) -> None:
                 db.execute("UPDATE matches SET bye = 1, done = 1, winner = ? WHERE id = ?", (winner, m["id"]))
                 _advance(db, m, winner)
 
-        for r in range(1, total_rounds + 1):
-            is_final = r == total_rounds
-            playable = [
-                row["id"]
-                for row in db.execute(
-                    "SELECT id FROM matches WHERE stage = 'ko' AND round = ? AND bye = 0 ORDER BY pos", (r,)
-                )
-            ]
-            for i in range(0, len(playable), cfg.fields):
-                for fi, mid in enumerate(playable[i : i + cfg.fields]):
-                    db.execute(
-                        "UPDATE matches SET slot = ?, field = ?, start = ?, duration = ? WHERE id = ?",
-                        (slot, fi + 1, _fmt(t), None if is_final else cfg.ko_min, mid),
-                    )
-                slot += 1
-                t += timedelta(minutes=(FINAL_SLOT_MIN if is_final else cfg.ko_min) + cfg.buffer_min)
+        playable: dict[int, list[int]] = defaultdict(list)
+        for row in db.execute("SELECT round, pos FROM matches WHERE stage = 'ko' AND bye = 0 ORDER BY round, pos"):
+            playable[row["round"]].append(row["pos"])
+        for r, p, offset, field_no, at in _ko_timetable(playable, cfg, t):
+            db.execute(
+                "UPDATE matches SET slot = ?, field = ?, start = ?, duration = ? WHERE stage = 'ko' AND round = ? AND pos = ?",
+                (slot + offset, field_no, _fmt(at), None if r == total_rounds else cfg.ko_min, r, p),
+            )
         set_setting(db, "phase", "knockout")
+
+
+def _ko_timetable(
+    playable: dict[int, list[int]], cfg: Config, start: datetime
+) -> list[tuple[int, int, int, int, datetime]]:
+    """(round, pos, slot offset, table, start) of every knockout match played, round after round on all tables.
+
+    The same for the real bracket and for the plan shown during the groups, so the times announced hold."""
+    out, slot, t = [], 0, start
+    final = max(playable, default=0)
+    for r in sorted(playable):
+        positions = playable[r]
+        for i in range(0, len(positions), cfg.fields):
+            for fi, p in enumerate(positions[i : i + cfg.fields]):
+                out.append((r, p, slot, fi + 1, t))
+            slot += 1
+            t += timedelta(minutes=(FINAL_SLOT_MIN if r == final else cfg.ko_min) + cfg.buffer_min)
+    return out
+
+
+@dataclass
+class PlannedKo:
+    label: str
+    field: int
+    time: str
+    start_iso: str
+    t1: int | None
+    t2: int | None
+    n1: str  # a team if the groups ended now, else where it comes from: "Vincente ottavo 3"
+    n2: str
+
+
+def planned_knockout(db: sqlite3.Connection) -> list[PlannedKo]:
+    """During the groups: the knockout timetable, table by table, with the first round as if the groups ended now."""
+    pairs = projected_first_round(db)
+    # Forecast: right after the last group match still to play, as its table's queue now expects it.
+    last = db.execute("SELECT MAX(start) AS start FROM matches WHERE stage = 'group' AND done = 0").fetchone()
+    if not pairs or not last["start"]:
+        return []
+    cfg = load_config(db)
+    names = {t["id"]: t["name"] for t in teams(db).values()}
+    labels = standing_labels(db)
+    total_rounds = (len(pairs) * 2).bit_length() - 1
+    byes = {p: a or b for p, (a, b) in enumerate(pairs) if a is None or b is None}
+    playable = {1: [p for p in range(len(pairs)) if p not in byes]}
+    playable |= {r: list(range(len(pairs) >> (r - 1))) for r in range(2, total_rounds + 1)}
+    start = datetime.fromisoformat(last["start"]) + timedelta(minutes=cfg.group_min + cfg.buffer_min)
+
+    def side(r: int, p: int, s: int) -> tuple[int | None, str]:
+        if r == 1:
+            team = pairs[p][s - 1]
+            return team, f"{names[team]} ({labels[team]})" if team else "Riposo"
+        src = 2 * p + s - 1
+        if r == 2 and src in byes:  # a bye goes straight through
+            return byes[src], f"{names[byes[src]]} ({labels[byes[src]]})"
+        return None, bracket.winner_of(r - 1, src, total_rounds)
+
+    out = []
+    for r, p, _, field_no, at in _ko_timetable(playable, cfg, start):
+        (t1, n1), (t2, n2) = side(r, p, 1), side(r, p, 2)
+        out.append(PlannedKo(bracket.round_name(r, total_rounds), field_no, at.strftime("%H:%M"), _fmt(at), t1, t2, n1, n2))
+    return out
 
 
 def reopen_groups(db: sqlite3.Connection) -> None:
     if get_setting(db, "phase") != "knockout":
         raise TournamentError("I gironi sono già aperti.")
-    played = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'ko' AND done = 1 AND bye = 0").fetchone()[0]
+    played = db.execute(
+        "SELECT COUNT(*) FROM matches WHERE stage = 'ko' AND (done = 1 OR started_at IS NOT NULL) AND bye = 0"
+    ).fetchone()[0]
     if played:
         raise TournamentError("Si è già giocata una partita a eliminazione: non si possono riaprire i gironi.")
     with db:
@@ -806,10 +865,15 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
     rows = db.execute("SELECT * FROM matches ORDER BY slot IS NULL, slot, field, id").fetchall()
     total_rounds = max((r["round"] for r in rows if r["stage"] == "ko"), default=0)
 
-    def name(team: int | None, bye: bool) -> str:
+    def name(r: sqlite3.Row, side: int) -> str:
+        team = r[f"team{side}"]
         if team is not None:
             return team_rows[team]["name"]
-        return "Riposo" if bye else "Da definire"
+        if r["bye"]:
+            return "Riposo"
+        if r["stage"] == "ko" and r["round"] > 1:
+            return bracket.winner_of(r["round"] - 1, 2 * r["pos"] + side - 1, total_rounds)
+        return "Da definire"
 
     def split(a: int | None, b: int | None) -> tuple[int, int] | None:
         return (a, b) if a is not None and b is not None else None
@@ -833,8 +897,8 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 duration=r["duration"],
                 t1=r["team1"],
                 t2=r["team2"],
-                n1=name(r["team1"], bool(r["bye"])),
-                n2=name(r["team2"], bool(r["bye"])),
+                n1=name(r, 1),
+                n2=name(r, 2),
                 s1=r["score1"],
                 s2=r["score2"],
                 split1=split(r["c1a"], r["c1b"]),
@@ -920,6 +984,10 @@ class TableScheduleView:
     played: list[MatchView]
     done_count: int
     total_count: int
+    kind: str = "Principale"
+    is_main: bool = True
+    phase_label: str = "Fase a Gironi"
+    phase_matches: list[MatchView] = field(default_factory=list)
 
 
 def table_views(
@@ -932,25 +1000,31 @@ def table_views(
         g_tables = group_tables(db)
     if all_matches is None:
         all_matches = matches(db)
-    stage_filter = "group" if cfg.phase == "groups" else None
-    # The tables the matches were scheduled on, not today's "Campi" setting, which can change after the draw.
-    fields = sorted({m.field for m in all_matches if m.field}) or list(range(1, cfg.fields + 1))
-    pending_all = [m for m in all_matches if not m.done and not m.bye and (stage_filter is None or m.stage == stage_filter)]
+    ko_ms = [m for m in all_matches if m.stage == "ko" and not m.bye]
+    if cfg.phase in ("knockout", "finished") and ko_ms:
+        active_round = min((m.round for m in ko_ms if not m.done), default=max(m.round for m in ko_ms))
+        phase_ms = [m for m in ko_ms if m.round == active_round]
+        phase_label = phase_ms[0].label if phase_ms else "Eliminazione diretta"
+        fields = sorted({m.field for m in phase_ms if m.field}) or list(range(1, cfg.fields + 1))
+    else:
+        phase_ms = [m for m in all_matches if m.stage == "group" and not m.bye]
+        phase_label = "Fase a Gironi"
+        fields = sorted({m.field for m in phase_ms if m.field}) or list(range(1, cfg.fields + 1))
+
+    all_group_ms = [m for m in all_matches if m.stage == "group" and not m.bye]
+    total_fields = len(sorted({m.field for m in all_group_ms if m.field}) or fields)
+    pending_all = [m for m in phase_ms if not m.done and not m.bye]
     independent = tables_independent([(m.field, m.t1, m.t2) for m in pending_all])
     now, upcoming = live(all_matches)
     out: list[TableScheduleView] = []
     for f in fields:
-        f_matches = [
-            m
-            for m in all_matches
-            if m.field == f and not m.bye and (stage_filter is None or m.stage == stage_filter)
-        ]
-        f_grps_from_matches = {m.grp for m in f_matches if m.grp is not None}
+        f_matches = [m for m in phase_ms if m.field == f and not m.bye]
+        f_grps_from_matches = {m.grp for m in all_group_ms if m.field == f and m.grp is not None}
         if f_grps_from_matches:
             t_groups = [g for g in g_tables if g.grp in f_grps_from_matches]
         else:
             t_groups = [
-                g for g in g_tables if planning.table_for_group(g.grp, len(g_tables), len(fields)) == f
+                g for g in g_tables if planning.table_for_group(g.grp, len(g_tables), total_fields) == f
             ]
         letters = " · ".join(g.name.replace("Girone ", "") for g in t_groups)
         pending = [m for m in f_matches if not m.done]
@@ -964,6 +1038,7 @@ def table_views(
             next_match = next((m for m in upcoming if m.field == f), None)
         later = [m for m in pending if m is not current and m is not next_match]
         played = [m for m in f_matches if m.done]
+        is_main = f <= 2
         out.append(
             TableScheduleView(
                 field=f,
@@ -976,6 +1051,10 @@ def table_views(
                 played=played,
                 done_count=len(played),
                 total_count=len(f_matches),
+                kind="Principale" if is_main else "Secondario",
+                is_main=is_main,
+                phase_label=phase_label,
+                phase_matches=f_matches,
             )
         )
     return out
@@ -1224,6 +1303,40 @@ class PlayerProfile:
     heatmap: dict[int, int] = field(default_factory=dict)  # cup -> hits by this player
 
 
+LITERS_PER_TEAM_MATCH = 1.0  # 1 L of beer in each couple's rack per match
+
+
+def beer_stats(
+    db: sqlite3.Connection, all_matches: list[MatchView] | None = None
+) -> tuple[float, int, dict[int, tuple[float, int]]]:
+    """(tournament_liters_live, total_cups_live, {team_id: (liters_drunk, cups_drunk)}) across done + live matches."""
+    if all_matches is None:
+        all_matches = matches(db)
+    total_rounds = max((m.round for m in all_matches if m.stage == "ko" and m.round), default=0)
+    by_team: dict[int, list[float | int]] = {}
+    total_liters = 0.0
+    total_cups = 0
+    for m in all_matches:
+        if m.bye or m.t1 is None or m.t2 is None:
+            continue
+        rack_cups = FINAL_CUPS if (m.stage == "ko" and m.round == total_rounds) else 6
+        if m.done:
+            s1, s2 = m.s1 or 0, m.s2 or 0
+        elif m.live_score:
+            s1, s2 = m.live_score
+        else:
+            continue
+        # Team 1 drinks the cups hit by Team 2 (s2), Team 2 drinks the cups hit by Team 1 (s1)
+        for tid, drunk_cups in ((m.t1, s2), (m.t2, s1)):
+            liters = drunk_cups * (LITERS_PER_TEAM_MATCH / rack_cups)
+            entry = by_team.setdefault(tid, [0.0, 0])
+            entry[0] += liters
+            entry[1] += drunk_cups
+            total_liters += liters
+            total_cups += drunk_cups
+    return round(total_liters, 2), total_cups, {tid: (round(float(v[0]), 2), int(v[1])) for tid, v in by_team.items()}
+
+
 @dataclass
 class TeamProfile:
     field: int | None
@@ -1251,6 +1364,10 @@ class TeamProfile:
     team_heatmap: dict[int, int]
     players: list[PlayerProfile]
     blows: int = 0  # balls the couple blew out of its cups (rule 5)
+    liters_drunk: float = 0.0
+    cups_drunk_live: int = 0
+    tournament_liters: float = 0.0
+    total_cups_live: int = 0
 
 
 def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
@@ -1272,7 +1389,10 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
     team_cups_rank = next((i for i, s in enumerate(t_rank_list, 1) if s.team == team_id), None)
     t_stat = next((s for s in t_rank_list if s.team == team_id), None)
 
-    all_ms = [m for m in matches(db) if m.side(team_id) and not m.bye]
+    all_views = matches(db)
+    t_liters, t_cups_live, by_team_beer = beer_stats(db, all_views)
+    team_liters, team_cups_drunk = by_team_beer.get(team_id, (0.0, 0))
+    all_ms = [m for m in all_views if m.side(team_id) and not m.bye]
     done_ms = [m for m in all_ms if m.done]
     played = len(done_ms)
     won = sum(1 for m in done_ms if m.winner == team_id)
@@ -1411,6 +1531,10 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
             " WHERE (b.side = 1 AND m.team1 = ?) OR (b.side = 2 AND m.team2 = ?)",
             (team_id, team_id),
         ).fetchone()[0],
+        liters_drunk=team_liters,
+        cups_drunk_live=team_cups_drunk,
+        tournament_liters=t_liters,
+        total_cups_live=t_cups_live,
     )
 
 

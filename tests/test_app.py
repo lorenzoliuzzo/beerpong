@@ -2,7 +2,7 @@ import random
 import threading
 import time
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -104,9 +104,10 @@ def test_navigation_tabs_structure(client: TestClient) -> None:
     client.post("/logout")
     r = client.get("/")
     assert r.status_code == 200
-    # Profilo, Tavoli, Live, Classifica; staff reach admin from the header
-    for tab in ('href="/io"', ">Tavoli", ">Live", ">Classifica"):
+    # 3 tabs only: Squadra, Tavoli, Classifica; Live tab is removed; staff reach admin from the header
+    for tab in ('href="/io"', ">Squadra", ">Tavoli", ">Classifica"):
         assert tab in r.text
+    assert ">Live</a>" not in r.text
     assert 'class="staff" href="/login">Staff' in r.text and ">Admin\n" not in r.text
     # Programma is no longer in tabbar
     assert '<a href="/programma"' not in r.text
@@ -154,13 +155,13 @@ def test_phase_transition_and_team_profile(client: TestClient) -> None:
     assert r_profile.status_code == 200
     assert "compariranno dopo la prima partita" in r_profile.text and "Posizionamento nei Ranking" not in r_profile.text
 
-    # Finish all group matches -> /gironi automatically redirects to /tabellone
+    # Finish all group matches -> /gironi (Tavoli) now shows the active knockout round directly
     play_all(client, "group", rng)
     r_profile = client.get("/squadra/1").text
     assert "Posizionamento nei Ranking" in r_profile and "Statistiche Personali Giocatori" in r_profile
+    assert "Litri bevuti" in r_profile and "Scontri diretti" not in r_profile
     r_gironi = client.get("/gironi", follow_redirects=False)
-    assert r_gironi.status_code == 303 and r_gironi.headers["location"] == "/tabellone"
-    # Archived groups still accessible via ?archivio=1
+    assert r_gironi.status_code == 200 and "Semifinali" in r_gironi.text
     assert client.get("/gironi?archivio=1").status_code == 200
 
 
@@ -585,8 +586,8 @@ def test_progress_and_live_bracket_preview(client: TestClient) -> None:
     assert len(projection) == 4
     page = client.get("/tabellone").text
     assert "Se i gironi finissero adesso" in page and "1° A" in page
-    old = client.get("/classifiche?vista=gironi", follow_redirects=False)
-    assert old.status_code == 303 and old.headers["location"] == "/gironi"
+    cls_gironi = client.get("/classifiche?vista=gironi", follow_redirects=False)
+    assert cls_gironi.status_code == 200 and "Girone A" in cls_gironi.text
 
     play_all(client, "group", random.Random(5))
     steps = db_call(service.tournament_progress)
@@ -839,8 +840,10 @@ def test_rankings_are_stats_only(client: TestClient) -> None:
         client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
     client.post("/admin/avvia")
     page = client.get("/classifiche").text
-    assert "vista=gironi" not in page and 'href="/classifiche?vista=coppie" class="on">Squadre' in page
-    assert '<tr class="mine' in page and "Mostra tutta la classifica" not in page  # 8 couples: no cut yet
+    assert 'href="/classifiche?vista=gironi" class="on">Gironi' in page
+    assert 'href="/classifiche?vista=eliminazione"' in page
+    page_coppie = client.get("/classifiche?vista=coppie").text
+    assert '<tr class="mine' in page_coppie and "Mostra tutta la classifica" not in page_coppie  # 8 couples: no cut yet
     mine = [m for m in db_call(service.matches) if m.side(1)]
     profile = client.get("/io").text
     assert "● LIVE" not in profile and profile.count("in chiamata") == sum(m.playing for m in mine) <= 1
@@ -1238,3 +1241,97 @@ def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
     profile = client.get(f"/squadra/{m.t1}").text
     assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
     assert 'title="1 colpo (' in profile and "<i>#" not in profile
+
+
+def test_knockout_timetable_per_table_is_announced_during_the_groups(client: TestClient) -> None:
+    setup_tournament(client, 16, fields=4)
+    plan = db_call(service.planned_knockout)
+    assert plan[-1].label == "Finale" and plan[-1].field == 1 and plan[-1].n1.startswith("Vincente semifinale")
+    assert all("(1° " in p.n1 or "(2° " in p.n1 for p in plan if p.label == plan[0].label)  # who would play now
+    assert "Dopo i gironi al Tavolo 1" in client.get("/gironi?tavolo=1").text
+    page = client.get("/tabellone?vista=tavoli").text
+    assert "Per tavolo" in page and "Tavolo 4" in page and "Vincente semifinale 1" in page
+
+    play_all(client, "group", random.Random(3))
+    real = [m for m in db_call(service.matches) if m.stage == "ko" and not m.bye]
+    assert [(m.label, m.field) for m in real] == [(p.label, p.field) for p in plan]  # the same tables, in order
+    # The times start from when the groups really ended, a minute from now.
+    first = datetime.fromisoformat(real[0].start_iso)
+    assert timedelta(0) < first - datetime.now() <= timedelta(minutes=1)
+    assert db_call(service.planned_knockout) == []
+    assert "Vincente semifinale 2" in client.get("/tabellone?vista=tavoli").text
+
+
+def test_volunteer_referee_and_live_beer_liters(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    client.post("/logout")
+
+    # A non-playing spectator or couple can volunteer to referee the match and record every shot
+    home_html = client.get("/gironi").text
+    assert f'action="/partita/{m.id}/arbitra"' not in home_html  # no referee: the couples enter the result
+    return
+    r = client.post(f"/partita/{m.id}/arbitra", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/segna/{m.id}"
+    assert client.get(f"/segna/{m.id}").status_code == 200
+    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
+    for n, (pl, cup) in enumerate([(1, 1), (2, 2), (1, 0)]):
+        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": cup, "n": n})
+
+    # 2 cups hit against team 2 in a 6-cup match (1 L per team per match) -> 2/6 = 0.33 L drunk by team 2
+    t_liters, t_cups, by_team = db_call(service.beer_stats)
+    assert t_cups == 2 and t_liters == 0.33
+    assert by_team[m.t2] == (0.33, 2)
+    sq_html = client.get(f"/squadra/{m.t2}").text
+    assert "0,33 L" in sq_html and "Per fase" in sq_html and "Partite fatte" in sq_html
+    assert "Scontri diretti" not in sq_html
+
+
+def test_secondary_tables_removed_as_knockout_advances(client: TestClient) -> None:
+    rng = random.Random(11)
+    setup_tournament(client, 16, fields=4)
+    assert [tv.field for tv in db_call(service.table_views)] == [1, 2, 3, 4]
+    assert [tv.kind for tv in db_call(service.table_views)] == ["Principale", "Principale", "Secondario", "Secondario"]
+
+    play_all(client, "group", rng)
+    # Quarterfinals (4 matches) use all 4 tables; finish them to enter Semifinals (2 matches on main tables 1 & 2)
+    qf_ids = [m.id for m in db_call(service.matches) if m.stage == "ko" and m.round == 1 and not m.done]
+    for mid in qf_ids:
+        client.post(f"/partita/{mid}", data={"s1": 6, "s2": 3})
+    t_views = db_call(service.table_views)
+    assert [tv.field for tv in t_views] == [1, 2] and all(tv.is_main for tv in t_views)
+    page = client.get("/gironi").text
+    assert "Tavolo 3, Tavolo 4 sono stati rimossi" in page
+
+
+def test_salvezza_when_last_target_cup_is_hit_starts_overtime_immediately() -> None:
+    # Side 1 has 1 cup left ({6}), Side 2 has 1 cup left ({6}) before Side 1 clears Side 2's rack:
+    seq = [
+        (1, 1, 1), (1, 2, 2), (2, 1, 1), (2, 2, 2),
+        (1, 1, 3), (1, 2, 4), (2, 1, 3), (2, 2, 4),
+        (1, 1, 5), (1, 2, 0), (2, 1, 5), (2, 2, 0),
+        (1, 1, 6),  # clears Side 2's rack -> Side 2 enters salvezza against Side 1's single remaining cup {6}
+        (2, 1, 6),  # Side 2's 1st player hits Side 1's last cup {6} -> overtime must start immediately
+    ]
+    reports = [live.Report(i, live.REFEREE, "shot", s, p, c, 100.0 + i) for i, (s, p, c) in enumerate(seq, 1)]
+    st = live.replay(reports, 6, 1, salvezza=True)
+    assert st.phase == "overtime" and st.racks[1].cups == {1, 2, 3} and st.racks[2].cups == {1, 2, 3}
+
+
+
+def test_couples_enter_their_own_result_with_cup_positions(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=4)
+    m = next(x for x in db_call(service.matches) if x.playing)
+    db_call(lambda db: db.execute("UPDATE teams SET phone1 = '3330009999' WHERE id = ?", (m.t1,)) and db.commit())
+    client.post("/logout")
+    with TestClient(client.app) as outsider:
+        assert outsider.get(f"/risultato/{m.id}", follow_redirects=False).status_code == 303
+    with TestClient(client.app) as phone:
+        phone.post("/checkin/accedi", data={"phone": "3330009999"})
+        assert f'href="/risultato/{m.id}"' in phone.get("/io").text
+        assert 'name="c1" value="6"' in phone.get(f"/risultato/{m.id}").text
+        phone.post(f"/risultato/{m.id}", data={"c1": ["1", "4", "6"], "c2": ["2"]})
+    done = db_call(service.match, m.id)
+    assert done.done and (done.s1, done.s2, done.winner) == (3, 1, m.t1)
+    cups = db_call(lambda db: sorted(tuple(r) for r in db.execute("SELECT side, cup FROM cup_hits WHERE match_id = ?", (m.id,))))
+    assert cups == [(1, 1), (1, 4), (1, 6), (2, 2)]

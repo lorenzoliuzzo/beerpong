@@ -1,14 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Profilo · {{ cfg.title }}{% endblock %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Squadra · {{ cfg.title }}{% endblock %}
 {% block content %}
-<h1>Profilo</h1>
+<div class="slim-head">
+  <h1>Squadra</h1>
+  {% if tournament_liters is defined %}
+    <span class="pill">🍺 {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti nel torneo</span>
+  {% endif %}
+</div>
 <div class="card">
   <strong>Giocate al torneo?</strong>
-  <p class="muted small">Entrate nel profilo della vostra coppia: girone, tavolo, prossime partite e avvisi sul telefono quando tocca a voi.</p>
+  <p class="muted small">Entrate nel profilo della vostra coppia: girone, tavolo, prossime partite, litri bevuti e avvisi sul telefono quando tocca a voi.</p>
   {% if cfg.phase == "setup" %}
     <p class="small">Appena arrivati fate il <strong>check-in</strong> scansionando il QR code sul tavolo.</p>
   {% endif %}
   <a class="btn wide" href="/checkin">Entra con il vostro numero</a>
 </div>
-<p class="muted small">Guardate solo? Le partite in corso sono in <a href="/">Live</a>, gironi e tavoli in <a href="/gironi">Tavoli</a>.</p>
+{% if teams %}
+  <h2 style="margin-top:18px">Tutte le squadre</h2>
+  <div class="list">
+    {% for t in teams.values() if t.checked_in %}
+      <a class="row" href="/squadra/{{ t.id }}" style="text-decoration:none;color:inherit">
+        <div class="grow">
+          <div class="title">{{ t.name }}</div>
+          <span class="muted small">{{ ui.players(t) }}</span>
+        </div>
+        <span class="muted small">Vedi ›</span>
+      </a>
+    {% endfor %}
+  </div>
+{% endif %}
+<p class="muted small">Partite e gironi sono in <a href="/gironi">Tavoli</a>, classifiche in <a href="/classifiche">Classifica</a>.</p>
 {% endblock %}
