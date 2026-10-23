@@ -22,7 +22,7 @@
   </div>
   <div class="card">
     <p><strong>Tabellone a {{ p.bracket_size }}</strong>: passano le prime 2 di ogni girone{% if p.thirds %} + le {{ p.thirds }} migliori terze{% endif %}{% if p.byes %} · {{ p.byes }} teste di serie saltano il primo turno{% endif %}.</p>
-    <p class="muted small">Durata stimata su {{ cfg.fields }} campi: gironi ~{{ p.group_minutes }} min, eliminazione ~{{ p.knockout_minutes }} min, poi la finale
+    <p class="muted small">Durata stimata su {{ cfg.fields }} tavoli: gironi ~{{ p.group_minutes }} min, eliminazione ~{{ p.knockout_minutes }} min, poi la finale
       → circa {{ (p.group_minutes + p.knockout_minutes) // 60 }}h{{ "%02d"|format((p.group_minutes + p.knockout_minutes) % 60) }} + finale.</p>
   </div>
 

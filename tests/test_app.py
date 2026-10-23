@@ -973,3 +973,18 @@ def test_wrong_numbers_are_throttled(client: TestClient) -> None:
     for _ in range(8):
         client.post("/checkin/accedi", data={"phone": "3330000000"})
     assert "Troppi tentativi" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text
+
+
+def test_admin_control_room_during_the_groups(client: TestClient) -> None:
+    setup_tournament(client, 16, fields=4)
+    page = client.get("/admin").text
+    assert page.index('id="torneo"') < page.index('id="coppie"')  # the tournament comes first once it runs
+    assert '<span class="muted small">partite</span>' in page and "tavoli in ritardo" in page
+    current = [m for m in db_call(service.matches) if m.playing]
+    assert len(current) == 4 and all(f'href="/partita/{m.id}">Risultato</a>' in page for m in current)
+
+    referee = client.get("/arbitro").text
+    assert referee.count("Inserisci risultato") == 4  # only the matches on a table, the queue is a list
+    m = current[0]
+    form = client.get(f"/partita/{m.id}").text
+    assert f"{m.n1} <span class=\"muted\">vs</span> {m.n2}" in form and f"‹ Tavolo {m.field}" in form

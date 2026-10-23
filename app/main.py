@@ -752,6 +752,7 @@ def referee(request: Request, campo: str | None = None, db: sqlite3.Connection =
         all_pending = [m for m in views if not m.done]
         current = all_pending[:1]
         pending = all_pending[1:]
+    pending = sorted(pending, key=lambda m: (m.time or "", m.field or 0))  # each table runs its own queue
     return page(
         request, db, "arbitro.html", current=current, pending=pending,
         played=[m for m in views if m.done][::-1], field_no=field_no, live=True,
@@ -808,13 +809,17 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
     cfg = service.load_config(db)
     pins = [(f, service.referee_pin(db, f)) for f in range(1, cfg.fields + 1)]
     pending_groups = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
-    missing_splits = sum(1 for m in service.matches(db) for s in (1, 2) if m.split_missing(s))
+    views = service.matches(db)
+    missing_splits = sum(1 for m in views for s in (1, 2) if m.split_missing(s))
+    playable = [m for m in views if not m.bye and m.t1 is not None and m.t2 is not None]
+    tables = service.table_views(db, all_matches=views) if cfg.phase in ("groups", "knockout") else []
     return page(
         request, db, "admin.html", overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
         push_subs=push.subscriber_count(db),
         solo=service.unassigned_guests(db), pins=pins,
         admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
-        checkin_url=checkin_url(request, db),
+        checkin_url=checkin_url(request, db), tables=tables,
+        played=sum(m.done for m in playable), total=sum(1 for m in views if not m.bye),
     )
 
 
@@ -1068,7 +1073,7 @@ def admin_settings(
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     if not 1 <= fields <= 20 or min(group_min, ko_min) < 1 or buffer_min < 0:
-        flash(request, "Valori non validi: almeno 1 campo e durate positive.", "err")
+        flash(request, "Valori non validi: almeno 1 tavolo e durate positive.", "err")
         return redirect("/admin#impostazioni")
     if start_time and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", start_time):
         flash(request, "Orario di inizio non valido: usa il formato 21:30.", "err")

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block content %}
-<h1>{{ "Campo " ~ field_no if field_no else "Tutti i campi" }}</h1>
+<h1>{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }}</h1>
 {% if role == "admin" %}
   <nav class="segmented">
     <a href="/arbitro" class="{{ 'on' if not field_no }}">Tutti</a>
@@ -9,16 +9,25 @@
   </nav>
 {% endif %}
 {% if current %}
-  <h2>{{ "In campo ora" if field_no else "Prossima da giocare" }}</h2>
+  <h2>In campo ora</h2>
   {% for m in current %}{{ ui.match(m) }}{% endfor %}
 {% elif cfg.phase == "setup" %}
   <p class="muted">Il torneo non è ancora iniziato.</p>
 {% else %}
-  <p class="muted">Nessuna partita in attesa{{ " su questo campo" if field_no }}.</p>
+  <p class="muted">Nessuna partita in attesa{{ " su questo tavolo" if field_no }}.</p>
 {% endif %}
 {% if pending %}
   <h2>A seguire</h2>
-  {% for m in pending %}{{ ui.match(m, actions=not field_no) }}{% endfor %}
+  <div class="list queue">
+    {% for m in pending %}
+      <a class="row" href="{{ '/partita/' ~ m.id if can_referee(m) else '/live/' ~ m.id }}" style="color:inherit;text-decoration:none">
+        <span class="when">{{ m.time }}</span>
+        <div class="grow"><div class="title">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</div>
+          <span class="muted small">{{ m.label }}{% if m.field and not field_no %} · Tavolo {{ m.field }}{% endif %}</span></div>
+        <span class="chev">›</span>
+      </a>
+    {% endfor %}
+  </div>
 {% endif %}
 {% if played %}
   <details class="section">

@@ -10,14 +10,25 @@
 </nav>
 
 {% set n = chk.players|length %}
+{% if setup %}
 <div class="summary">
   <a href="#coppie" data-show="nonpagate" class="tile {{ 'ok' if not chk.failing('nonpagate') }}"><div class="big">{{ n - chk.failing('nonpagate')|length }}/{{ n }}</div><span class="muted small">pagate</span></a>
   <a href="#coppie" data-show="fuorigruppo" class="tile {{ 'ok' if not chk.failing('fuorigruppo') }}"><div class="big">{{ n - chk.failing('fuorigruppo')|length }}/{{ n }}</div><span class="muted small">nel gruppo</span></a>
   <a href="#coppie" data-show="senzatelefono" class="tile {{ 'ok' if not chk.failing('senzatelefono') }}"><div class="big">{{ n - chk.failing('senzatelefono')|length }}/{{ n }}</div><span class="muted small">con telefono</span></a>
   <a href="#coppie" data-show="dasistemare" class="tile {{ 'ok' if chk.done|length == n }}"><div class="big">{{ chk.done|length }}/{{ n }}</div><span class="muted small">tutto ok</span></a>
 </div>
-<p class="muted small">{% if chk.organizers %}Senza contare le {{ chk.organizers|length }} coppie degli organizzatori. {% endif %}Tocca un numero per vedere chi manca.</p>
+{% else %}
+{% set late = tables|selectattr("next_match")|selectattr("next_match.time", "lt", server_hm)|list %}
+<div class="summary">
+  <a href="#torneo" class="tile {{ 'ok' if played == total }}"><div class="big">{{ played }}/{{ total }}</div><span class="muted small">partite</span></a>
+  <a href="#torneo" class="tile {{ 'ok' if not late }}"><div class="big">{{ late|length }}</div><span class="muted small">tavoli in ritardo</span></a>
+  <a href="/arbitro" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">canestri da dividere</span></a>
+  <a href="#notifiche" class="tile ok"><div class="big">{{ push_subs[0] }}</div><span class="muted small">telefoni avvisati</span></a>
+</div>
+{% endif %}
+{% if setup %}<p class="muted small">{% if chk.organizers %}Senza contare le {{ chk.organizers|length }} coppie degli organizzatori. {% endif %}Tocca un numero per vedere chi manca.</p>{% endif %}
 
+{% set coppie_section %}
 <details class="section" id="coppie" {{ 'open' if setup }}>
   <summary>Coppie iscritte <span class="pill">{{ chk.rows|length }}</span></summary>
   <div class="body">
@@ -83,6 +94,9 @@
   </div>
 </details>
 
+{% endset %}
+{% if setup %}{{ coppie_section }}{% endif %}
+
 <details class="section" id="torneo" {{ 'open' if not setup }}>
   <summary>Torneo <span class="pill accent">{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></summary>
   <div class="body">
@@ -101,11 +115,28 @@
         <button class="ghost wide" type="submit">🔀 Rimescola i gironi provvisori del cartellone</button>
       </form>
       <a class="btn ghost wide" href="/admin/gironi">Prova i gironi prima di partire</a>
-      <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} campi.</p>
+      <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} tavoli.</p>
     {% else %}
       {% if cfg.phase == "groups" %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
       {% if missing_splits %}<p class="muted small">{{ missing_splits }} punteggi non ancora divisi tra i giocatori.</p>{% endif %}
-      <a class="btn wide" href="/arbitro">Risultati di tutti i campi</a>
+      {% if tables %}
+        <div class="list regia">
+          {% for tv in tables %}
+            {% set m = tv.current %}
+            <div class="row">
+              <div class="grow">
+                <div class="title">Tavolo {{ tv.field }} <span class="muted small">{{ tv.group_letters }}</span>
+                  {% if tv in late %}<span class="pill warn">in ritardo</span>{% endif %}</div>
+                {% if m %}<span class="small">{{ m.n1 }} <strong>{{ "%d–%d"|format(*m.live_score) if m.live_score else "vs" }}</strong> {{ m.n2 }}</span>
+                  <div class="muted small">{{ m.label }} · dalle {{ m.time }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</div>
+                {% else %}<span class="muted small">{{ "Finito" if tv.total_count and tv.done_count == tv.total_count else "In attesa" }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</span>{% endif %}
+              </div>
+              {% if m and m.t1 and m.t2 %}<a class="btn small" href="/partita/{{ m.id }}">Risultato</a>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <a class="btn ghost wide" href="/arbitro">Tutte le partite e i risultati</a>
       {% if cfg.phase in ("groups", "knockout") %}
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
@@ -127,6 +158,8 @@
     {% endif %}
   </div>
 </details>
+
+{% if not setup %}{{ coppie_section }}{% endif %}
 
 <details class="section" id="checkin" {{ 'open' if setup }}>
   <summary>Check-in <span class="pill {{ 'ok' if not ov.missing else 'warn' }}">{{ ov.present|length }}/{{ ov.present|length + ov.missing|length }}</span></summary>
@@ -208,7 +241,7 @@
     <h3>PIN staff</h3>
     <div class="list">
       <div class="row"><span>Admin</span><code>{{ admin_pin }}</code></div>
-      {% for f, pin in pins %}<div class="row"><span>Arbitro campo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
+      {% for f, pin in pins %}<div class="row"><span>Arbitro tavolo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
     </div>
     <form method="post" action="/admin/pin">
       <label for="pin">Nuovo PIN admin (almeno 6 cifre)</label>
@@ -225,17 +258,17 @@
       <input id="title" name="title" value="{{ cfg.title }}" required>
       <label for="start_time">Inizio del torneo</label>
       <input id="start_time" name="start_time" type="time" value="{{ cfg.start_time }}" required>
-      <label for="fields">Campi</label>
+      <label for="fields">Tavoli</label>
       <input id="fields" name="fields" type="number" inputmode="numeric" min="1" max="20" value="{{ cfg.fields }}" required>
       <label for="group_min">Durata partita girone (min)</label>
       <input id="group_min" name="group_min" type="number" inputmode="numeric" min="1" value="{{ cfg.group_min }}" required>
       <label for="ko_min">Durata eliminazione diretta (min)</label>
       <input id="ko_min" name="ko_min" type="number" inputmode="numeric" min="1" value="{{ cfg.ko_min }}" required>
-      <label for="buffer_min">Cambio campo (min)</label>
+      <label for="buffer_min">Cambio tavolo (min)</label>
       <input id="buffer_min" name="buffer_min" type="number" inputmode="numeric" min="0" value="{{ cfg.buffer_min }}" required>
       <label for="public_url">Indirizzo pubblico per il QR (vuoto = indirizzo attuale)</label>
       <input id="public_url" name="public_url" type="url" inputmode="url" placeholder="https://…" value="{{ cfg.public_url }}">
-      <p class="muted small">Campi, durate e inizio valgono quando si generano programma e tabellone: se si avvia dopo l'orario, si parte subito. La finale è senza limite di tempo.</p>
+      <p class="muted small">Tavoli, durate e inizio valgono quando si generano programma e tabellone: se si avvia dopo l'orario, si parte subito. La finale è senza limite di tempo.</p>
       <button class="wide" type="submit">Salva</button>
     </form>
   </div>

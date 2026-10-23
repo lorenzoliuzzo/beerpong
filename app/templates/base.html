@@ -17,7 +17,7 @@
 <body {% if live %}data-live{% endif %} class="{% block body_class %}{% endblock %}">
 {% if demo %}
 <div class="demo-bar">
-  <span><strong>DEMO</strong> · squadre inventate, le partite si giocano da sole</span>
+  <span><strong>DEMO</strong><span class="long"> · squadre inventate, le partite si giocano da sole</span></span>
   <form method="post" action="/demo/coppia"><button class="small" type="submit">Entra come coppia</button></form>
   <form method="post" action="/demo/admin"><button class="small ghost" type="submit">Admin</button></form>
 </div>

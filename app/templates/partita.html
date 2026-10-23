@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block content %}
-<p><a href="/arbitro">‹ Campo {{ m.field }}</a></p>
-<h1>{{ m.label }}</h1>
+<p><a href="/arbitro">‹ {{ "Tavolo " ~ m.field if m.field else "Partite" }}</a></p>
+<h1 style="margin-bottom:2px">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</h1>
+<p class="muted" style="margin-top:0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.time %} · {{ m.time }}{% endif %}</p>
 <form method="post" action="/partita/{{ m.id }}">
   <div class="card">
     {% if live_score %}<p class="small">📡 Dai tiri segnalati live: <strong>{{ live_score[0] }}–{{ live_score[1] }}</strong> (già inserito, controlla)</p>{% endif %}

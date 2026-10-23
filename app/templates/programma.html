@@ -8,7 +8,7 @@
   <a href="/programma?team={{ me.id }}" class="{{ 'on' if team_id == me.id }}">Le nostre</a>
 </nav>
 {% endif %}
-{% if slots %}<p class="muted small">Orari indicativi: si gioca appena il campo si libera.</p>{% endif %}
+{% if slots %}<p class="muted small">Orari indicativi: si gioca appena il tavolo si libera.</p>{% endif %}
 {% for slot, time, ms in slots %}
   <div class="slot-head">{{ time or "—" }} <span class="muted small">turno {{ slot + 1 }}</span></div>
   {% for m in ms %}{{ ui.match(m, mine=me.id if me) }}{% endfor %}

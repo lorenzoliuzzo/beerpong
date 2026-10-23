@@ -152,7 +152,7 @@
     <form method="post" action="/esci-squadra" onsubmit="return confirm('Scollegare questo telefono dalla squadra?')"><button class="link" type="submit">Scollega telefono</button></form> ·
   {% endif %}
   {% if role %}
-    {{ "Admin" if role == "admin" else "Arbitro campo " ~ my_field }} ·
+    {{ "Admin" if role == "admin" else "Arbitro tavolo " ~ my_field }} ·
     <form method="post" action="/logout"><button class="link" type="submit">esci</button></form>
   {% else %}
     <a href="/login">Accesso Staff / Arbitro</a>
