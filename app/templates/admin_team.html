@@ -22,6 +22,9 @@
     <label for="phone2">Secondo telefono</label>
     <input id="phone2" name="phone2" type="tel" inputmode="tel" value="{{ t.phone2 if t }}">
     {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">📞 Chiama</a></p>{% endif %}
+    <div class="choices" style="margin-top:12px">
+      <label><input type="checkbox" name="gruppo" value="1" {{ 'checked' if t and t.in_chat }}> Nel gruppo WhatsApp</label>
+    </div>
   </div>
   <div class="card">
     <h2 style="margin-top:0">Ticket</h2>

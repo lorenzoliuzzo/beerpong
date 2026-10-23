@@ -7,7 +7,8 @@
 <a class="banner todo" href="/admin/mancanti">
   <div class="label">Da sistemare</div>
   {{ ov.present|length + ov.missing|length - ov.partial|length }} coppie complete · {{ ov.partial|length }} da completare ·
-  {{ (ov.present + ov.missing)|rejectattr("paid")|list|length }} senza pagamento verificato →
+  {{ (ov.present + ov.missing)|rejectattr("paid")|list|length }} senza pagamento verificato ·
+  {{ (ov.present + ov.missing)|rejectattr("in_chat")|list|length }} fuori dal gruppo →
 </a>
 
 <details class="section" id="torneo" open>
@@ -125,6 +126,9 @@
 <details class="section" id="coppie">
   <summary>Coppie iscritte <span class="pill">{{ ov.present|length + ov.missing|length }}</span></summary>
   <div class="body">
+    {% set all_teams = ov.present + ov.missing %}
+    <p class="small"><strong>{{ all_teams|selectattr("paid")|list|length }}/{{ all_teams|length }}</strong> pagato ·
+      <strong>{{ all_teams|selectattr("in_chat")|list|length }}/{{ all_teams|length }}</strong> nel gruppo · tocca per segnare o togliere.</p>
     <p class="muted small">{{ ov.partial|length }} coppie da completare ·
       {{ ov.guests }} iscritti solo serata, di cui {{ ov.guest_teams|length }} diventati coppia al check-in.</p>
     {% if setup %}
@@ -134,12 +138,17 @@
     <div class="search" style="top:0"><input type="search" placeholder="Cerca coppia o giocatore" data-filter="#all-teams" autocomplete="off" aria-label="Cerca"></div>
     <div class="list" id="all-teams">
       {% for t in (ov.present + ov.missing)|sort(attribute="name") %}
-        <a class="row" href="/admin/squadre/{{ t.id }}">
-          <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
-          {% if t.note %}<span class="pill accent">da verificare</span>{% endif %}
-          {% if t.checked_in %}<span class="pill ok">presente</span>{% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
-          <span class="chev">›</span>
-        </a>
+        <div class="row" id="t{{ t.id }}">
+          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+            <div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span>
+            {% if t.note or t.checked_in or not (t.p1 and t.p2) or not t.phone1 %}<div class="pills">
+              {% if t.note %}<span class="pill accent">da verificare</span>{% endif %}
+              {% if t.checked_in %}<span class="pill ok">presente</span>{% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
+              {% if not t.phone1 %}<span class="pill warn">senza telefono</span>{% endif %}
+            </div>{% endif %}
+          </a>
+          {{ ui.checks(t, "/admin#t" ~ t.id) }}
+        </div>
       {% else %}
         <div class="row muted">Nessuna coppia: aggiungile o importa l'elenco.</div>
       {% endfor %}
@@ -155,6 +164,24 @@
         </form>
       </details>
     {% endif %}
+  </div>
+</details>
+
+<details class="section" id="solo-serata">
+  <summary>Solo serata <span class="pill">{{ solo|length }}</span></summary>
+  <div class="body">
+    <p class="muted small">Iscritti alla festa che non giocano: entrano col numero di telefono. Chi entra in una coppia sparisce da qui.</p>
+    <div class="list">
+      {% for g in solo %}
+        <div class="row">
+          <div class="grow"><div class="title">{{ g.name or "Senza nome" }}</div>
+            <span class="muted small">{{ g.phone }}{% if g.registered_at %} · iscritto il {{ g.registered_at[8:10] }}/{{ g.registered_at[5:7] }}{% endif %}</span></div>
+          <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama {{ g.name or g.phone }}">📞</a>
+        </div>
+      {% else %}
+        <div class="row muted">Nessun iscritto solo serata.</div>
+      {% endfor %}
+    </div>
   </div>
 </details>
 

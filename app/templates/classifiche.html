@@ -1,15 +1,171 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
+{% block title %}Classifiche & Statistiche · {{ cfg.title }}{% endblock %}
 {% block content %}
-<h1>Classifiche</h1>
-<nav class="segmented">
-  <a href="/classifiche?vista=gironi" class="{{ 'on' if view == 'gironi' }}">Gironi</a>
-  <a href="/classifiche?vista=giocatori" class="{{ 'on' if view == 'giocatori' }}">Giocatori</a>
-  <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Coppie</a>
-  <a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri</a>
+<div class="slim-head">
+  <h1>Classifica</h1>
+</div>
+
+<nav class="segmented" style="margin-bottom:12px">
+  <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Squadre</a>
+  <a href="/classifiche?vista=giocatori" class="{{ 'on' if view == 'giocatori' }}">Marcatori</a>
+  <a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri &amp; Precisione</a>
 </nav>
 
-{% if view == "gironi" %}
+{% if view == "coppie" %}
+  <!-- Filter chips by Girone -->
+  {% if tables %}
+  <div class="filter-chips" id="stats-filter-chips">
+    <button type="button" class="chip on" data-grp="all" onclick="filterStatsByGrp('all')">Tutti i gironi</button>
+    {% for g in tables %}
+      <button type="button" class="chip" data-grp="g{{ g.grp }}" onclick="filterStatsByGrp('g{{ g.grp }}')">{{ g.name }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th class="name">Squadra</th>
+        <th>Girone</th>
+        <th>Bic.</th>
+        <th>V/G</th>
+        <th>Diff</th>
+        <th>Media</th>
+      </tr>
+    </thead>
+    <tbody id="teams-stats-body">
+      {% for s in team_stats %}
+      <tr class="{{ 'mine' if me and s.team == me.id }} stat-row" data-grp="g{{ s.grp if s.grp is not none else 'none' }}">
+        <td>
+          {% if loop.index == 1 %}🥇
+          {% elif loop.index == 2 %}🥈
+          {% elif loop.index == 3 %}🥉
+          {% else %}{{ loop.index }}
+          {% endif %}
+        </td>
+        <td class="name">
+          <a href="/squadra/{{ s.team }}"><strong>{{ s.name }}</strong></a>
+        </td>
+        <td><span class="pill" style="font-size:0.75rem;padding:2px 7px">{{ s.grp_name or "—" }}</span></td>
+        <td><strong>{{ s.cups_for }}</strong></td>
+        <td>{{ s.won }}/{{ s.played }}</td>
+        <td>{{ "%+d"|format(s.diff) }}</td>
+        <td>{{ "%.1f"|format(s.average) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="name muted">Nessuna statistica ancora registrata.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+{% elif view == "giocatori" %}
+  <p class="muted small">Scarpa d'Oro: classifica individuale dei canestri segnati da ogni singolo giocatore.</p>
+
+  {% if tables %}
+  <div class="filter-chips" id="scorers-filter-chips">
+    <button type="button" class="chip on" data-grp="all" onclick="filterStatsByGrp('all')">Tutti i gironi</button>
+    {% for g in tables %}
+      <button type="button" class="chip" data-grp="g{{ g.grp }}" onclick="filterStatsByGrp('g{{ g.grp }}')">{{ g.name }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th class="name">Giocatore</th>
+        <th>Girone</th>
+        <th>Bic.</th>
+        <th>Partite</th>
+        <th>Media</th>
+      </tr>
+    </thead>
+    <tbody id="scorers-stats-body">
+      {% for s in scorers %}
+      <tr class="{{ 'mine' if me and s.team_id == me.id }} stat-row" data-grp="g{{ s.grp if s.grp is not none else 'none' }}">
+        <td>
+          {% if loop.index == 1 %}🥇
+          {% elif loop.index == 2 %}🥈
+          {% elif loop.index == 3 %}🥉
+          {% else %}{{ loop.index }}
+          {% endif %}
+        </td>
+        <td class="name">
+          <strong>{{ s.player }}</strong><br>
+          <a class="muted small" href="/squadra/{{ s.team_id }}">{{ s.team }}</a>
+        </td>
+        <td><span class="pill" style="font-size:0.75rem;padding:2px 7px">{{ s.grp_name or "—" }}</span></td>
+        <td><strong>{{ s.cups }}</strong></td>
+        <td>{{ s.played }}</td>
+        <td>{{ "%.1f"|format(s.average) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="name muted">Ancora nessun canestro registrato per i giocatori.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+{% elif view == "tiri" %}
+  {% if shots.total_shots %}
+    <p class="muted small">Statistiche balistiche dal pubblico live ({{ shots.total_shots }} tiri registrati). Precisione minima {{ 8 }} tiri.</p>
+    <div class="awards">
+      {% for icon, title, p in shots.awards %}
+        <div class="card award">
+          <div class="aicon">{{ icon }}</div>
+          <div class="label">{{ title }}</div>
+          <div class="title"><strong>{{ p.player }}</strong></div>
+          <span class="muted small">{{ p.team }}</span>
+          <div class="small">{{ p.hits }}/{{ p.shots }} · {{ (p.accuracy * 100)|round|int }}%{% if p.finishers %} · 🏁 {{ p.finishers }}{% endif %}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <h2>Mappa dei bicchieri colpiti</h2>
+    {% set top = shots.heatmap.values()|max %}
+    <div class="rack heat">
+      {% for row in [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] %}
+        <div class="rrow">{% for c in row %}{% set n = shots.heatmap[c] %}
+          <span class="cup up" style="opacity:{{ 0.25 + 0.75 * (n / top if top else 0) }}" title="bicchiere {{ c }}">{{ n }}</span>
+        {% endfor %}</div>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="text-align:center">Il bicchiere in basso (1) è quello più vicino a chi tira.</p>
+
+    <h2>Classifica Precisione</h2>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th class="name">Giocatore</th><th>Centri</th><th>Tiri</th><th>% Precisione</th></tr>
+      </thead>
+      <tbody>
+        {% for p in shots.players %}
+        <tr class="{{ 'mine' if me and p.team_id == me.id }}">
+          <td>{{ loop.index }}</td>
+          <td class="name"><strong>{{ p.player }}</strong><br><a class="muted small" href="/squadra/{{ p.team_id }}">{{ p.team }}</a></td>
+          <td><strong>{{ p.hits }}</strong></td>
+          <td>{{ p.shots }}</td>
+          <td><strong>{{ (p.accuracy * 100)|round|int }}%</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <div class="card" style="padding:24px 16px;text-align:center">
+      <div style="font-size:2rem;margin-bottom:8px">🎯</div>
+      <div class="title">Nessun tiro segnalato finora</div>
+      <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli spettatori o i tavoli segnalano i tiri nelle pagine LIVE delle partite.</p>
+    </div>
+  {% endif %}
+
+{% elif view == "gironi" %}
   {{ ui.progress(progress) }}
   {% if tables %}
     <nav class="jump">{% for g in tables %}<a href="#g{{ g.grp }}">{{ g.name|replace("Girone ", "") }}</a>{% endfor %}</nav>
@@ -33,79 +189,22 @@
   {% else %}
     <p class="muted">I gironi vengono sorteggiati all'inizio del torneo.</p>
   {% endif %}
-
-{% elif view == "giocatori" %}
-  <p class="muted small">Bicchieri di ogni giocatore, quando la coppia li ha divisi.</p>
-  <div class="table-wrap">
-  <table>
-    <tr><th>#</th><th class="name">Giocatore</th><th>Bic.</th><th>Media</th></tr>
-    {% for s in scorers %}
-    <tr class="{{ 'mine' if me and s.team_id == me.id }}">
-      <td>{{ loop.index }}</td>
-      <td class="name"><strong>{{ s.player }}</strong><br><a class="muted small" href="/squadra/{{ s.team_id }}">{{ s.team }}</a></td>
-      <td><strong>{{ s.cups }}</strong></td>
-      <td>{{ "%.1f"|format(s.average) }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="4" class="name muted">Ancora nessun giocatore.</td></tr>
-    {% endfor %}
-  </table>
-  </div>
-
-{% elif view == "tiri" %}
-  {% if shots.total_shots %}
-    <p class="muted small">Dai tiri segnalati live ({{ shots.total_shots }} tiri). Precisione dal {{ 8 }}° tiro in su.</p>
-    <div class="awards">
-      {% for icon, title, p in shots.awards %}
-        <div class="card award"><div class="aicon">{{ icon }}</div><div class="label">{{ title }}</div>
-          <div class="title"><strong>{{ p.player }}</strong></div><span class="muted small">{{ p.team }}</span>
-          <div class="small">{{ p.hits }}/{{ p.shots }} · {{ (p.accuracy * 100)|round|int }}%{% if p.finishers %} · 🏁 {{ p.finishers }}{% endif %}</div></div>
-      {% endfor %}
-    </div>
-    <h2>Mappa dei bicchieri colpiti</h2>
-    {% set top = shots.heatmap.values()|max %}
-    <div class="rack heat">
-      {% for row in [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] %}
-        <div class="rrow">{% for c in row %}{% set n = shots.heatmap[c] %}
-          <span class="cup up" style="opacity:{{ 0.25 + 0.75 * (n / top if top else 0) }}" title="bicchiere {{ c }}">{{ n }}</span>
-        {% endfor %}</div>
-      {% endfor %}
-    </div>
-    <p class="muted small" style="text-align:center">Il bicchiere in basso è quello più vicino a chi tira.</p>
-    <h2>Precisione</h2>
-    <div class="table-wrap">
-    <table>
-      <tr><th>#</th><th class="name">Giocatore</th><th>Centri</th><th>Tiri</th><th>%</th></tr>
-      {% for p in shots.players %}
-      <tr class="{{ 'mine' if me and p.team_id == me.id }}">
-        <td>{{ loop.index }}</td>
-        <td class="name"><strong>{{ p.player }}</strong><br><a class="muted small" href="/squadra/{{ p.team_id }}">{{ p.team }}</a></td>
-        <td><strong>{{ p.hits }}</strong></td><td>{{ p.shots }}</td><td>{{ (p.accuracy * 100)|round|int }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-    </div>
-  {% else %}
-    <p class="muted">Qui compariranno precisione, premi e mappa dei bicchieri appena il pubblico inizia a segnalare i tiri dalle pagine LIVE.</p>
-  {% endif %}
-
-{% else %}
-  <p class="muted small">Bicchieri di ogni coppia, dai punteggi confermati dagli arbitri.</p>
-  <div class="table-wrap">
-  <table>
-    <tr><th>#</th><th class="name">Coppia</th><th>Bic.</th><th>V/G</th><th>Media</th></tr>
-    {% for s in team_stats %}
-    <tr class="{{ 'mine' if me and s.team == me.id }}">
-      <td>{{ loop.index }}</td>
-      <td class="name"><a href="/squadra/{{ s.team }}">{{ s.name }}</a></td>
-      <td><strong>{{ s.cups_for }}</strong></td>
-      <td>{{ s.won }}/{{ s.played }}</td>
-      <td>{{ "%.1f"|format(s.average) }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="5" class="name muted">Ancora nessuna coppia.</td></tr>
-    {% endfor %}
-  </table>
-  </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function filterStatsByGrp(groupId) {
+  document.querySelectorAll('.filter-chips .chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.grp === groupId);
+  });
+  document.querySelectorAll('.stat-row').forEach(row => {
+    if (groupId === 'all' || row.dataset.grp === groupId) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+</script>
 {% endblock %}

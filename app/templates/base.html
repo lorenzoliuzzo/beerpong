@@ -27,16 +27,23 @@
 </main>
 
 {% block tabbar %}
+{% set is_ko = cfg.phase in ("knockout", "finished") %}
+{% set main_tab_url = "/tabellone" if is_ko else "/gironi" %}
+{% set main_tab_label = "Tabellone" if is_ko else "Gironi" %}
+{% set main_tab_icon = '<path d="M3 5h5v6h5M3 19h5v-6M13 12h8"/>' if is_ko else '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' %}
+
+{% set admin_url = "/admin" if role == "admin" else ("/arbitro" if role == "referee" else "/login") %}
+{% set admin_label = "Admin" if role == "admin" else ("Arbitro" if role == "referee" else "Admin") %}
+
 {% set tabs = [
-  ("/", "Noi", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'),
-  ("/programma", "Programma", '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
-  ("/classifiche", "Classifiche", '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
-  ("/tabellone", "Tabellone", '<path d="M3 5h5v6h5M3 19h5v-6M13 12h8"/>'),
+  (main_tab_url, main_tab_label, main_tab_icon),
+  ("/", "Statistiche live", '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'),
+  ("/classifiche", "Classifica", '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
+  (admin_url, admin_label, '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>'),
 ] %}
-{% if role %}{% set tabs = tabs + [("/admin" if role == "admin" else "/arbitro", "Staff", '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>')] %}{% endif %}
 <nav class="tabbar">
   {% for href, label, icon in tabs %}
-    {% set on = path == href or (href == "/" and path.startswith("/checkin")) or (href == "/admin" and path.startswith("/arbitro")) or (href != "/" and path.startswith(href ~ "/")) %}
+    {% set on = (href == "/" and (path == "/" or path == "/live" or path.startswith("/checkin") or path.startswith("/squadra"))) or (href != "/" and (path == href or path.startswith(href ~ "/") or (href == "/gironi" and path == "/tabellone" and not is_ko) or (href == "/tabellone" and path == "/gironi" and is_ko) or (label in ("Admin", "Arbitro") and (path in ("/admin", "/arbitro", "/login") or path.startswith("/admin/") or path.startswith("/arbitro"))))) %}
     <a href="{{ href }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}>
       <svg viewBox="0 0 24 24" aria-hidden="true">{{ icon|safe }}</svg>{{ label }}
     </a>
@@ -73,6 +80,21 @@
     document.addEventListener("visibilitychange", refresh);
   }
 
+  // Checklist toggles (<form data-toggle>): post in the background and flip the button, so the list keeps its scroll.
+  document.addEventListener("submit", async (e) => {
+    const form = e.target.closest("form[data-toggle]");
+    if (!form) return;
+    e.preventDefault();
+    try {
+      const r = await fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin" });
+      if (!r.ok) throw new Error(r.status);
+    } catch (_) { form.submit(); return; }
+    const button = form.querySelector("button"), value = form.querySelector("input:not([name=back])");
+    const on = button.classList.toggle("on");
+    button.setAttribute("aria-pressed", on);
+    value.value = on ? 0 : 1;
+  });
+
   // Client-side filter for long lists: <input data-filter="#list"> hides rows whose text does not match.
   document.addEventListener("input", (e) => {
     const sel = e.target.dataset && e.target.dataset.filter;
@@ -82,6 +104,23 @@
       row.hidden = q && !row.textContent.toLowerCase().includes(q);
     });
   });
+
+  // Global synchronized tournament clock ticker
+  (() => {
+    let clockOffset = null;
+    setInterval(() => {
+      const box = document.getElementById("tournament-clock-box");
+      const el = document.getElementById("live-server-clock");
+      if (!box || !el) return;
+      const srv = Number(box.dataset.serverTs || 0);
+      if (!srv) return;
+      if (clockOffset === null) clockOffset = srv - Date.now();
+      const now = new Date(Date.now() + clockOffset);
+      el.textContent = String(now.getHours()).padStart(2, "0") + ":" +
+                       String(now.getMinutes()).padStart(2, "0") + ":" +
+                       String(now.getSeconds()).padStart(2, "0");
+    }, 1000);
+  })();
 </script>
 {% block extra_scripts %}{% endblock %}
 </body>

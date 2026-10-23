@@ -29,6 +29,14 @@ def test_group_sizes_always_valid(n: int) -> None:
     assert 2 * len(sizes) <= qualifiers <= size < 2 * qualifiers
 
 
+@pytest.mark.parametrize(
+    ("n", "fields", "sizes"),
+    [(31, 4, [4] * 7 + [3]), (32, 4, [4] * 8), (25, 2, [5, 4, 4, 4, 4, 4]), (8, 4, [4, 4])],
+)
+def test_group_count_fills_every_table_evenly(n: int, fields: int, sizes: list[int]) -> None:
+    assert planning.group_sizes(n, fields) == sizes
+
+
 def test_too_few_teams() -> None:
     with pytest.raises(ValueError):
         planning.group_sizes(3)

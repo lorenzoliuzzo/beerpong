@@ -1,34 +1,250 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
+{% block title %}{{ dash.team.name }} · Profilo Squadra{% endblock %}
 {% block content %}
 {% set t = dash.team %}
-<h1>{{ t.name }}</h1>
-<p class="muted">{{ ui.players(t) }}
-  {% if dash.champion %}· <span class="pill ok">Campioni 🏆</span>{% elif dash.eliminated %}· <span class="pill">Eliminata</span>{% endif %}</p>
 
-{% if dash.table %}
-  <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
-  {{ ui.table(dash.table.rows, T, mine=t.id) }}
+<!-- TEAM PROFILE HERO -->
+<div class="team-profile-hero">
+  <div class="tph-top">
+    <div>
+      <div class="tph-badges">
+        {% if profile and profile.grp_name %}
+          <a href="/gironi?g={{ t.grp }}" class="pill ok">{{ profile.grp_name }}</a>
+        {% endif %}
+        {% if profile and profile.field %}
+          <a href="/gironi?tavolo={{ profile.field }}" class="pill">🏓 Tavolo {{ profile.field }}</a>
+        {% endif %}
+        {% if dash.champion %}
+          <span class="pill ok">Campioni 🏆</span>
+        {% elif dash.eliminated %}
+          <span class="pill">Eliminata</span>
+        {% elif dash.status == "now" %}
+          <span class="live-badge-pulse">● IN CAMPO ORA</span>
+        {% elif dash.status == "next" %}
+          <span class="pill warn">📣 Prossima chiamata</span>
+        {% endif %}
+      </div>
+      <h1 style="margin:6px 0 2px">{{ t.name }}</h1>
+      <p class="muted" style="margin:0;font-size:1rem">👥 {{ ui.players(t) }}</p>
+    </div>
+    {% if me and me.id == t.id %}
+      <span class="badge" title="Questa è la tua squadra">LA TUA SQUADRA ★</span>
+    {% endif %}
+  </div>
+
+  {% if dash.status == "now" and dash.next_match %}
+    <div class="banner live" style="margin-top:12px;margin-bottom:0">
+      <div class="label">🔴 In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
+      <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
+      <p style="margin-top:6px"><a class="btn small" href="/live/{{ dash.next_match.id }}">🎥 Segui / Segna i tiri live</a></p>
+    </div>
+  {% elif dash.status == "next" and dash.next_match %}
+    <div class="banner next" style="margin-top:12px;margin-bottom:0">
+      <div class="label">📣 Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }})</div>
+      <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
+    </div>
+  {% endif %}
+
+  {% if dash.to_split and me and me.id == t.id %}
+    <div class="banner warm" style="margin-top:10px;margin-bottom:0">
+      <div class="label">Canestri individuali da dividere</div>
+      {% for m in dash.to_split %}
+        <p style="margin:4px 0"><a class="btn small" href="/canestri/{{ m.id }}">Dividi canestri di {{ m.n1 }} – {{ m.n2 }} ({{ m.s1 }}–{{ m.s2 }})</a></p>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+{% if profile %}
+  <!-- SEZIONE 1: TUTTI I RANKING DELLA SQUADRA -->
+  <div class="section-head" style="margin-top:18px">
+    <h2>🏅 Posizionamento nei Ranking</h2>
+    <a href="/classifiche" class="small">Vedi classifiche ›</a>
+  </div>
+  <div class="profile-rankings-grid">
+    <div class="pr-card">
+      <span class="pr-label">Nel {{ profile.grp_name or "Girone" }}</span>
+      <div class="pr-val">{% if profile.grp_rank %}{{ profile.grp_rank }}° <small>/ {{ profile.grp_total }}</small>{% else %}—{% endif %}</div>
+      <span class="pr-sub">{{ profile.grp_points }} pt · DB {{ "%+d"|format(profile.grp_diff) }}</span>
+    </div>
+    <div class="pr-card">
+      <span class="pr-label">Ranking Attacco (🥤)</span>
+      <div class="pr-val">{% if profile.team_cups_rank %}#{{ profile.team_cups_rank }} <small>/ {{ profile.total_teams }}</small>{% else %}—{% endif %}</div>
+      <span class="pr-sub">{{ profile.cups_for }} bicchieri ({{ "%.1f"|format(profile.cups_avg) }}/gara)</span>
+    </div>
+    <div class="pr-card">
+      <span class="pr-label">Ranking Precisione 🎯</span>
+      <div class="pr-val">{% if profile.team_accuracy_rank %}#{{ profile.team_accuracy_rank }}{% else %}—{% endif %}</div>
+      <span class="pr-sub">{% if profile.team_shots %}{{ "%.0f"|format(profile.team_accuracy) }}% ({{ profile.team_hits }}/{{ profile.team_shots }} tiri){% else %}Nessun tiro tracciato{% endif %}</span>
+    </div>
+    <div class="pr-card">
+      <span class="pr-label">Rendimento Generale</span>
+      <div class="pr-val">{% if profile.overall_group_rank %}#{{ profile.overall_group_rank }} <small>/ {{ profile.total_teams }}</small>{% else %}—{% endif %}</div>
+      <span class="pr-sub">Win rate {{ profile.win_rate }}% ({{ profile.won }}V {{ profile.drawn }}N {{ profile.lost }}P)</span>
+    </div>
+  </div>
+
+  <!-- SEZIONE 2: STATISTICHE DI COPPIA -->
+  <div class="section-head" style="margin-top:20px">
+    <h2>🤝 Statistiche di Coppia</h2>
+    <span class="muted small">{{ profile.played }} partite giocate</span>
+  </div>
+  <div class="card couple-stats-card">
+    <div class="couple-kpi-row">
+      <div>
+        <div class="ck-num">{{ profile.won }}-{{ profile.drawn }}-{{ profile.lost }}</div>
+        <div class="ck-lbl">V · N · P ({{ profile.win_rate }}%)</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ profile.cups_for }}</div>
+        <div class="ck-lbl">Bicchieri Fatti</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ profile.cups_against }}</div>
+        <div class="ck-lbl">Bicchieri Subiti</div>
+      </div>
+      <div>
+        <div class="ck-num {{ 'pos-diff' if profile.cups_diff > 0 else ('neg-diff' if profile.cups_diff < 0 else '') }}">{{ "%+d"|format(profile.cups_diff) }}</div>
+        <div class="ck-lbl">Diff. Bicchieri</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ "%.1f"|format(profile.cups_avg) }}</div>
+        <div class="ck-lbl">Media / Partita</div>
+      </div>
+      <div>
+        <div class="ck-num">{% if profile.team_shots %}{{ "%.0f"|format(profile.team_accuracy) }}%{% else %}—{% endif %}</div>
+        <div class="ck-lbl">Precisione Tiro</div>
+      </div>
+    </div>
+
+    {% if profile.players|length == 2 %}
+      {% set p1 = profile.players[0] %}
+      {% set p2 = profile.players[1] %}
+      <div class="couple-split-bar-wrap">
+        <div class="csb-labels">
+          <span>🎯 <strong>{{ p1.name }}</strong> ({{ p1.share_pct }}%)</span>
+          <span class="muted small">Contributo ai canestri</span>
+          <span>({{ p2.share_pct }}%) <strong>{{ p2.name }}</strong> 🎯</span>
+        </div>
+        <div class="csb-track">
+          <div class="csb-fill-1" style="width: {{ p1.share_pct }}%"></div>
+          <div class="csb-fill-2" style="width: {{ 100 - p1.share_pct }}%"></div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- SEZIONE 3: STATISTICHE PERSONALI DEI 2 GIOCATORI -->
+  <div class="section-head" style="margin-top:20px">
+    <h2>👤 Statistiche Personali Giocatori</h2>
+    <a href="/classifiche?vista=giocatori" class="small">Classifica marcatori ›</a>
+  </div>
+  <div class="players-profile-grid">
+    {% for p in profile.players %}
+      <div class="player-profile-card">
+        <div class="ppc-head">
+          <div>
+            <span class="muted small">Giocatore {{ p.index }}</span>
+            <h3 style="margin:2px 0 0">{{ p.name }}</h3>
+          </div>
+          <div class="ppc-ranks">
+            {% if p.scorer_rank %}
+              <span class="pill ok" title="Posizione in Classifica Marcatori">🏅 #{{ p.scorer_rank }} Marcatori</span>
+            {% endif %}
+            {% if p.accuracy_rank %}
+              <span class="pill" title="Posizione per Precisione al tiro">🔭 #{{ p.accuracy_rank }} Precisione</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="ppc-stats">
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ p.official_cups }} 🥤</span>
+            <span class="ppc-lbl">Canestri Ufficiali</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ "%.1f"|format(p.official_avg) }}</span>
+            <span class="ppc-lbl">Media / Partita</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ p.share_pct }}%</span>
+            <span class="ppc-lbl">Quota Coppia</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{% if p.live_shots %}{{ "%.0f"|format(p.live_accuracy) }}%{% else %}—{% endif %}</span>
+            <span class="ppc-lbl">Precisione Live</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ p.live_hits }}/{{ p.live_shots }}</span>
+            <span class="ppc-lbl">Tiri a segno</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{% if p.fav_cup %}#{{ p.fav_cup }} <small>({{ p.fav_cup_hits }}x)</small>{% else %}—{% endif %}</span>
+            <span class="ppc-lbl">Bicchiere Pref.</span>
+          </div>
+        </div>
+        {% if p.finishers %}
+          <div class="ppc-footer">
+            🏁 <strong>{{ p.finishers }}</strong> {{ "bicchiere decisivo (chiusura partita)" if p.finishers == 1 else "bicchieri decisivi (chiusure partita)" }}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if profile.team_shots > 0 %}
+    <details class="section" style="margin-top:14px">
+      <summary>🔺 Mappa dei bicchieri colpiti da {{ t.name }} ({{ profile.team_hits }} colpi tracciati)</summary>
+      <div class="body">
+        {% set max_h = (profile.team_heatmap.values()|max) or 1 %}
+        <div class="heatmap" style="margin:8px auto">
+          {% for row in [[1,2,3,4], [5,6,7], [8,9], [10]] %}
+            <div class="heat-row">
+              {% for c in row %}
+                {% set h = profile.team_heatmap[c] %}
+                <div class="heat-cup" style="--heat: {{ (h / max_h)|round(2) }}">
+                  <span>{{ c }}</span>
+                  <small>{{ h }}</small>
+                </div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+  {% endif %}
 {% endif %}
 
+<!-- SEZIONE 4: CLASSIFICA DEL GIRONE -->
+{% if dash.table %}
+  <div class="section-head" style="margin-top:22px">
+    <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
+    <a href="/gironi?g={{ t.grp }}" class="small">Vai al girone ›</a>
+  </div>
+  {{ ui.table(dash.table.rows, T, thirds, mine=t.id) }}
+{% endif %}
+
+<!-- SEZIONE 5: PARTITE DELLA SQUADRA -->
 {% if dash.matches %}
-  <h2>Partite</h2>
+  <h2 style="margin-top:22px">📅 Partite di {{ t.name }}</h2>
   {% for m in dash.matches %}{{ ui.match(m, mine=t.id) }}{% endfor %}
 {% elif cfg.phase == "setup" %}
-  <p class="muted">Il calendario comparirà all'inizio del torneo.</p>
+  <p class="muted" style="margin-top:18px">Il calendario comparirà all'inizio del torneo.</p>
 {% endif %}
 
+<!-- SEZIONE 6: SCONTRI DIRETTI (H2H) -->
 {% if rivals %}
-  <h2>Scontri diretti</h2>
+  <h2 style="margin-top:22px">⚔️ Scontri diretti (Testa a Testa)</h2>
   <form method="get">
     <select name="vs" onchange="this.form.submit()" aria-label="Confronta con">
       <option value="">Confronta con…</option>
-      {% for r in rivals %}<option value="{{ r.id }}" {{ 'selected' if r.id == other }}>{{ r.name }}</option>{% endfor %}
+      {% for r in rivals %}<option value="{{ r.id }}" {{ 'selected' if r.id == other }}>{{ r.name }} ({{ r.p1 }} &amp; {{ r.p2 }})</option>{% endfor %}
     </select>
     <noscript><button type="submit">Confronta</button></noscript>
   </form>
   {% if h2h %}
-    <div class="card stats">
+    <div class="card stats" style="margin-top:10px">
       <div><div class="big">{{ h2h.wins_a }}</div><span class="muted small">vittorie {{ t.name }}</span></div>
       <div><div class="big">{{ h2h.draws }}</div><span class="muted small">pareggi</span></div>
       <div><div class="big">{{ h2h.wins_b }}</div><span class="muted small">vittorie {{ T[other].name }}</span></div>

@@ -28,7 +28,7 @@ def bracket_plan(group_count: int) -> tuple[int, int]:
     return size, min(size, 3 * group_count)
 
 
-def choose_group_count(n_teams: int) -> int:
+def choose_group_count(n_teams: int, fields: int = 1) -> int:
     if n_teams < 4:
         raise ValueError("Servono almeno 4 squadre.")
     candidates = [
@@ -38,12 +38,15 @@ def choose_group_count(n_teams: int) -> int:
     ]
     # Prefer counts whose bracket can be filled with thirds alone, without byes.
     full = [g for g in candidates if bracket_plan(g)[0] <= 3 * g]
-    pool = full or candidates
+    # Above that, the same number of groups on every table: each table then runs its own queue
+    # (see build_table_queues) and none of them finishes far earlier than the others.
+    even = [g for g in candidates if g % fields == 0]
+    pool = [g for g in full if g in even] or even or full or candidates
     return min(pool, key=lambda g: (abs(n_teams / g - TARGET_GROUP), g))
 
 
-def group_sizes(n_teams: int) -> list[int]:
-    g = choose_group_count(n_teams)
+def group_sizes(n_teams: int, fields: int = 1) -> list[int]:
+    g = choose_group_count(n_teams, fields)
     base, extra = divmod(n_teams, g)
     return [base + 1] * extra + [base] * (g - extra)
 
@@ -97,3 +100,38 @@ def pack_slots(fixtures: list[Fixture], fields: int) -> list[list[Fixture]]:
         remaining = [p for p in remaining if p[0] not in chosen_ids]
         slots.append([f for _, f in chosen])
     return slots
+
+
+def table_for_group(grp: int, n_groups: int, fields: int) -> int:
+    """Assign contiguous groups to tables 1..fields (e.g. 8 groups on 4 tables -> A-B:1, C-D:2, E-F:3, G-H:4)."""
+    if fields <= 1 or n_groups <= 0:
+        return 1
+    if n_groups >= fields:
+        return min(fields, (grp * fields) // n_groups + 1)
+    return (grp % fields) + 1
+
+
+def build_table_queues(groups: list[list[int]], fields: int) -> dict[int, list[Fixture]]:
+    """Build an independent match queue for each table (1..fields) from its assigned groups."""
+    n_groups = len(groups)
+    by_table: dict[int, dict[int, list[int]]] = {f: {} for f in range(1, fields + 1)}
+    for gi, members in enumerate(groups):
+        t_no = table_for_group(gi, n_groups, fields)
+        by_table.setdefault(t_no, {})[gi] = members
+
+    queues: dict[int, list[Fixture]] = {}
+    for f, grp_map in sorted(by_table.items()):
+        if not grp_map:
+            queues[f] = []
+            continue
+        per_group = {gi: round_robin(members) for gi, members in grp_map.items()}
+        max_rounds = max((len(r) for r in per_group.values()), default=0)
+        raw_fixtures: list[Fixture] = []
+        for r in range(max_rounds):
+            for gi, rounds in per_group.items():
+                if r < len(rounds):
+                    raw_fixtures += [Fixture(gi, r + 1, a, b) for a, b in rounds[r]]
+        # Order single-table queue so no team plays back-to-back and everyone rests evenly
+        queues[f] = [slot[0] for slot in pack_slots(raw_fixtures, 1)]
+    return queues
+

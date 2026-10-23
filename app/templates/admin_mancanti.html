@@ -89,15 +89,34 @@
       <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
         <div class="title">{{ t.name }}</div>{{ ui.payment_pill(t, payments) }}</a>
       {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
-      <form method="post" action="/admin/squadre/{{ t.id }}/pagato">
-        <input type="hidden" name="pagato" value="1"><input type="hidden" name="back" value="/admin/mancanti#non-pagato">
-        <button class="small" type="submit">Pagato ✓</button>
-      </form>
+      {{ ui.checks(t, "/admin/mancanti#non-pagato") }}
     </div>
   {% else %}
     <div class="row muted">Hanno pagato tutte. 🍻</div>
   {% endfor %}
 </div>
+
+<h2 id="fuori-gruppo" class="anchor">Non ancora nel gruppo WhatsApp ({{ ov.not_in_chat|length }})</h2>
+<div class="list">
+  {% for t in ov.not_in_chat %}
+    <div class="row">
+      <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+        <div class="title">{{ t.name }}</div>
+        <span class="muted small">{{ t.phone1 or "senza telefono" }}{% if t.phone2 %} · {{ t.phone2 }}{% endif %}</span></a>
+      {{ ui.checks(t, "/admin/mancanti#fuori-gruppo") }}
+    </div>
+  {% else %}
+    <div class="row muted">Tutte le coppie sono nel gruppo. 🍻</div>
+  {% endfor %}
+</div>
+<details>
+  <summary><strong>Incolla i numeri del gruppo</strong></summary>
+  <form method="post" action="/admin/gruppo/elenco">
+    <label for="elenco-gruppo">Copia i partecipanti dalle info del gruppo: ogni coppia con un numero nell'elenco viene segnata «nel gruppo».</label>
+    <textarea id="elenco-gruppo" name="elenco" required></textarea>
+    <button class="wide" type="submit">Segna nel gruppo</button>
+  </form>
+</details>
 
 <h2 id="da-sistemare" class="anchor">Profili da completare o verificare ({{ ov.incomplete|length }})</h2>
 <div class="list">

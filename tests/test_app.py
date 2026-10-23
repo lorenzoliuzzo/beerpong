@@ -86,9 +86,78 @@ def test_db_dependency_closes_from_another_thread(tmp_path: Path, monkeypatch: p
 def test_public_pages_render(client: TestClient) -> None:
     import_teams(client, 5)
     client.post("/logout")
-    for path in ["/", "/programma", "/classifiche", "/classifiche?vista=giocatori", "/classifiche?vista=coppie",
+    for path in ["/", "/gironi", "/programma", "/classifiche", "/classifiche?vista=giocatori", "/classifiche?vista=coppie",
                  "/tabellone", "/login", "/checkin", "/checkin/1", "/squadra/1"]:
         assert client.get(path).status_code == 200, path
+    # Live redirect
+    assert client.get("/live", follow_redirects=False).status_code == 303
+
+
+def test_navigation_tabs_structure(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    r = client.get("/")
+    assert r.status_code == 200
+    # Setup/groups phase: Gironi, Statistiche live, Classifica, Admin
+    assert "Gironi" in r.text
+    assert "Statistiche live" in r.text
+    assert "Classifica" in r.text
+    assert "Admin" in r.text
+    # Programma is no longer in tabbar
+    assert '<a href="/programma"' not in r.text
+
+
+def test_gironi_single_and_all_modes(client: TestClient) -> None:
+    setup_tournament(client, 8)
+    # Default view without ?g=all is mode-single (shows single group with matches)
+    r_single = client.get("/gironi")
+    assert r_single.status_code == 200
+    assert 'class="mode-single"' in r_single.text
+
+    # View all groups (?g=all) is mode-all (standings only, matches hidden via CSS)
+    r_all = client.get("/gironi?g=all")
+    assert r_all.status_code == 200
+    assert 'class="mode-all"' in r_all.text
+
+
+def test_asynchronous_tables_and_group_mapping(client: TestClient) -> None:
+    setup_tournament(client, 32, fields=4)
+    t_views = db_call(service.table_views)
+    assert len(t_views) == 4
+    assert [tv.group_letters for tv in t_views] == ["A · B", "C · D", "E · F", "G · H"]
+    assert all(tv.total_count == 12 for tv in t_views)
+
+    # Complete 2 matches on Table 1 only; Tables 2, 3, 4 are still on their first match (slot 0)
+    t1_first = t_views[0].current
+    t1_second = t_views[0].next_match
+    assert t1_first is not None and t1_second is not None
+    client.post(f"/partita/{t1_first.id}", data={"s1": 10, "s2": 6})
+
+    now_ms, next_ms = db_call(lambda db: service.live(service.matches(db)))
+    now_by_field = {m.field: m for m in now_ms}
+    # Table 1 immediately advanced to t1_second while Tables 2, 3, 4 are still at slot 0
+    assert now_by_field[1].id == t1_second.id
+    assert now_by_field[2].slot == 0
+    assert now_by_field[3].slot == 0
+    assert now_by_field[4].slot == 0
+
+
+def test_phase_transition_and_team_profile(client: TestClient) -> None:
+    rng = random.Random(77)
+    setup_tournament(client, 8, fields=2)
+    r_profile = client.get("/squadra/1")
+    assert r_profile.status_code == 200
+    assert "Posizionamento nei Ranking" in r_profile.text
+    assert "Statistiche di Coppia" in r_profile.text
+    assert "Statistiche Personali Giocatori" in r_profile.text
+
+    # Finish all group matches -> /gironi automatically redirects to /tabellone
+    play_all(client, "group", rng)
+    r_gironi = client.get("/gironi", follow_redirects=False)
+    assert r_gironi.status_code == 303 and r_gironi.headers["location"] == "/tabellone"
+    # Archived groups still accessible via ?archivio=1
+    assert client.get("/gironi?archivio=1").status_code == 200
+
 
 
 def test_admin_and_qr_require_login(client: TestClient) -> None:
@@ -611,3 +680,74 @@ def test_board_shows_provisional_groups_then_live_then_bracket(client: TestClien
     for _ in range(5):
         play_all(client, "ko", random.Random(1))
     assert "Campioni" in client.get("/cartellone").text
+
+
+def test_chat_list_marks_couples_by_phone(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": (
+        "A; a1; a2; 3331234567\nB; b1; b2; 3331110001; 3331110002\nC; c1; c2; 3331110003"
+    )})
+    r = client.post("/admin/gruppo/elenco", data={"elenco": (
+        "+39 333 123 4567\n~ Bice: +39 333 111-0002\nTu\n+39 333 111 0001\n+39 320 000 0000"
+    )})
+    assert "2 coppie segnate nel gruppo. Numeri senza coppia: +393200000000" in r.text
+    in_chat = {t["name"] for t in db_call(service.teams).values() if t["in_chat"]}
+    assert in_chat == {"A", "B"}
+    assert "Non ancora nel gruppo WhatsApp (1)" in r.text
+    assert "lo erano già" in client.post("/admin/gruppo/elenco", data={"elenco": "3331234567"}).text
+
+
+def test_chat_flag_toggles_and_survives_team_edit(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "A; a1; a2; 3331110000"})
+    a = next(iter(db_call(service.teams)))
+    r = client.post(f"/admin/squadre/{a}/gruppo", data={"gruppo": 1, "back": "https://evil.example"}, follow_redirects=False)
+    assert r.headers["location"] == "/admin/mancanti#fuori-gruppo"
+    assert db_call(service.team, a)["in_chat"] == 1
+    assert "0 fuori dal gruppo" in client.get("/admin").text
+    form = {"name": "A", "p1": "a1", "p2": "a2", "phone1": "3331110000", "gruppo": "1"}
+    client.post(f"/admin/squadre/{a}", data=form)
+    assert db_call(service.team, a)["in_chat"] == 1
+    client.post(f"/admin/squadre/{a}", data={k: v for k, v in form.items() if k != "gruppo"})
+    assert db_call(service.team, a)["in_chat"] == 0
+
+
+def test_couples_list_has_paid_and_chat_toggles(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "A; a1; a2; 3331110000\nB; b1; b2"})
+    a = next(t["id"] for t in db_call(service.teams).values() if t["name"] == "A")
+    client.post(f"/admin/squadre/{a}/pagato", data={"pagato": 1})
+    page = client.get("/admin").text
+    assert "1/2</strong> pagato" in page and "0/2</strong> nel gruppo" in page
+    assert f'<input type="hidden" name="pagato" value="0"><input type="hidden" name="back" value="/admin#t{a}">' in page
+    assert 'class="check on" aria-pressed="true" aria-label="Pagato: A"' in page
+    assert 'class="check " aria-pressed="false" aria-label="Nel gruppo: A"' in page
+    assert "senza telefono" in page  # B has no phone
+    client.post(f"/admin/squadre/{a}/gruppo", data={"gruppo": 1})
+    client.post(f"/admin/squadre/{a}/pagato", data={"pagato": 0})
+    t = db_call(service.team, a)
+    assert (t["paid"], t["in_chat"]) == (0, 1)
+    assert 'aria-pressed="true" aria-label="Nel gruppo: A"' in client.get("/admin/mancanti").text
+
+
+def test_shared_tables_never_show_a_couple_twice(client: TestClient) -> None:
+    # 5 couples, 2 tables: one group shares both tables, so table 1 must not run ahead of table 2.
+    setup_tournament(client, 5, fields=2)
+    for _ in range(6):
+        now, _ = db_call(lambda db: service.live(service.matches(db)))
+        playing = [t for m in now for t in (m.t1, m.t2)]
+        assert len(playing) == len(set(playing))
+        client.post(f"/partita/{min(now, key=lambda m: m.field).id}", data={"s1": 10, "s2": 4})
+
+
+def test_31_couples_on_4_tables_balance_the_queues(client: TestClient) -> None:
+    setup_tournament(client, 31, fields=4)
+    assert [tv.total_count for tv in db_call(service.table_views)] == [12, 12, 12, 9]
+
+
+def test_solo_serata_list(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "; ; ; 3330000001\n; Ada; ; 3330000002\nA; a1; a2; 3331110000"})
+    page = client.get("/admin").text
+    assert 'Solo serata <span class="pill">2</span>' in page
+    assert "Ada" in page and "Senza nome" in page and "tel:3330000001" in page

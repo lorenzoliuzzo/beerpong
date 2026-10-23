@@ -57,6 +57,7 @@ class MatchView:
     grp: int | None
     round: int
     pos: int
+    live_score: tuple[int, int] | None = None
 
     def side(self, team: int | None) -> int | None:
         return 1 if team is not None and team == self.t1 else 2 if team is not None and team == self.t2 else None
@@ -314,6 +315,7 @@ def save_team(
     paid: bool,
     present: bool,
     note: str = "",
+    in_chat: bool = False,
 ) -> int:
     """Admin add (team_id None) or edit. After the draw only names, phones and payment can change."""
     setup = get_setting(db, "phase") == "setup"
@@ -335,19 +337,19 @@ def save_team(
             raise TournamentError("A torneo iniziato la coppia deve avere due giocatori.")
     if present and not (p1 and p2):
         raise TournamentError("Per segnarla presente servono entrambi i giocatori.")
-    values = (name, p1, p2, phone1, phone2, payment or None, int(paid), int(present), note.strip())
+    values = (name, p1, p2, phone1, phone2, payment or None, int(paid), int(present), note.strip(), int(in_chat))
     try:
         with db:
             if current is None:
                 cur = db.execute(
-                    "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, paid, checked_in, note)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, paid, checked_in, note, in_chat)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     values,
                 )
                 return cur.lastrowid
             db.execute(
                 "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ?, payment = ?, paid = ?,"
-                " checked_in = ?, note = ? WHERE id = ?",
+                " checked_in = ?, note = ?, in_chat = ? WHERE id = ?",
                 (*values, team_id),
             )
             return team_id
@@ -369,6 +371,11 @@ def set_paid(db: sqlite3.Connection, team_id: int, paid: bool) -> None:
         db.execute("UPDATE teams SET paid = ? WHERE id = ?", (int(paid), team_id))
 
 
+def set_in_chat(db: sqlite3.Connection, team_id: int, in_chat: bool) -> None:
+    with db:
+        db.execute("UPDATE teams SET in_chat = ? WHERE id = ?", (int(in_chat), team_id))
+
+
 # --- Tournament flow -------------------------------------------------------
 
 
@@ -381,12 +388,12 @@ def _next_minute(dt: datetime) -> datetime:
     return floor if floor == dt else floor + timedelta(minutes=1)
 
 
-def draw_groups(team_ids: list[int], seed: int) -> list[list[int]]:
+def draw_groups(team_ids: list[int], seed: int, fields: int = 1) -> list[list[int]]:
     """Same teams + same seed = same groups, so a previewed draw can be started as-is."""
     ids = sorted(team_ids)
     random.Random(seed).shuffle(ids)
     groups, pos = [], 0
-    for size in planning.group_sizes(len(ids)):
+    for size in planning.group_sizes(len(ids), fields):
         groups.append(ids[pos : pos + size])
         pos += size
     return groups
@@ -404,15 +411,24 @@ class DrawPreview:
     knockout_minutes: int
 
 
+def _group_schedule(groups: list[list[int]], fields: int) -> list[tuple[int, int, planning.Fixture]]:
+    """(slot, field, fixture). With the same number of groups on every table each table runs its own queue;
+    otherwise the groups share all tables slot by slot, so no table sits idle while another has a long queue."""
+    if len(groups) % fields == 0:
+        queues = planning.build_table_queues(groups, fields)
+        return [(si, f, fx) for f, queue in sorted(queues.items()) for si, fx in enumerate(queue)]
+    slots = planning.pack_slots(planning.build_fixtures(groups), fields)
+    return [(si, fi + 1, fx) for si, slot in enumerate(slots) for fi, fx in enumerate(slot)]
+
+
 def preview_draw(db: sqlite3.Connection, present_only: bool, seed: int) -> DrawPreview:
     cfg = load_config(db)
     rows = teams(db)
     ids = [t["id"] for t in rows.values() if t["checked_in"] or (not present_only and t["p1"] and t["p2"])]
     if len(ids) < MIN_TEAMS:
         raise TournamentError(f"Servono almeno {MIN_TEAMS} coppie {'presenti' if present_only else 'complete'}.")
-    groups = draw_groups(ids, seed)
-    fixtures = planning.build_fixtures(groups)
-    slots = planning.pack_slots(fixtures, cfg.fields)
+    groups = draw_groups(ids, seed, cfg.fields)
+    schedule = _group_schedule(groups, cfg.fields)
     size, qualifiers = planning.bracket_plan(len(groups))
     ko_slots, remaining = 0, size
     while remaining > 2:  # every round before the final
@@ -424,8 +440,8 @@ def preview_draw(db: sqlite3.Connection, present_only: bool, seed: int) -> DrawP
         bracket_size=size,
         thirds=qualifiers - 2 * len(groups),
         byes=size - qualifiers,
-        matches=len(fixtures),
-        group_minutes=len(slots) * (cfg.group_min + cfg.buffer_min),
+        matches=len(schedule),
+        group_minutes=(max(si for si, _, _ in schedule) + 1) * (cfg.group_min + cfg.buffer_min),
         knockout_minutes=ko_slots * (cfg.ko_min + cfg.buffer_min),
     )
 
@@ -438,22 +454,19 @@ def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = N
     if len(ids) < MIN_TEAMS:
         raise TournamentError(f"Servono almeno {MIN_TEAMS} coppie presenti.")
     # Default to the board's draw, so the groups people saw on the poster are the ones played.
-    groups = draw_groups(ids, int(get_setting(db, "board_seed")) if seed is None else seed)
-    slots = planning.pack_slots(planning.build_fixtures(groups), cfg.fields)
+    groups = draw_groups(ids, int(get_setting(db, "board_seed")) if seed is None else seed, cfg.fields)
     base = _next_minute(now)
     step = timedelta(minutes=cfg.group_min + cfg.buffer_min)
 
     with db:
         for gi, members in enumerate(groups):
             db.executemany("UPDATE teams SET grp = ? WHERE id = ?", [(gi, t) for t in members])
-        for si, slot in enumerate(slots):
-            start = _fmt(base + si * step)
-            for fi, f in enumerate(slot):
-                db.execute(
-                    "INSERT INTO matches(stage, grp, round, slot, field, start, duration, team1, team2)"
-                    " VALUES ('group', ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (f.grp, f.round, si, fi + 1, start, cfg.group_min, f.team1, f.team2),
-                )
+        for si, field_no, f in _group_schedule(groups, cfg.fields):
+            db.execute(
+                "INSERT INTO matches(stage, grp, round, slot, field, start, duration, team1, team2)"
+                " VALUES ('group', ?, ?, ?, ?, ?, ?, ?, ?)",
+                (f.grp, f.round, si, field_no, _fmt(base + si * step), cfg.group_min, f.team1, f.team2),
+            )
         set_setting(db, "phase", "groups")
 
 
@@ -488,6 +501,24 @@ def _advance(db: sqlite3.Connection, m: sqlite3.Row, winner: int) -> None:
     db.execute(f"UPDATE matches SET {column} = ? WHERE id = ?", (winner, nxt["id"]))
 
 
+def recalc_table_schedule(
+    db: sqlite3.Connection, field_no: int, stage: str = "group", now: datetime | None = None
+) -> None:
+    """Dynamically recalculate start times for remaining matches on a single table using the single server clock."""
+    cfg = load_config(db)
+    base = _next_minute(now or datetime.now())
+    dur = cfg.group_min if stage == "group" else cfg.ko_min
+    step = timedelta(minutes=dur + cfg.buffer_min)
+    pending = db.execute(
+        "SELECT id FROM matches WHERE field = ? AND stage = ? AND done = 0 AND bye = 0"
+        " ORDER BY slot IS NULL, slot, id",
+        (field_no, stage),
+    ).fetchall()
+    with db:
+        for idx, r in enumerate(pending):
+            db.execute("UPDATE matches SET start = ? WHERE id = ?", (_fmt(base + idx * step), r["id"]))
+
+
 def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winner_side: int | None = None) -> None:
     m = db.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
     if m is None or m["bye"]:
@@ -496,6 +527,8 @@ def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winne
         raise TournamentError("Le squadre di questa partita non sono ancora definite.")
     if not (0 <= s1 <= MAX_TEAM_CUPS and 0 <= s2 <= MAX_TEAM_CUPS):
         raise TournamentError(f"Il punteggio deve essere tra 0 e {MAX_TEAM_CUPS}.")
+
+    was_done = bool(m["done"])
 
     if m["stage"] == "group":
         if get_setting(db, "phase") != "groups":
@@ -524,6 +557,14 @@ def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winne
         )
         if m["stage"] == "ko":
             _advance(db, m, winner)
+
+    if not was_done and m["field"] is not None:
+        pending = db.execute(
+            "SELECT field, team1, team2 FROM matches WHERE stage = ? AND done = 0 AND bye = 0", (m["stage"],)
+        ).fetchall()
+        # A table may only run ahead when none of its teams is still due on another table.
+        if tables_independent([tuple(r) for r in pending]):
+            recalc_table_schedule(db, m["field"], m["stage"])
 
     if m["stage"] == "group":
         pending = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
@@ -635,9 +676,14 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
     def split(a: int | None, b: int | None) -> tuple[int, int] | None:
         return (a, b) if a is not None and b is not None else None
 
+    from . import tracking  # tracking imports this module
+
+    has_reports = {r[0] for r in db.execute("SELECT DISTINCT match_id FROM reports").fetchall()}
+
     views = []
     for r in rows:
         label = group_name(r["grp"]) if r["stage"] == "group" else bracket.round_name(r["round"], total_rounds)
+        ls = tracking.live_score(db, r["id"]) if r["id"] in has_reports and not r["done"] else None
         views.append(
             MatchView(
                 id=r["id"],
@@ -661,6 +707,7 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 grp=r["grp"],
                 round=r["round"],
                 pos=r["pos"],
+                live_score=ls,
             )
         )
     return views
@@ -678,12 +725,102 @@ def by_slot(views: list[MatchView]) -> list[tuple[int, str, list[MatchView]]]:
     return [(s, ms[0].time, ms) for s, ms in sorted(slots.items())]
 
 
+def tables_independent(pending: list[tuple[int | None, int | None, int | None]]) -> bool:
+    """(field, team1, team2) of unplayed matches: True when no team still has to play on two tables,
+    so each table can move through its own queue without waiting for the others."""
+    fields_of: dict[int, set[int]] = defaultdict(set)
+    for f, *pair in pending:
+        for t in pair:
+            if t is not None and f is not None:
+                fields_of[t].add(f)
+    return all(len(fs) == 1 for fs in fields_of.values())
+
+
 def live(views: list[MatchView]) -> tuple[list[MatchView], list[MatchView]]:
-    """Matches on the tables now (earliest unfinished slot) and the slot after it."""
-    pending = by_slot([m for m in views if not m.done])
+    """Matches on the tables now and next up: per table when tables run their own queues,
+    otherwise the earliest unfinished slot (the groups share the tables) and the slot after it."""
+    by_field: dict[int, list[MatchView]] = defaultdict(list)
+    unassigned: list[MatchView] = []
+    for m in views:
+        if m.done or m.bye:
+            continue
+        if m.field is not None:
+            by_field[m.field].append(m)
+        if m.slot is not None:
+            unassigned.append(m)
+    if by_field and tables_independent([(m.field, m.t1, m.t2) for ms in by_field.values() for m in ms]):
+        now: list[MatchView] = []
+        upcoming: list[MatchView] = []
+        for f in sorted(by_field):
+            q = [m for m in by_field[f] if m.t1 is not None and m.t2 is not None] or by_field[f]
+            if q:
+                now.append(q[0])
+            if len(q) > 1:
+                upcoming.append(q[1])
+        return now, upcoming
+    pending = by_slot(unassigned)
     now = pending[0][2] if pending else []
     upcoming = pending[1][2] if len(pending) > 1 else []
     return now, upcoming
+
+
+@dataclass
+class TableScheduleView:
+    field: int
+    name: str
+    groups: list[GroupTable]
+    group_letters: str
+    current: MatchView | None
+    next_match: MatchView | None
+    upcoming: list[MatchView]
+    played: list[MatchView]
+    done_count: int
+    total_count: int
+
+
+def table_views(
+    db: sqlite3.Connection,
+    g_tables: list[GroupTable] | None = None,
+    all_matches: list[MatchView] | None = None,
+) -> list[TableScheduleView]:
+    cfg = load_config(db)
+    if g_tables is None:
+        g_tables = group_tables(db)
+    if all_matches is None:
+        all_matches = matches(db)
+    stage_filter = "group" if cfg.phase == "groups" else None
+    out: list[TableScheduleView] = []
+    for f in range(1, cfg.fields + 1):
+        f_matches = [
+            m
+            for m in all_matches
+            if m.field == f and not m.bye and (stage_filter is None or m.stage == stage_filter)
+        ]
+        f_grps_from_matches = {m.grp for m in f_matches if m.grp is not None}
+        if f_grps_from_matches:
+            t_groups = [g for g in g_tables if g.grp in f_grps_from_matches]
+        else:
+            t_groups = [
+                g for g in g_tables if planning.table_for_group(g.grp, len(g_tables), cfg.fields) == f
+            ]
+        letters = " · ".join(g.name.replace("Girone ", "") for g in t_groups)
+        pending = [m for m in f_matches if not m.done]
+        played = [m for m in f_matches if m.done]
+        out.append(
+            TableScheduleView(
+                field=f,
+                name=f"Tavolo {f}",
+                groups=t_groups,
+                group_letters=letters,
+                current=pending[0] if pending else None,
+                next_match=pending[1] if len(pending) > 1 else None,
+                upcoming=pending[2:],
+                played=played,
+                done_count=len(played),
+                total_count=len(f_matches),
+            )
+        )
+    return out
 
 
 def group_tables(db: sqlite3.Connection) -> list[GroupTable]:
@@ -701,6 +838,47 @@ def group_tables(db: sqlite3.Connection) -> list[GroupTable]:
                 matrix[j][i] = f"{m.s2}-{m.s1}"
         out.append(GroupTable(g, group_name(g), rows, ms, matrix))
     return out
+
+
+@dataclass
+class OverallStandingsRow:
+    rank: int
+    team_id: int
+    team_name: str
+    grp: int
+    grp_name: str
+    played: int
+    won: int
+    drawn: int
+    lost: int
+    diff: int
+    points: int
+
+
+def overall_standings(db: sqlite3.Connection) -> list[OverallStandingsRow]:
+    g_rows = _group_rows(db)
+    all_rows = []
+    for g, rows in g_rows.items():
+        for r in rows:
+            all_rows.append((g, r))
+    all_rows.sort(key=lambda item: (-item[1].points, -item[1].diff, -item[1].won))
+    t_names = teams(db)
+    return [
+        OverallStandingsRow(
+            rank=i + 1,
+            team_id=r.team,
+            team_name=t_names[r.team]["name"],
+            grp=g,
+            grp_name=group_name(g),
+            played=r.played,
+            won=r.won,
+            drawn=r.drawn,
+            lost=r.lost,
+            diff=r.diff,
+            points=r.points,
+        )
+        for i, (g, r) in enumerate(all_rows)
+    ]
 
 
 def thirds_needed(db: sqlite3.Connection) -> int:
@@ -723,6 +901,8 @@ class Scorer:
     player: str
     team: str
     team_id: int
+    grp: int | None = None
+    grp_name: str = ""
     cups: int = 0
     played: int = 0
 
@@ -735,7 +915,9 @@ def scorers(db: sqlite3.Connection) -> list[Scorer]:
     """Player ranking: only cups the team has split between its two players count."""
     team_rows = teams(db)
     stats = {
-        (t["id"], p): Scorer(t[p], t["name"], t["id"])
+        (t["id"], p): Scorer(
+            t[p], t["name"], t["id"], grp=t["grp"], grp_name=group_name(t["grp"]) if t["grp"] is not None else ""
+        )
         for t in team_rows.values()
         if t["checked_in"]
         for p in ("p1", "p2")
@@ -755,6 +937,8 @@ def scorers(db: sqlite3.Connection) -> list[Scorer]:
 class TeamStats:
     team: int
     name: str
+    grp: int | None = None
+    grp_name: str = ""
     played: int = 0
     won: int = 0
     cups_for: int = 0
@@ -764,9 +948,19 @@ class TeamStats:
     def average(self) -> float:
         return self.cups_for / self.played if self.played else 0.0
 
+    @property
+    def diff(self) -> int:
+        return self.cups_for - self.cups_against
+
 
 def team_ranking(db: sqlite3.Connection) -> list[TeamStats]:
-    stats = {t["id"]: TeamStats(t["id"], t["name"]) for t in teams(db).values() if t["checked_in"]}
+    stats = {
+        t["id"]: TeamStats(
+            t["id"], t["name"], grp=t["grp"], grp_name=group_name(t["grp"]) if t["grp"] is not None else ""
+        )
+        for t in teams(db).values()
+        if t["checked_in"]
+    }
     for m in matches(db):
         if not m.done or m.bye:
             continue
@@ -849,6 +1043,208 @@ def team_dashboard(db: sqlite3.Connection, team_id: int) -> TeamDashboard | None
         position=position,
         eliminated=eliminated,
         champion=bool(final and final.done and final.winner == team_id),
+    )
+
+
+@dataclass
+class PlayerProfile:
+    index: int
+    name: str
+    scorer_rank: int | None
+    total_scorers: int
+    official_cups: int
+    official_played: int
+    official_avg: float
+    share_pct: int
+    live_shots: int
+    live_hits: int
+    live_accuracy: float
+    accuracy_rank: int | None
+    finishers: int
+    fav_cup: int | None
+    fav_cup_hits: int
+
+
+@dataclass
+class TeamProfile:
+    field: int | None
+    grp_name: str
+    grp_rank: int | None
+    grp_total: int
+    grp_points: int
+    grp_diff: int
+    overall_group_rank: int | None
+    team_cups_rank: int | None
+    total_teams: int
+    played: int
+    won: int
+    drawn: int
+    lost: int
+    win_rate: int
+    cups_for: int
+    cups_against: int
+    cups_diff: int
+    cups_avg: float
+    team_shots: int
+    team_hits: int
+    team_accuracy: float
+    team_accuracy_rank: int | None
+    team_heatmap: dict[int, int]
+    players: list[PlayerProfile]
+
+
+def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
+    from . import tracking
+
+    row = team(db, team_id)
+    if row is None:
+        return None
+    cfg = load_config(db)
+    g_tables = group_tables(db)
+    g_table = next((g for g in g_tables if g.grp == row["grp"]), None) if row["grp"] is not None else None
+    grp_row = next((r for r in g_table.rows if r.team == team_id), None) if g_table else None
+    grp_rank = next((i for i, r in enumerate(g_table.rows, 1) if r.team == team_id), None) if g_table else None
+
+    ov = overall_standings(db)
+    overall_group_rank = next((r.rank for r in ov if r.team_id == team_id), None)
+
+    t_rank_list = team_ranking(db)
+    team_cups_rank = next((i for i, s in enumerate(t_rank_list, 1) if s.team == team_id), None)
+    t_stat = next((s for s in t_rank_list if s.team == team_id), None)
+
+    all_ms = [m for m in matches(db) if m.side(team_id) and not m.bye]
+    done_ms = [m for m in all_ms if m.done]
+    played = len(done_ms)
+    won = sum(1 for m in done_ms if m.winner == team_id)
+    drawn = sum(1 for m in done_ms if m.winner is None)
+    lost = played - won - drawn
+    win_rate = round(100 * won / played) if played else 0
+    cups_for = t_stat.cups_for if t_stat else sum((m.s1 if m.t1 == team_id else m.s2) or 0 for m in done_ms)
+    cups_against = t_stat.cups_against if t_stat else sum((m.s2 if m.t1 == team_id else m.s1) or 0 for m in done_ms)
+    cups_diff = cups_for - cups_against
+    cups_avg = cups_for / played if played else 0.0
+
+    # Determine assigned table (field)
+    group_ms = [m for m in all_ms if m.stage == "group" and m.field is not None]
+    if group_ms:
+        assigned_field = group_ms[0].field
+    elif row["grp"] is not None and g_tables:
+        assigned_field = planning.table_for_group(row["grp"], len(g_tables), cfg.fields)
+    else:
+        assigned_field = None
+
+    # Scorer rankings
+    sc_list = scorers(db)
+    sc_by_key = {(s.team_id, s.player): (idx, s) for idx, s in enumerate(sc_list, 1)}
+
+    # Live shot tracking stats (team & individual + per-cup heatmaps)
+    shot_st = tracking.shot_stats(db)
+    acc_sorted = sorted(
+        [p for p in shot_st.players if p.shots > 0],
+        key=lambda p: (-p.accuracy, -p.hits, p.player.lower()),
+    )
+    acc_rank_map = {(p.team_id, p.player): idx for idx, p in enumerate(acc_sorted, 1)}
+
+    team_heat: dict[int, int] = {c: 0 for c in range(1, 11)}
+    player_heat: dict[int, dict[int, int]] = {1: {c: 0 for c in range(1, 11)}, 2: {c: 0 for c in range(1, 11)}}
+    p_shots = {1: 0, 2: 0}
+    p_hits = {1: 0, 2: 0}
+    p_finishers = {1: 0, 2: 0}
+
+    for m in all_ms:
+        side = m.side(team_id)
+        if not side:
+            continue
+        st = tracking.state(db, m.id)
+        last_hit = next((s for s in reversed(st.shots) if s.removed is not None), None) if st.winner_side else None
+        for s in st.shots:
+            if s.side != side or s.player not in (1, 2):
+                continue
+            p_shots[s.player] += 1
+            if s.removed is not None:
+                p_hits[s.player] += 1
+                team_heat[s.removed] = team_heat.get(s.removed, 0) + 1
+                player_heat[s.player][s.removed] = player_heat[s.player].get(s.removed, 0) + 1
+                if s is last_hit:
+                    p_finishers[s.player] += 1
+
+    team_shots = p_shots[1] + p_shots[2]
+    team_hits = p_hits[1] + p_hits[2]
+    team_accuracy = (100.0 * team_hits / team_shots) if team_shots else 0.0
+
+    # Team accuracy rank across all teams with shots
+    team_totals = tracking._team_side_stats(db)
+    teams_with_shots = sorted(
+        [(tid, h, sh, h / sh) for tid, (h, sh) in team_totals.items() if sh > 0],
+        key=lambda x: (-x[3], -x[1]),
+    )
+    team_acc_rank = next((idx for idx, item in enumerate(teams_with_shots, 1) if item[0] == team_id), None)
+
+    p1_sc = sc_by_key.get((team_id, row["p1"]))
+    p2_sc = sc_by_key.get((team_id, row["p2"]))
+    c1 = p1_sc[1].cups if p1_sc else 0
+    c2 = p2_sc[1].cups if p2_sc else 0
+    split_total = c1 + c2
+
+    players_out: list[PlayerProfile] = []
+    for idx, sc_entry in ((1, p1_sc), (2, p2_sc)):
+        pname = row[f"p{idx}"] or f"Giocatore {idx}"
+        ocups = sc_entry[1].cups if sc_entry else 0
+        oplayed = sc_entry[1].played if sc_entry else 0
+        oavg = sc_entry[1].average if sc_entry else 0.0
+        srank = sc_entry[0] if sc_entry else None
+        share = round(100 * ocups / split_total) if split_total else (
+            round(100 * p_hits[idx] / team_hits) if team_hits else 50
+        )
+        p_heat = player_heat[idx]
+        best_cup = max(p_heat.items(), key=lambda kv: (kv[1], -kv[0])) if any(p_heat.values()) else (None, 0)
+        sh = p_shots[idx]
+        hi = p_hits[idx]
+        players_out.append(
+            PlayerProfile(
+                index=idx,
+                name=pname,
+                scorer_rank=srank,
+                total_scorers=len(sc_list),
+                official_cups=ocups,
+                official_played=oplayed,
+                official_avg=oavg,
+                share_pct=share,
+                live_shots=sh,
+                live_hits=hi,
+                live_accuracy=(100.0 * hi / sh) if sh else 0.0,
+                accuracy_rank=acc_rank_map.get((team_id, pname)),
+                finishers=p_finishers[idx],
+                fav_cup=best_cup[0],
+                fav_cup_hits=best_cup[1],
+            )
+        )
+
+    return TeamProfile(
+        field=assigned_field,
+        grp_name=g_table.name if g_table else "",
+        grp_rank=grp_rank,
+        grp_total=len(g_table.rows) if g_table else 0,
+        grp_points=grp_row.points if grp_row else 0,
+        grp_diff=grp_row.diff if grp_row else 0,
+        overall_group_rank=overall_group_rank,
+        team_cups_rank=team_cups_rank,
+        total_teams=len(t_rank_list),
+        played=played,
+        won=won,
+        drawn=drawn,
+        lost=lost,
+        win_rate=win_rate,
+        cups_for=cups_for,
+        cups_against=cups_against,
+        cups_diff=cups_diff,
+        cups_avg=cups_avg,
+        team_shots=team_shots,
+        team_hits=team_hits,
+        team_accuracy=team_accuracy,
+        team_accuracy_rank=team_acc_rank,
+        team_heatmap=team_heat,
+        players=players_out,
     )
 
 
@@ -1044,6 +1440,7 @@ class MissingOverview:
     incomplete: list[sqlite3.Row]
     guests: list[GuestView]
     unpaid: list[sqlite3.Row]
+    not_in_chat: list[sqlite3.Row]
 
 
 def missing_overview(db: sqlite3.Connection) -> MissingOverview:
@@ -1054,6 +1451,7 @@ def missing_overview(db: sqlite3.Connection) -> MissingOverview:
         incomplete=[t for t in rows if not (t["p1"] and t["p2"]) or not t["phone1"] or t["note"]],
         guests=guest_views(db),
         unpaid=[t for t in rows if not t["paid"]],
+        not_in_chat=[t for t in rows if not t["in_chat"]],
     )
 
 
@@ -1147,6 +1545,37 @@ def mark_paid_from_list(db: sqlite3.Connection, text: str) -> PaidListResult:
     return result
 
 
+@dataclass
+class ChatListResult:
+    marked: list[str]
+    already: list[str]
+    unmatched: list[str]
+
+
+# A run of digits that may be broken by spaces, dots or dashes, as WhatsApp shows "+39 333 123 4567".
+PHONE_IN_TEXT = re.compile(r"\+?\d[\d\s.\-/()]{6,}\d")
+
+
+def mark_chat_from_list(db: sqlite3.Connection, text: str) -> ChatListResult:
+    """Phone numbers pasted from the group chat's member list: couples with a matching phone are in the chat."""
+    result = ChatListResult([], [], [])
+    rows = list(teams(db).values())
+    for raw in PHONE_IN_TEXT.findall(text):
+        phone = normalize_phone(raw)
+        if len(phone.lstrip("+")) < 8:
+            continue
+        hit = next((t for t in rows if phone_matches(t, phone)), None)
+        if hit is None:
+            result.unmatched.append(phone)
+        elif hit["in_chat"] or hit["name"] in result.marked:
+            if hit["name"] not in result.already + result.marked:
+                result.already.append(hit["name"])
+        else:
+            with db:
+                db.execute("UPDATE teams SET in_chat = 1 WHERE id = ?", (hit["id"],))
+            result.marked.append(hit["name"])
+    return result
+
 
 # --- Public board (poster / TV) --------------------------------------------------------------
 
@@ -1176,7 +1605,7 @@ def board_groups(db: sqlite3.Connection) -> tuple[list[BoardGroup], bool]:
     if get_setting(db, "phase") == "setup":
         if len(rows) < MIN_TEAMS:
             return [], True
-        groups = draw_groups(list(rows), int(get_setting(db, "board_seed")))
+        groups = draw_groups(list(rows), int(get_setting(db, "board_seed")), int(get_setting(db, "fields")))
         return [BoardGroup(chr(65 + i), [rows[t] for t in g], None) for i, g in enumerate(groups)], True
     tables = group_tables(db)
     return [BoardGroup(chr(65 + t.grp), [rows[r.team] for r in t.rows], t) for t in tables], False

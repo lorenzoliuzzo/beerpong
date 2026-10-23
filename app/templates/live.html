@@ -2,12 +2,17 @@
 {% block title %}{{ m.n1 }} vs {{ m.n2 }} · LIVE{% endblock %}
 {% block content %}
 <div id="live" data-match="{{ m.id }}">
-  <p class="muted small" style="margin-top:10px">{{ m.label }}{% if m.field %} · Campo {{ m.field }}{% endif %}</p>
+  <div class="slim-head" style="margin-bottom:8px">
+    <span class="muted small">{{ m.label }}{% if m.field %} · <strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
+    {% if m.field %}
+      <a class="btn small ghost" href="/gironi?sez=tavoli&amp;tavolo={{ m.field }}">← Tavolo {{ m.field }}</a>
+    {% endif %}
+  </div>
 
   <section class="arena">
     <div class="vs">
       <div class="side s1">
-        <div class="tname" data-f="name1">{{ m.n1 }}</div>
+        <a class="tname" data-f="name1" href="/squadra/{{ m.t1 }}" style="text-decoration:none;color:inherit">{{ m.n1 }}</a>
         <div class="tmeta" data-f="meta1"></div>
       </div>
       <div class="clockbox">
@@ -15,7 +20,7 @@
         <div class="clock-sub" id="clock-sub"></div>
       </div>
       <div class="side s2">
-        <div class="tname" data-f="name2">{{ m.n2 }}</div>
+        <a class="tname" data-f="name2" href="/squadra/{{ m.t2 }}" style="text-decoration:none;color:inherit">{{ m.n2 }}</a>
         <div class="tmeta" data-f="meta2"></div>
       </div>
     </div>

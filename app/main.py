@@ -115,6 +115,9 @@ def page(request: Request, db: sqlite3.Connection, name: str, **ctx: object) -> 
         "can_referee": lambda m: can_referee(request, m),
         "split_sides": lambda m: split_sides(request, m),
         "payments": service.PAYMENTS,
+        "server_clock": datetime.now().strftime("%H:%M:%S"),
+        "server_hm": datetime.now().strftime("%H:%M"),
+        "server_ts": int(time.time() * 1000),
     }
     return templates.TemplateResponse(request, name, {**base, **ctx})
 
@@ -137,10 +140,78 @@ def home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response
     now, upcoming = service.live(views)
     ko = service.knockout_rounds(db)
     team_id = my_team_id(request)
+    scorers = service.scorers(db)
+    shots = tracking.shot_stats(db)
+    done_matches = [m for m in views if m.done and not m.bye]
+    total_cups = sum((m.s1 or 0) + (m.s2 or 0) for m in done_matches)
+    total_valid_matches = len([m for m in views if not m.bye])
+    recent_matches = done_matches[-4:][::-1]
     return page(
         request, db, "home.html", now=now, upcoming=upcoming, overview=service.checkin_overview(db),
         dash=service.team_dashboard(db, team_id) if team_id else None,
-        final=ko[-1][1][0] if ko else None, progress=service.tournament_progress(db), live=True,
+        final=ko[-1][1][0] if ko else None, progress=service.tournament_progress(db),
+        total_cups=total_cups, played_count=len(done_matches), total_matches=total_valid_matches,
+        top_scorer=scorers[0] if scorers else None, shots=shots, recent_matches=recent_matches,
+        live=True,
+    )
+
+
+@router.get("/live")
+def live_tab_redirect() -> Response:
+    return redirect("/")
+
+
+@router.get("/gironi")
+def groups_page(
+    request: Request,
+    g: str = "",
+    tavolo: str = "",
+    sez: str = "",
+    archivio: str = "",
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    tables = service.group_tables(db)
+    cfg = service.load_config(db)
+    if cfg.phase in ("knockout", "finished") and not archivio and not g and not tavolo and not sez:
+        return redirect("/tabellone")
+    t_views = service.table_views(db, g_tables=tables)
+    team_id = my_team_id(request)
+    me_team = service.team(db, team_id) if team_id else None
+    my_table = None
+    if me_team and me_team["grp"] is not None and tables:
+        my_table = planning.table_for_group(me_team["grp"], len(tables), cfg.fields)
+
+    if tavolo.isdigit() and 1 <= int(tavolo) <= cfg.fields:
+        active_tavolo = int(tavolo)
+    elif my_table:
+        active_tavolo = my_table
+    else:
+        active_tavolo = 1
+
+    if g == "all":
+        active_grp = "all"
+    elif g.isdigit() and any(t.grp == int(g) for t in tables):
+        active_grp = f"g{int(g)}"
+    elif me_team and me_team["grp"] is not None:
+        active_grp = f"g{me_team['grp']}"
+    elif tables:
+        active_grp = f"g{tables[0].grp}"
+    else:
+        active_grp = "all"
+
+    if sez in ("tavoli", "classifiche"):
+        active_sez = sez
+    elif g:
+        active_sez = "classifiche"
+    else:
+        active_sez = "tavoli"
+
+    return page(
+        request, db, "gironi.html", tables=tables, table_views=t_views, T=service.teams(db),
+        active_grp=active_grp, active_tavolo=active_tavolo, active_sez=active_sez, my_table=my_table,
+        thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
+        projection=service.projected_first_round(db), labels=service.standing_labels(db),
+        live=True,
     )
 
 
@@ -156,7 +227,7 @@ def schedule(request: Request, team: str | None = None, db: sqlite3.Connection =
 @router.get("/classifiche")
 def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
     tables = service.group_tables(db)
-    view = vista if vista in ("gironi", "giocatori", "coppie", "tiri") else ("gironi" if tables else "giocatori")
+    view = vista if vista in ("coppie", "giocatori", "tiri", "gironi") else "coppie"
     return page(
         request, db, "classifiche.html", view=view, tables=tables, T=service.teams(db),
         thirds=service.thirds_needed(db), scorers=service.scorers(db), team_stats=service.team_ranking(db),
@@ -168,7 +239,9 @@ def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends
 @router.get("/tabellone")
 def knockout(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
     return page(
-        request, db, "tabellone.html", rounds=service.knockout_rounds(db), progress=service.tournament_progress(db),
+        request, db, "tabellone.html", rounds=service.knockout_rounds(db),
+        table_views=service.table_views(db), tables=service.group_tables(db),
+        thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
         labels=service.standing_labels(db), projection=service.projected_first_round(db), T=service.teams(db),
         live=True,
     )
@@ -201,10 +274,14 @@ def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3
     dash = service.team_dashboard(db, team_id)
     if dash is None:
         raise HTTPException(404)
+    profile = service.team_profile(db, team_id)
     other = _int(vs)
     h2h = service.head_to_head(db, team_id, other) if other and other != team_id else None
     rivals = [t for t in service.teams(db).values() if t["checked_in"] and t["id"] != team_id]
-    return page(request, db, "squadra.html", dash=dash, T=service.teams(db), h2h=h2h, other=other, rivals=rivals)
+    return page(
+        request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db),
+        thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
+    )
 
 
 # --- Live tracking ---------------------------------------------------------
@@ -471,9 +548,17 @@ def referee(request: Request, campo: str | None = None, db: sqlite3.Connection =
         return redirect("/login")
     field_no = request.session.get("field") if role == "referee" else _int(campo)
     views = [m for m in service.matches(db) if m.slot is not None and (field_no is None or m.field == field_no)]
-    pending = [m for m in views if not m.done]
+    if field_no is None:
+        now_ms, _ = service.live(views)
+        now_ids = {m.id for m in now_ms}
+        current = now_ms
+        pending = [m for m in views if not m.done and m.id not in now_ids]
+    else:
+        all_pending = [m for m in views if not m.done]
+        current = all_pending[:1]
+        pending = all_pending[1:]
     return page(
-        request, db, "arbitro.html", current=pending[:1], pending=pending[1:],
+        request, db, "arbitro.html", current=current, pending=pending,
         played=[m for m in views if m.done][::-1], field_no=field_no, live=True,
     )
 
@@ -528,7 +613,7 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
     pending_groups = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
     missing_splits = sum(1 for m in service.matches(db) for s in (1, 2) if m.split_missing(s))
     return page(
-        request, db, "admin.html", overview=service.checkin_overview(db), pins=pins,
+        request, db, "admin.html", overview=service.checkin_overview(db), solo=service.unassigned_guests(db), pins=pins,
         admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
         checkin_url=checkin_url(request, db),
     )
@@ -571,11 +656,11 @@ def admin_import(request: Request, testo: str = Form(...), db: sqlite3.Connectio
 
 def _team_form_values(
     name: str, p1: str, p2: str, phone1: str, phone2: str, payment: str, pagato: str | None, presente: str | None,
-    note: str = "", verificata: str | None = None,
+    note: str = "", verificata: str | None = None, gruppo: str | None = None,
 ) -> dict:
     return {
         "name": name, "p1": p1, "p2": p2, "phone1": phone1, "phone2": phone2, "payment": payment,
-        "paid": pagato == "1", "present": presente == "1", "note": "" if verificata else note,
+        "paid": pagato == "1", "present": presente == "1", "note": "" if verificata else note, "in_chat": gruppo == "1",
     }
 
 
@@ -589,11 +674,13 @@ def admin_new_team(
     request: Request,
     name: str = Form(""), p1: str = Form(""), p2: str = Form(""), phone1: str = Form(""), phone2: str = Form(""),
     payment: str = Form(""), pagato: str | None = Form(None), presente: str | None = Form(None),
-    note: str = Form(""),
+    note: str = Form(""), gruppo: str | None = Form(None),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     try:
-        service.save_team(db, None, **_team_form_values(name, p1, p2, phone1, phone2, payment, pagato, presente, note))
+        service.save_team(
+            db, None, **_team_form_values(name, p1, p2, phone1, phone2, payment, pagato, presente, note, gruppo=gruppo)
+        )
     except TournamentError as e:
         flash(request, str(e), "err")
         return redirect("/admin/squadre/nuova")
@@ -618,13 +705,13 @@ def admin_team_save(
     team_id: int,
     name: str = Form(""), p1: str = Form(""), p2: str = Form(""), phone1: str = Form(""), phone2: str = Form(""),
     payment: str = Form(""), pagato: str | None = Form(None), presente: str | None = Form(None),
-    note: str = Form(""), verificata: str | None = Form(None),
+    note: str = Form(""), verificata: str | None = Form(None), gruppo: str | None = Form(None),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     try:
         service.save_team(
             db, team_id,
-            **_team_form_values(name, p1, p2, phone1, phone2, payment, pagato, presente, note, verificata),
+            **_team_form_values(name, p1, p2, phone1, phone2, payment, pagato, presente, note, verificata, gruppo),
         )
     except TournamentError as e:
         flash(request, str(e), "err")
@@ -727,6 +814,27 @@ def admin_paid(
 ) -> Response:
     target = back if back.startswith("/admin") else "/admin#pagamenti"
     return _admin_action(request, lambda: service.set_paid(db, team_id, bool(pagato)), "Pagamento aggiornato.", target)
+
+
+@admin.post("/squadre/{team_id}/gruppo")
+def admin_in_chat(
+    request: Request, team_id: int, gruppo: int = Form(...), back: str = Form("/admin/mancanti#fuori-gruppo"),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    target = back if back.startswith("/admin") else "/admin/mancanti#fuori-gruppo"
+    return _admin_action(request, lambda: service.set_in_chat(db, team_id, bool(gruppo)), "Gruppo aggiornato.", target)
+
+
+@admin.post("/gruppo/elenco")
+def admin_chat_list(request: Request, elenco: str = Form(""), db: sqlite3.Connection = Depends(get_db)) -> Response:
+    r = service.mark_chat_from_list(db, elenco)
+    msg = f"{len(r.marked)} coppie segnate nel gruppo"
+    if r.already:
+        msg += f", {len(r.already)} lo erano già"
+    if r.unmatched:
+        msg += f". Numeri senza coppia: {', '.join(r.unmatched)}"
+    flash(request, msg + ".")
+    return redirect("/admin/mancanti#fuori-gruppo")
 
 
 @admin.post("/pagamenti/elenco")
