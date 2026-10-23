@@ -289,22 +289,6 @@
 
 {% block extra_scripts %}
 <script>
-(function initTournamentClock() {
-  const box = document.getElementById('tournament-clock-box');
-  if (!box) return;
-  const baseServerTs = Number(box.dataset.serverTs || 0);
-  const baseClientTs = Date.now();
-  if (!baseServerTs) return;
-  setInterval(() => {
-    const el = document.getElementById('live-server-clock');
-    if (!el) return;
-    const now = new Date(baseServerTs + (Date.now() - baseClientTs));
-    el.textContent = String(now.getHours()).padStart(2, '0') + ':' +
-                     String(now.getMinutes()).padStart(2, '0') + ':' +
-                     String(now.getSeconds()).padStart(2, '0');
-  }, 1000);
-})();
-
 function switchMainSez(sez) {
   const sTav = document.getElementById('sez-tavoli');
   const sCls = document.getElementById('sez-classifiche');

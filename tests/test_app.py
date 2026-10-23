@@ -884,3 +884,40 @@ def test_odd_query_values_and_quotes_in_names(client: TestClient) -> None:
     client.post("/checkin/1", data=checkin_form(t, name="L'Orso"))
     page = client.get("/io").text
     assert "confirm(\"Uscire dal profilo di L\\u0027Orso" in page and "di L'Orso su" not in page
+
+
+def test_late_start_after_midnight_starts_now(client: TestClient) -> None:
+    cfg = db_call(service.load_config)
+    late = service.Config(**{**cfg.__dict__, "start_time": "23:30"})
+    assert service.planned_start(late, datetime(2026, 10, 24, 0, 10)) == datetime(2026, 10, 24, 0, 10)
+    assert service.planned_start(late, datetime(2026, 10, 23, 22, 0)) == datetime(2026, 10, 23, 23, 30)
+    assert service.planned_start(late, datetime(2026, 10, 23, 8, 0)) == datetime(2026, 10, 23, 23, 30)
+
+
+def test_shared_tables_views_never_show_a_couple_twice(client: TestClient) -> None:
+    setup_tournament(client, 5, fields=2)
+    for _ in range(2):
+        first = next(m for m in db_call(service.matches) if m.field == 1 and not m.done)
+        client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 4})
+        current = [tv.current for tv in db_call(service.table_views) if tv.current]
+        playing = [t for m in current for t in (m.t1, m.t2)]
+        assert len(playing) == len(set(playing))
+
+
+def test_table_views_follow_the_matches_when_fields_change(client: TestClient) -> None:
+    setup_tournament(client, 32, fields=4)
+    def shrink(db):
+        with db:
+            service.set_setting(db, "fields", "2")
+    db_call(shrink)
+    assert [tv.field for tv in db_call(service.table_views)] == [1, 2, 3, 4]
+    groups, _ = db_call(service.board_groups)
+    assert [f for f, _ in db_call(lambda db: service.board_tables(db, groups))] == [1, 2, 3, 4]
+    assert client.get("/gironi?tavolo=4").status_code == 200 and "Tavolo 4" in client.get("/cartellone").text
+
+
+def test_draw_with_more_organizers_than_spread_slots(client: TestClient) -> None:
+    from app.service import draw_groups
+    for seed in range(30):
+        groups = draw_groups(list(range(11)), seed, fields=1, organizers=frozenset(range(11)))
+        assert sorted(t for g in groups for t in g) == list(range(11))

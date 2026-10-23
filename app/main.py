@@ -190,9 +190,9 @@ def groups_page(
     me_team = service.team(db, team_id) if team_id else None
     my_table = None
     if me_team and me_team["grp"] is not None and tables:
-        my_table = planning.table_for_group(me_team["grp"], len(tables), cfg.fields)
+        my_table = next((tv.field for tv in t_views if any(g.grp == me_team["grp"] for g in tv.groups)), None)
 
-    if tavolo.isdecimal() and 1 <= int(tavolo) <= cfg.fields:
+    if tavolo.isdecimal() and any(tv.field == int(tavolo) for tv in t_views):
         active_tavolo = int(tavolo)
     elif my_table:
         active_tavolo = my_table

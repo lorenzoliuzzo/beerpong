@@ -74,23 +74,20 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
             s2 = 10 if s1 < 10 else rng.randint(3, 9)
             base_t = now_ts + idx * 300
 
-            try:
-                tracking.add_report(db_conn, m.id, f"ref-{field_no}", "start", None, None, None, base_t)
-                for side, score in [(1, s1), (2, s2)]:
-                    cups = rng.sample(range(1, 11), min(10, score))
-                    for shot_i, cup in enumerate(cups):
-                        player = 1 if shot_i % 2 == 0 else 2
-                        tracking.add_report(
-                            db_conn, m.id, f"fan-{field_no}-{side}", "shot", side, player, cup, base_t + 10 + shot_i * 6
-                        )
-                    # Add a few misses for realistic accuracy stats
-                    for miss_i in range(rng.randint(2, 5)):
-                        player = rng.choice([1, 2])
-                        tracking.add_report(
-                            db_conn, m.id, f"fan-{field_no}-{side}", "shot", side, player, 0, base_t + 100 + miss_i * 5
-                        )
-            except Exception:
-                pass
+            tracking.add_report(db_conn, m.id, f"ref-{field_no}", "start", None, None, None, base_t)
+            for side, score in [(1, s1), (2, s2)]:
+                cups = rng.sample(range(1, 11), min(10, score))
+                for shot_i, cup in enumerate(cups):
+                    player = 1 if shot_i % 2 == 0 else 2
+                    tracking.add_report(
+                        db_conn, m.id, f"fan-{field_no}-{side}", "shot", side, player, cup, base_t + 10 + shot_i * 6
+                    )
+                # Add a few misses for realistic accuracy stats
+                for miss_i in range(rng.randint(2, 5)):
+                    player = rng.choice([1, 2])
+                    tracking.add_report(
+                        db_conn, m.id, f"fan-{field_no}-{side}", "shot", side, player, 0, base_t + 100 + miss_i * 5
+                    )
 
             service.record_result(db_conn, m.id, s1, s2)
             p1_cups_s1 = rng.randint(1, s1 - 1) if s1 > 1 else s1

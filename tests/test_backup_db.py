@@ -17,3 +17,11 @@ def test_backup_copies_data_and_keeps_only_the_latest(tmp_path: Path) -> None:
     assert sorted((tmp_path / "backups").iterdir()) == made[-3:]
     with sqlite3.connect(made[-1]) as copy:
         assert copy.execute("SELECT name FROM teams").fetchall() == [("Le Lontre",)]
+
+
+def test_backup_refuses_a_missing_database(tmp_path: Path) -> None:
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        backup(tmp_path / "nope.db", tmp_path / "backups", 3, datetime(2026, 10, 23, 20, 0))
+    assert not (tmp_path / "nope.db").exists()

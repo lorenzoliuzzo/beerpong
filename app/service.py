@@ -395,7 +395,10 @@ def _next_minute(dt: datetime) -> datetime:
 def planned_start(cfg: Config, now: datetime) -> datetime:
     """The scheduled start time today, or the next minute if the tournament starts late."""
     hour, minute = (int(x) for x in cfg.start_time.split(":"))
-    return max(_next_minute(now), now.replace(hour=hour, minute=minute, second=0, microsecond=0))
+    planned = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if planned - now > timedelta(hours=18):  # e.g. 23:30 seen at 00:10: that was last night's start
+        planned -= timedelta(days=1)
+    return max(_next_minute(now), planned)
 
 
 def _knockout_slots(bracket_size: int, fields: int) -> int:
@@ -424,7 +427,11 @@ def draw_groups(
     if orgs:
         offset = rng.randrange(len(sizes))
         for i, t in enumerate(orgs):
-            groups[(offset + i * len(sizes) // len(orgs)) % len(sizes)].append(t)
+            target = (offset + i * len(sizes) // len(orgs)) % len(sizes)
+            # More organizers than groups can hold at their spread positions: use the next group with room.
+            while len(groups[target]) >= sizes[target]:
+                target = (target + 1) % len(sizes)
+            groups[target].append(t)
     for g, size in zip(groups, sizes):
         while len(g) < size:
             g.append(rest.pop(0))
@@ -829,8 +836,13 @@ def table_views(
     if all_matches is None:
         all_matches = matches(db)
     stage_filter = "group" if cfg.phase == "groups" else None
+    # The tables the matches were scheduled on, not today's "Campi" setting, which can change after the draw.
+    fields = sorted({m.field for m in all_matches if m.field}) or list(range(1, cfg.fields + 1))
+    pending_all = [m for m in all_matches if not m.done and not m.bye and (stage_filter is None or m.stage == stage_filter)]
+    independent = tables_independent([(m.field, m.t1, m.t2) for m in pending_all])
+    now, upcoming = live(all_matches)
     out: list[TableScheduleView] = []
-    for f in range(1, cfg.fields + 1):
+    for f in fields:
         f_matches = [
             m
             for m in all_matches
@@ -841,10 +853,19 @@ def table_views(
             t_groups = [g for g in g_tables if g.grp in f_grps_from_matches]
         else:
             t_groups = [
-                g for g in g_tables if planning.table_for_group(g.grp, len(g_tables), cfg.fields) == f
+                g for g in g_tables if planning.table_for_group(g.grp, len(g_tables), len(fields)) == f
             ]
         letters = " · ".join(g.name.replace("Girone ", "") for g in t_groups)
         pending = [m for m in f_matches if not m.done]
+        if independent:
+            current = pending[0] if pending else None
+            next_match = pending[1] if len(pending) > 1 else None
+        else:
+            # Groups share the tables: a table only moves on with the slot, as live() does, so a couple is
+            # never shown on two tables at once.
+            current = next((m for m in now if m.field == f), None)
+            next_match = next((m for m in upcoming if m.field == f), None)
+        later = [m for m in pending if m is not current and m is not next_match]
         played = [m for m in f_matches if m.done]
         out.append(
             TableScheduleView(
@@ -852,9 +873,9 @@ def table_views(
                 name=f"Tavolo {f}",
                 groups=t_groups,
                 group_letters=letters,
-                current=pending[0] if pending else None,
-                next_match=pending[1] if len(pending) > 1 else None,
-                upcoming=pending[2:],
+                current=current,
+                next_match=next_match,
+                upcoming=later,
                 played=played,
                 done_count=len(played),
                 total_count=len(f_matches),
@@ -1728,7 +1749,17 @@ def planned_schedule(db: sqlite3.Connection, now: datetime) -> PlannedSchedule |
 
 
 def board_tables(db: sqlite3.Connection, groups: list[BoardGroup]) -> list[tuple[int, list[BoardGroup]]] | None:
-    """Groups by table when every table hosts its own groups (see _group_schedule); None when they share tables."""
+    """Groups by table when every table hosts its own groups (see _group_schedule); None when they share tables.
+
+    After the draw the tables are the ones the group's matches are on, whatever "Campi" says now."""
+    if groups and all(g.table for g in groups):
+        by_field: dict[int, list[BoardGroup]] = defaultdict(list)
+        for g in groups:
+            fields_of_group = {m.field for m in g.table.matches if m.field}
+            if len(fields_of_group) != 1:
+                return None
+            by_field[fields_of_group.pop()].append(g)
+        return sorted(by_field.items()) if len(by_field) > 1 else None
     fields = load_config(db).fields
     if not groups or fields < 2 or len(groups) % fields:
         return None
