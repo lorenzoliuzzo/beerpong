@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS push_sent (
     PRIMARY KEY (match_id, kind)
 );
 -- Live tracking: every tap from any phone; the consensus is computed when reading (see app/live.py).
+-- Rule 5, the blow: a ball spinning in a cup blown out by the defending couple. The shot is a miss; the
+-- row (tied to the referee's shot) counts as a save for the couple that blew.
+CREATE TABLE IF NOT EXISTS blows (
+    report_id INTEGER PRIMARY KEY REFERENCES reports(id) ON DELETE CASCADE,
+    match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    side INTEGER NOT NULL CHECK (side IN (1, 2))
+);
 -- The crowd cheering a couple during a live match (one emoji per tap, capped per phone).
 CREATE TABLE IF NOT EXISTS cheers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

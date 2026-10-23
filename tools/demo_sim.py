@@ -23,6 +23,7 @@ from app import db, push, service, tracking
 from tools.populate_demo import setup_demo
 
 HIT_RATE = 0.38
+BLOW_RATE = 0.08  # of the hits
 HUMAN_IDLE_S = 300  # a table a visitor referees stays theirs until they leave it alone this long
 
 log = logging.getLogger("beerpong.demo")
@@ -57,7 +58,8 @@ def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:
             continue
         standing = sorted(st.racks[3 - rv.turn_side].cups)
         cup = rng.choice(standing) if standing and rng.random() < HIT_RATE else 0
-        tracking.referee_shot(conn, m.id, rv.next_player, cup, now)
+        blown = bool(cup) and rng.random() < BLOW_RATE  # the defenders blow it out now and then (rule 5)
+        tracking.referee_shot(conn, m.id, rv.next_player, cup, now, blown=blown)
     if finished:
         push.send(push.due(conn))
     return finished

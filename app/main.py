@@ -891,14 +891,18 @@ def match_start(
 
 @router.post("/partita/{match_id}/tiro")
 def match_shot(
-    request: Request, match_id: int, giocatore: int = Form(...), bicchiere: int = Form(...),
+    request: Request, match_id: int, giocatore: int = Form(...), bicchiere: str = Form(...),
     n: int | None = Form(None), db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     m = _refereed(request, db, match_id)
     if m is None:
         return redirect("/login")
+    blown = bicchiere == "soffio"
     try:
-        tracking.referee_shot(db, match_id, giocatore, bicchiere, time.time(), n)
+        cup = 0 if blown else int(bicchiere)
+        tracking.referee_shot(db, match_id, giocatore, cup, time.time(), n, blown)
+    except ValueError:
+        flash(request, "Tiro non valido.", "err")
     except TournamentError as e:
         flash(request, str(e), "err")
     return redirect(_referee_back(request, m))

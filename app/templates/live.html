@@ -134,8 +134,9 @@
     $("#sc2").textContent = score[1];
     for (const i of [1, 2]) {
       const n = (data.streak || [0, 0])[i - 1], el = $(`#streak${i}`);
-      el.hidden = n < 2 || data.done;
-      el.textContent = `🔥 ${n} di fila`;
+      const blows = (data.blows || [0, 0])[i - 1];
+      el.hidden = (n < 2 || data.done) && !blows;
+      el.textContent = [n >= 2 && !data.done ? `🔥 ${n} di fila` : "", blows ? `💨 ${blows} ${blows === 1 ? "soffio" : "soffi"}` : ""].filter(Boolean).join(" · ");
     }
     const pts = data.timeline || [];
     $("#trend-box").hidden = pts.length < 2;

@@ -166,6 +166,10 @@
         <div class="ck-lbl">Bicchieri Subiti</div>
       </div>
       <div>
+        <div class="ck-num">💨 {{ profile.blows }}</div>
+        <div class="ck-lbl">Soffi in difesa</div>
+      </div>
+      <div>
         <div class="ck-num {{ 'pos-diff' if profile.cups_diff > 0 else ('neg-diff' if profile.cups_diff < 0 else '') }}">{{ "%+d"|format(profile.cups_diff) }}</div>
         <div class="ck-lbl">Diff. Bicchieri</div>
       </div>

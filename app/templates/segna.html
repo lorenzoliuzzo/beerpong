@@ -90,7 +90,10 @@
               </div>
             {% endif %}
           {% endfor %}
-          <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
+          <div class="ref-outcomes">
+            <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
+            <button class="ref-blow" type="submit" name="bicchiere" value="soffio" title="Regola del soffio: la palla girava nel bicchiere e la difesa l'ha soffiata fuori">💨 Soffiato</button>
+          </div>
         </form>
       {% endif %}
       {% if rv.last_rerack %}
@@ -100,7 +103,7 @@
       {% elif rv.last_shot %}
         {% set ls = rv.last_shot %}
         <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
-          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "🎯 " ~ ls.removed if ls.removed else "✗ fuori" }}</button>
+          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "💨 soffiato" if rv.last_blown else ("🎯 " ~ ls.removed if ls.removed else "✗ fuori") }}</button>
         </form>
       {% endif %}
       <details class="ref-more">

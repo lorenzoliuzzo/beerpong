@@ -1249,6 +1249,7 @@ class TeamProfile:
     team_accuracy_rank: int | None
     team_heatmap: dict[int, int]
     players: list[PlayerProfile]
+    blows: int = 0  # balls the couple blew out of its cups (rule 5)
 
 
 def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
@@ -1403,6 +1404,11 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
         team_accuracy_rank=team_acc_rank,
         team_heatmap=team_heat,
         players=players_out,
+        blows=db.execute(
+            "SELECT COUNT(*) FROM blows b JOIN matches m ON m.id = b.match_id"
+            " WHERE (b.side = 1 AND m.team1 = ?) OR (b.side = 2 AND m.team2 = ?)",
+            (team_id, team_id),
+        ).fetchone()[0],
     )
 
 

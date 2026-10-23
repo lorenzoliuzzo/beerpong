@@ -108,6 +108,8 @@ class RefereeView:
     rows: dict[int, list[list[int]]]  # rack side -> its layout now (re-racks change it)
     hit_by: dict[int, dict[int, int]]  # rack side -> cup taken -> player of the other couple who hit it
     last_rerack: int | None  # the rack side of the referee's last action, when that was a re-rack
+    last_blown: bool = False  # the referee's last shot was blown out by the defenders (rule 5)
+    blows: tuple[int, int] = (0, 0)  # saves by blowing, per couple
 
 
 def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
@@ -123,10 +125,16 @@ def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
             if s.removed is not None and 3 - s.side == rack_side:
                 hit_by[rack_side][s.removed] = s.player
     last = _last_referee_action(db, match_id)
+    blown = bool(last and last[0] == "shot" and db.execute("SELECT 1 FROM blows WHERE report_id = ?", (last[1],)).fetchone())
     return RefereeView(
         st, side, in_turn, nxt, official[-1] if official else None, st.rows, hit_by,
-        last[2] if last and last[0] == "rerack" else None,
+        last[2] if last and last[0] == "rerack" else None, blown, blow_counts(db, match_id),
     )
+
+
+def blow_counts(db: sqlite3.Connection, match_id: int) -> tuple[int, int]:
+    counts = dict(db.execute("SELECT side, COUNT(*) FROM blows WHERE match_id = ? GROUP BY side", (match_id,)).fetchall())
+    return counts.get(1, 0), counts.get(2, 0)
 
 
 def _last_referee_action(db: sqlite3.Connection, match_id: int) -> tuple[str, int, int | None] | None:
@@ -159,9 +167,13 @@ def official_count(view: RefereeView) -> int:
 
 
 def referee_shot(
-    db: sqlite3.Connection, match_id: int, player: int, cup: int, now: float, number: int | None = None
+    db: sqlite3.Connection, match_id: int, player: int, cup: int, now: float, number: int | None = None,
+    blown: bool = False,
 ) -> bool:
     """The referee records a shot of the couple whose turn it is: a cup of the opponents' rack, or 0 for a miss.
+
+    `blown`: the ball was spinning in a cup and the defenders blew it out (rule 5): a miss for the shooter,
+    a save for the defenders.
 
     `number` is the shot the screen was showing (0 = first). A double tap or a retry after a lost answer
     sends the same number again: it is ignored instead of recording the shot twice. Returns whether it
@@ -173,7 +185,7 @@ def referee_shot(
     if number is not None:
         recorded = official_count(view)
         last = view.last_shot
-        if number == recorded - 1 and last and (last.player, last.cup) == (player, cup):
+        if number == recorded - 1 and last and (last.player, last.cup, view.last_blown) == (player, cup, blown):
             return False  # this very shot is already in
         if number != recorded:
             raise TournamentError("La schermata non era aggiornata: controlla l'ultimo tiro e riprova.")
@@ -183,7 +195,10 @@ def referee_shot(
         raise TournamentError("Scegli chi ha tirato.")
     if cup and cup not in view.state.racks[3 - view.turn_side].cups:
         raise TournamentError("Quel bicchiere non c'è più.")
-    add_report(db, match_id, live.REFEREE, "shot", view.turn_side, player, cup, now)
+    report_id = add_report(db, match_id, live.REFEREE, "shot", view.turn_side, player, 0 if blown else cup, now)
+    if blown:
+        with db:
+            db.execute("INSERT INTO blows(report_id, match_id, side) VALUES (?, ?, ?)", (report_id, match_id, 3 - view.turn_side))
     return True
 
 
@@ -332,6 +347,7 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
         "mine": mine,
         "timeline": _cached_timeline(st, rates, duration, service.cups_in_play(db, match_id), match_id),
         "streak": [live.streak(st, 1), live.streak(st, 2)],
+        "blows": list(blow_counts(db, match_id)),
         "cheers": [cheers[1], cheers[2]],
         "others": [o for o in _on_tables(db, now) if o["id"] != match_id],
     }

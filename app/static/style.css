@@ -1367,7 +1367,8 @@ button.ref-swap { min-width: 56px; min-height: 48px; font-size: 1.5rem; backgrou
 .ref-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; }
 .ref-names strong { overflow-wrap: anywhere; line-height: 1.15; }
 .ref-table { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
-.ref-table .ref-miss { grid-column: 1 / -1; }
+.ref-table .ref-outcomes { grid-column: 1 / -1; display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+button.ref-blow { min-height: 60px; font-size: 1.05rem; background: var(--surface); color: var(--text); border: 2px solid var(--t1); }
 .ref-half { border: 2px solid var(--line); border-radius: 14px; padding: 8px 6px; display: grid; gap: 8px; align-content: start; justify-items: stretch; }
 .ref-half.shooting { border-color: var(--accent); background: var(--accent-soft); }
 .ref-role { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: center; }

@@ -1203,3 +1203,26 @@ def test_stylesheet_link_changes_with_the_file(client: TestClient) -> None:
 
     css = (Path(__file__).resolve().parent.parent / "app" / "static" / "style.css").read_bytes()
     assert f'/static/style.css?v={hashlib.sha256(css).hexdigest()[:10]}"' in client.get("/").text
+
+
+def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    login(client, db_call(service.referee_pin, 1))
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
+    page = client.get(f"/segna/{m.id}").text
+    assert 'value="soffio"' in page and "💨 Soffiato" in page
+
+    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})
+    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})  # double tap: one blow
+    rv = db_call(lambda db: tracking.referee_view(db, m.id))
+    assert rv.state.side_hits(1) == 0 and len(rv.state.racks[2].cups) == 6  # the cup stays: no point
+    assert rv.state.attempts[(1, 1)] == 1 and rv.blows == (0, 1)  # a miss for the shooter, a save for couple 2
+    assert "↶ Annulla:" in client.get(f"/segna/{m.id}").text and "💨 soffiato" in client.get(f"/segna/{m.id}").text
+    assert client.get(f"/api/live/{m.id}").json()["blows"] == [0, 1]
+
+    client.post(f"/partita/{m.id}/annulla-tiro")
+    assert db_call(lambda db: tracking.referee_view(db, m.id)).blows == (0, 0)  # undoing the shot takes the blow back
+    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})
+    assert db_call(lambda db: service.team_profile(db, m.t2)).blows == 1
+    assert "Tiro non valido" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": "x", "n": 1}).text
