@@ -15,6 +15,13 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
 <body {% if live %}data-live{% endif %} class="{% block body_class %}{% endblock %}">
+{% if demo %}
+<div class="demo-bar">
+  <span><strong>DEMO</strong> · squadre inventate, le partite si giocano da sole</span>
+  <form method="post" action="/demo/coppia"><button class="small" type="submit">Entra come coppia</button></form>
+  <form method="post" action="/demo/admin"><button class="small ghost" type="submit">Admin</button></form>
+</div>
+{% endif %}
 {% block header %}
 <header class="top">
   <a class="brand" href="/">🍺 {{ cfg.title }}</a>

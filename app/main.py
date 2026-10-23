@@ -128,8 +128,14 @@ def page(request: Request, db: sqlite3.Connection, name: str, **ctx: object) -> 
         "server_clock": datetime.now().strftime("%H:%M:%S"),
         "server_hm": datetime.now().strftime("%H:%M"),
         "server_ts": int(time.time() * 1000),
+        "demo": is_demo(db),
     }
     return templates.TemplateResponse(request, name, {**base, **ctx})
+
+
+def is_demo(db: sqlite3.Connection) -> bool:
+    """Set only in the demo's own database (tools/populate_demo.py): never true on the real site."""
+    return get_setting(db, "demo") == "1"
 
 
 def public_site_url(request: Request, db: sqlite3.Connection) -> str:
@@ -541,6 +547,31 @@ def checkin_phone(
         flash(request, f"Bentornati, {t['name']}!")
     request.session["team"] = t["id"]
     return redirect("/io")
+
+
+@router.post("/demo/coppia")
+def demo_as_couple(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if not is_demo(db):
+        raise HTTPException(404)
+    _, upcoming = service.live(service.matches(db))
+    # A couple that plays next, so its notices arrive within a couple of minutes.
+    soon = [t for m in upcoming for t in (m.t1, m.t2) if t is not None]
+    present = [t["id"] for t in service.teams(db).values() if t["checked_in"]]
+    pool = soon or present
+    if not pool:
+        raise HTTPException(404)
+    team_id = secrets.choice(pool)
+    request.session["team"] = team_id
+    flash(request, f"Siete «{service.team(db, team_id)['name']}»: attivate le notifiche, tra poco tocca a voi!")
+    return redirect("/io")
+
+
+@router.post("/demo/admin")
+def demo_as_admin(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if not is_demo(db):
+        raise HTTPException(404)
+    request.session.update({"role": "admin", "field": None})
+    return redirect("/admin")
 
 
 @router.get("/checkin/nuova")

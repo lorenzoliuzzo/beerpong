@@ -32,6 +32,7 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
     if not service.teams(db_conn):
         add_demo_teams(db_conn)
         db.set_setting(db_conn, "title", "DEMO · Torneo di Beer Pong")
+        db.set_setting(db_conn, "demo", "1")
         db_conn.commit()
     # 1. Ensure all teams are checked in and paid
     with db_conn:
