@@ -164,3 +164,13 @@ def test_salvezza_hit_goes_to_overtime_with_three_cups() -> None:
     st = live.replay(_ref(seq + [(1, 1, 1), (1, 2, 2), (2, 1, 0), (2, 2, 0), (1, 1, 3)]), 6, 1, salvezza=True)
     assert st.phase == "salvezza" and st.turn_side == 2
     assert st.side_hits(1) == 9 and st.side_hits(2) == 1  # the final score counts every cup
+
+
+def test_rerack_compacts_the_remaining_cups() -> None:
+    seq = [(1, 1, 1), (1, 2, 4), (2, 1, 0), (2, 2, 0), (1, 1, 6), (1, 2, 0)]  # couple 2 keeps cups 2, 3, 5
+    reports = _ref(seq)
+    st = live.replay(reports, 6, 1, reracks=[(2, 106.0)])
+    assert st.racks[2].cups == {1, 2, 3} and st.rows[2] == live.FORMATIONS[3] and st.rack_start[2] == len(seq)
+    assert st.rows[1] == live.RACK_ROWS[6]  # the other rack is untouched
+    st = live.replay(_ref(seq + [(2, 1, 0), (2, 2, 0), (1, 1, 3)]), 6, 1, reracks=[(2, 106.0)])
+    assert st.racks[2].cups == {1, 2} and st.side_hits(1) == 4

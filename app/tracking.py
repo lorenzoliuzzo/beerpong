@@ -25,16 +25,17 @@ def reports(db: sqlite3.Connection, match_id: int) -> list[live.Report]:
 
 def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
     """Replayed live state, cached until a report of this match is added or removed."""
+    reracks = [(r["side"], r["at"]) for r in db.execute("SELECT side, at FROM reracks WHERE match_id = ? ORDER BY at, id", (match_id,))]
     key = tuple(db.execute(
         "SELECT COUNT(r.id), COALESCE(MAX(r.id), 0), m.started_at, m.first_side, m.stage"
         " FROM matches m LEFT JOIN reports r ON r.match_id = m.id WHERE m.id = ?",
         (match_id,),
-    ).fetchone()) + (service.cups_in_play(db, match_id),)
+    ).fetchone()) + (service.cups_in_play(db, match_id), tuple(reracks))
     cached = _state_cache.get(match_id)
     if cached is None or cached[0] != key:
-        _, _, started, first, stage, cups = key
+        _, _, started, first, stage, cups, _ = key
         # The tiro della salvezza is a knockout rule (the final included).
-        st = live.replay(reports(db, match_id), cups, first or 1, salvezza=stage == "ko")
+        st = live.replay(reports(db, match_id), cups, first or 1, salvezza=stage == "ko", reracks=reracks)
         if started is not None:  # the referee's start is the clock; the crowd's "start" taps only stand in for it
             st.started_at = started
         cached = (key, st)
@@ -104,8 +105,9 @@ class RefereeView:
     shot_in_turn: set[int]
     next_player: int
     last_shot: live.Shot | None
-    rows: list[list[int]]
+    rows: dict[int, list[list[int]]]  # rack side -> its layout now (re-racks change it)
     hit_by: dict[int, dict[int, int]]  # rack side -> cup taken -> player of the other couple who hit it
+    last_rerack: int | None  # the rack side of the referee's last action, when that was a re-rack
 
 
 def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
@@ -115,12 +117,41 @@ def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
     side = st.turn_side if official else first  # the replay follows the turns (salvezza and overtime included)
     in_turn = set(st.in_turn) if official else set()
     nxt = next((p for p in (1, 2) if p not in in_turn), 1)
-    rows = live.RACK_ROWS[st.rack_cups]
     hit_by: dict[int, dict[int, int]] = {1: {}, 2: {}}
-    for s in st.shots[st.phase_start:]:  # only the racks on the table now
-        if s.removed is not None:
-            hit_by[3 - s.side][s.removed] = s.player
-    return RefereeView(st, side, in_turn, nxt, official[-1] if official else None, rows, hit_by)
+    for rack_side in (1, 2):  # only the racks as they stand on the table now
+        for s in st.shots[st.rack_start.get(rack_side, 0):]:
+            if s.removed is not None and 3 - s.side == rack_side:
+                hit_by[rack_side][s.removed] = s.player
+    last = _last_referee_action(db, match_id)
+    return RefereeView(
+        st, side, in_turn, nxt, official[-1] if official else None, st.rows, hit_by,
+        last[2] if last and last[0] == "rerack" else None,
+    )
+
+
+def _last_referee_action(db: sqlite3.Connection, match_id: int) -> tuple[str, int, int | None] | None:
+    shot = db.execute(
+        "SELECT id, at FROM reports WHERE match_id = ? AND device = ? AND kind = 'shot' ORDER BY at DESC, id DESC LIMIT 1",
+        (match_id, live.REFEREE),
+    ).fetchone()
+    rerack = db.execute("SELECT id, at, side FROM reracks WHERE match_id = ? ORDER BY at DESC, id DESC LIMIT 1", (match_id,)).fetchone()
+    if rerack and (shot is None or rerack["at"] >= shot["at"]):
+        return ("rerack", rerack["id"], rerack["side"])
+    return ("shot", shot["id"], None) if shot else None
+
+
+def referee_rerack(db: sqlite3.Connection, match_id: int, side: int, now: float) -> None:
+    """The shooters asked: the remaining cups of `side` are put back into a compact formation."""
+    m = service.match(db, match_id)
+    if m is None or m.started_at is None or m.done:
+        raise TournamentError("Avvia prima la partita.")
+    st = state(db, match_id)
+    if st.winner_side or side not in (1, 2):
+        raise TournamentError("Riordino non possibile.")
+    if len(st.racks[side].cups) not in live.FORMATIONS:
+        raise TournamentError("Si riordina con 6 bicchieri o meno.")
+    with db:
+        db.execute("INSERT INTO reracks(match_id, side, at) VALUES (?, ?, ?)", (match_id, side, now))
 
 
 def official_count(view: RefereeView) -> int:
@@ -157,14 +188,12 @@ def referee_shot(
 
 
 def referee_undo(db: sqlite3.Connection, match_id: int) -> None:
-    row = db.execute(
-        "SELECT id FROM reports WHERE match_id = ? AND device = ? AND kind = 'shot' ORDER BY at DESC, id DESC LIMIT 1",
-        (match_id, live.REFEREE),
-    ).fetchone()
-    if row is None:
+    """Takes back the referee's last action: a shot or a re-rack."""
+    last = _last_referee_action(db, match_id)
+    if last is None:
         raise TournamentError("Nessun tiro da annullare.")
     with db:
-        db.execute("DELETE FROM reports WHERE id = ?", (row["id"],))
+        db.execute(f"DELETE FROM {'reracks' if last[0] == 'rerack' else 'reports'} WHERE id = ?", (last[1],))
 
 
 def _team_side_stats(db: sqlite3.Connection) -> dict[int, list[int]]:
@@ -213,6 +242,7 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
             "record": f"{rec.won}V {rec.drawn}N {rec.lost}P" if rec else "",
             "accuracy": round(100 * hits / shots) if shots else None,
             "rack": sorted(st.racks[side].cups),
+            "rows": st.rows.get(side, live.RACK_ROWS[st.rack_cups]),
             "hits": st.side_hits(side),
             "player_stats": [
                 {"hits": st.hits.get((side, p), 0), "shots": st.attempts.get((side, p), 0)} for p in (1, 2)
@@ -232,7 +262,6 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
         "now": now,
         # The referee scores this match: the crowd watches, its taps would not count.
         "official": m.started_at is not None or any(live.REFEREE in s.devices for s in st.shots),
-        "rows": live.RACK_ROWS[st.rack_cups],
         "phase": st.phase,
         "started_at": st.started_at,
         "duration": duration,

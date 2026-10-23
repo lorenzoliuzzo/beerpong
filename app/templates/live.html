@@ -91,9 +91,9 @@
     toast.timer = setTimeout(() => (t.hidden = true), 4000);
   }
 
-  function rackHTML(cups, interactive) {
+  function rackHTML(cups, interactive, rows) {
     const standing = new Set(cups);
-    return ROWS.map((row) => `<div class="rrow">${row.map((c) => {
+    return (rows || ROWS).map((row) => `<div class="rrow">${row.map((c) => {
       const up = standing.has(c);
       return interactive && up
         ? `<button class="cup up" data-cup="${c}" aria-label="Bicchiere ${c}">${c}</button>`
@@ -103,13 +103,12 @@
 
   function render() {
     if (!data) return;
-    ROWS = data.rows || ROWS;
     const [t1, t2] = data.teams;
     for (const [i, t] of [[1, t1], [2, t2]]) {
       document.querySelectorAll(`[data-f="name${i}"], [data-f="name${i}b"]`).forEach((el) => (el.textContent = t.name));
       const bits = [t.label, t.record, t.accuracy != null ? `🎯 ${t.accuracy}%` : ""].filter(Boolean);
       $(`[data-f="meta${i}"]`).innerHTML = bits.map(esc).join("<br>");
-      $(`#rack${i}`).innerHTML = rackHTML(t.rack, false);
+      $(`#rack${i}`).innerHTML = rackHTML(t.rack, false, t.rows);
       $(`#players${i}`).innerHTML = t.players.map((p, k) => {
         const st = t.player_stats[k];
         return `<button class="shooter" data-side="${i}" data-player="${k + 1}" ${p ? "" : "disabled"}>
@@ -211,7 +210,7 @@
     shooter = { side, player };
     const t = data.teams[side - 1], target = data.teams[2 - side];
     $("#sheet-title").innerHTML = `<b>${esc(t.players[player - 1])}</b> tira sui bicchieri di <b>${esc(target.name)}</b>`;
-    $("#sheet-rack").innerHTML = rackHTML(target.rack, true);
+    $("#sheet-rack").innerHTML = rackHTML(target.rack, true, target.rows);
     $("#sheet").hidden = false;
   }
 

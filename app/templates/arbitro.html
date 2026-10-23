@@ -77,7 +77,7 @@
         {% endif %}
         {% set shooter, target = rv.turn_side, 3 - rv.turn_side %}
         {% set target_on_right = order[1] == target %}
-        {% set cols = rv.rows|reverse|list if target_on_right else rv.rows %}
+        {% set cols = rv.rows[target]|reverse|list if target_on_right else rv.rows[target] %}
         <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-table">
           <input type="hidden" name="n" value="{{ official_counts[m.id] }}">
           {% for s in order %}
@@ -92,18 +92,25 @@
               {% set standing = st.racks[s].cups %}
               <div class="ref-half target">
                 <span class="ref-role">bicchieri ({{ standing|length }})</span>
-                <div class="ref-rack {{ 'big' if rv.rows|length > 3 }}">
+                <div class="ref-rack {{ 'big' if rv.rows[s]|length > 3 }}">
                   {% for col in cols %}<div class="ref-col">
                     {% for c in col %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}{% set by = rv.hit_by[s].get(c) %}{% set who = team[shooter]["p" ~ by] if by else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{{ c }}{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
                   </div>{% endfor %}
                 </div>
+                {% if 0 < standing|length < st.rack_cups and standing|length <= 6 %}
+                  <button class="small ghost ref-rerack" type="submit" formaction="/partita/{{ m.id }}/riordina" name="lato" value="{{ s }}">⟲ Riordina</button>
+                {% endif %}
               </div>
             {% endif %}
           {% endfor %}
           <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
         </form>
       {% endif %}
-      {% if rv.last_shot %}
+      {% if rv.last_rerack %}
+        <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
+          <button class="ghost" type="submit">↶ Annulla: riordino bicchieri di {{ team[rv.last_rerack].name }}</button>
+        </form>
+      {% elif rv.last_shot %}
         {% set ls = rv.last_shot %}
         <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
           <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "🎯 " ~ ls.removed if ls.removed else "✗ fuori" }}</button>
@@ -190,7 +197,9 @@
       const body = new FormData(form, e.submitter);
       document.querySelector("main").classList.add("ref-busy");
       try {
-        const r = await fetch(form.action, { method: "POST", body, credentials: "same-origin" });
+        // A button may post somewhere else than its form (formaction), like "Riordina" inside the shot form.
+        const url = e.submitter && e.submitter.hasAttribute("formaction") ? e.submitter.formAction : form.action;
+        const r = await fetch(url, { method: "POST", body, credentials: "same-origin" });
         if (!r.ok || new URL(r.url).pathname === "/login") throw new Error(r.status);
         const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
         document.querySelector("main").replaceWith(fresh);

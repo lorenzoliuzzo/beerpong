@@ -837,6 +837,20 @@ def match_shot(
     return redirect(_referee_back(request, m))
 
 
+@router.post("/partita/{match_id}/riordina")
+def match_rerack(
+    request: Request, match_id: int, lato: int = Form(...), db: sqlite3.Connection = Depends(get_db)
+) -> Response:
+    m = _refereed(request, db, match_id)
+    if m is None:
+        return redirect("/login")
+    try:
+        tracking.referee_rerack(db, match_id, lato, time.time())
+    except TournamentError as e:
+        flash(request, str(e), "err")
+    return redirect(_referee_back(request, m))
+
+
 @router.post("/partita/{match_id}/annulla-tiro")
 def match_undo_shot(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
     m = _refereed(request, db, match_id)

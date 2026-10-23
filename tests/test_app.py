@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app import service, tracking
+from app import live, service, tracking
 from app.db import connect, get_setting, init_db
 from app.main import create_app, get_db
 
@@ -1146,3 +1146,23 @@ def test_the_referee_couples_matches_are_spaced_out_on_its_table() -> None:
         spots = [i for i, f in enumerate(queue) if ref in (f.team1, f.team2)]
         assert len(spots) == 3 and min(b - a for a, b in zip(spots, spots[1:])) >= 3
         assert all({a.team1, a.team2}.isdisjoint({b.team1, b.team2}) for a, b in zip(queue, queue[1:]))
+
+
+def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    login(client, db_call(service.referee_pin, 1))
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
+    for n, (pl, cup) in enumerate([(1, 1), (2, 4)]):
+        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": cup, "n": n})
+    for n, pl in ((2, 1), (3, 2)):
+        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": 0, "n": n})
+    page = client.get("/arbitro").text
+    assert "⟲ Riordina" in page  # couple 1 shoots again at couple 2's 4 cups
+    client.post(f"/partita/{m.id}/riordina", data={"lato": 2})
+    st = db_call(lambda db: tracking.state(db, m.id))
+    assert st.racks[2].cups == {1, 2, 3, 4} and st.rows[2] == live.FORMATIONS[4]
+    page = client.get("/arbitro").text
+    assert f"↶ Annulla: riordino bicchieri di {m.n2}" in page
+    client.post(f"/partita/{m.id}/annulla-tiro")
+    assert db_call(lambda db: tracking.state(db, m.id)).racks[2].cups == {2, 3, 5, 6}

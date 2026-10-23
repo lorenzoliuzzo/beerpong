@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS push_sent (
     PRIMARY KEY (match_id, kind)
 );
 -- Live tracking: every tap from any phone; the consensus is computed when reading (see app/live.py).
+-- The referee re-racks a couple's remaining cups into a compact formation when the shooters ask.
+CREATE TABLE IF NOT EXISTS reracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    side INTEGER NOT NULL CHECK (side IN (1, 2)),
+    at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
