@@ -613,7 +613,8 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
     pending_groups = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
     missing_splits = sum(1 for m in service.matches(db) for s in (1, 2) if m.split_missing(s))
     return page(
-        request, db, "admin.html", overview=service.checkin_overview(db), solo=service.unassigned_guests(db), pins=pins,
+        request, db, "admin.html", overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
+        solo=service.unassigned_guests(db), pins=pins,
         admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
         checkin_url=checkin_url(request, db),
     )
@@ -656,11 +657,12 @@ def admin_import(request: Request, testo: str = Form(...), db: sqlite3.Connectio
 
 def _team_form_values(
     name: str, p1: str, p2: str, phone1: str, phone2: str, payment: str, pagato: str | None, presente: str | None,
-    note: str = "", verificata: str | None = None, gruppo: str | None = None,
+    note: str = "", verificata: str | None = None, gruppo: str | None = None, organizzatori: str | None = None,
 ) -> dict:
     return {
         "name": name, "p1": p1, "p2": p2, "phone1": phone1, "phone2": phone2, "payment": payment,
         "paid": pagato == "1", "present": presente == "1", "note": "" if verificata else note, "in_chat": gruppo == "1",
+        "organizer": organizzatori == "1",
     }
 
 
@@ -674,12 +676,15 @@ def admin_new_team(
     request: Request,
     name: str = Form(""), p1: str = Form(""), p2: str = Form(""), phone1: str = Form(""), phone2: str = Form(""),
     payment: str = Form(""), pagato: str | None = Form(None), presente: str | None = Form(None),
-    note: str = Form(""), gruppo: str | None = Form(None),
+    note: str = Form(""), gruppo: str | None = Form(None), organizzatori: str | None = Form(None),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     try:
         service.save_team(
-            db, None, **_team_form_values(name, p1, p2, phone1, phone2, payment, pagato, presente, note, gruppo=gruppo)
+            db, None, **_team_form_values(
+                name, p1, p2, phone1, phone2, payment, pagato, presente, note,
+                gruppo=gruppo, organizzatori=organizzatori,
+            ),
         )
     except TournamentError as e:
         flash(request, str(e), "err")
@@ -706,12 +711,15 @@ def admin_team_save(
     name: str = Form(""), p1: str = Form(""), p2: str = Form(""), phone1: str = Form(""), phone2: str = Form(""),
     payment: str = Form(""), pagato: str | None = Form(None), presente: str | None = Form(None),
     note: str = Form(""), verificata: str | None = Form(None), gruppo: str | None = Form(None),
+    organizzatori: str | None = Form(None),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     try:
         service.save_team(
             db, team_id,
-            **_team_form_values(name, p1, p2, phone1, phone2, payment, pagato, presente, note, verificata, gruppo),
+            **_team_form_values(
+                name, p1, p2, phone1, phone2, payment, pagato, presente, note, verificata, gruppo, organizzatori
+            ),
         )
     except TournamentError as e:
         flash(request, str(e), "err")
@@ -809,10 +817,10 @@ def admin_presence(
 
 @admin.post("/squadre/{team_id}/pagato")
 def admin_paid(
-    request: Request, team_id: int, pagato: int = Form(...), back: str = Form("/admin#pagamenti"),
+    request: Request, team_id: int, pagato: int = Form(...), back: str = Form("/admin#coppie"),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
-    target = back if back.startswith("/admin") else "/admin#pagamenti"
+    target = back if back.startswith("/admin") else "/admin#coppie"
     return _admin_action(request, lambda: service.set_paid(db, team_id, bool(pagato)), "Pagamento aggiornato.", target)
 
 
@@ -834,7 +842,7 @@ def admin_chat_list(request: Request, elenco: str = Form(""), db: sqlite3.Connec
     if r.unmatched:
         msg += f". Numeri senza coppia: {', '.join(r.unmatched)}"
     flash(request, msg + ".")
-    return redirect("/admin/mancanti#fuori-gruppo")
+    return redirect("/admin#coppie")
 
 
 @admin.post("/pagamenti/elenco")
@@ -846,7 +854,7 @@ def admin_paid_list(request: Request, elenco: str = Form(""), db: sqlite3.Connec
     if r.unmatched:
         msg += f". Non trovate: {', '.join(r.unmatched)}"
     flash(request, msg + ".", "err" if r.unmatched else "ok")
-    return redirect("/admin#pagamenti")
+    return redirect("/admin#coppie")
 
 
 @admin.post("/impostazioni")

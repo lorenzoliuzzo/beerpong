@@ -24,6 +24,7 @@
     {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">📞 Chiama</a></p>{% endif %}
     <div class="choices" style="margin-top:12px">
       <label><input type="checkbox" name="gruppo" value="1" {{ 'checked' if t and t.in_chat }}> Nel gruppo WhatsApp</label>
+      <label><input type="checkbox" name="organizzatori" value="1" {{ 'checked' if t and t.organizer }}> Organizzatori (non conta nelle verifiche)</label>
     </div>
   </div>
   <div class="card">

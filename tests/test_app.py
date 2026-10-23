@@ -240,14 +240,14 @@ def test_payment_verification(client: TestClient) -> None:
     client.post("/checkin/1", data=checkin_form(db_call(service.team, 1), payment="online"))
     # Tickets are paid by bank transfer before the night: every registered couple counts, arrived or not.
     page = client.get("/admin").text
-    assert "4 non pagate" in page and "Le risposte arrivano con i check-in" not in page
-    assert page.count("Pagato ✓</button>") == 4
+    assert '<div class="big">0/4</div><span class="muted small">pagate</span>' in page
+    assert page.count('aria-label="Pagato:') == 4
     client.post("/admin/squadre/1/pagato", data={"pagato": 1})
     client.post("/admin/squadre/3/pagato", data={"pagato": 1})
     assert db_call(service.team, 1)["paid"] == 1
-    assert "2 non pagate" in client.get("/admin").text
+    assert '<div class="big">2/4</div><span class="muted small">pagate</span>' in client.get("/admin").text
     client.post("/admin/squadre/3/pagato", data={"pagato": 0})
-    assert "3 non pagate" in client.get("/admin").text
+    assert '<div class="big">1/4</div><span class="muted small">pagate</span>' in client.get("/admin").text
 
 
 def test_start_requires_four_present(client: TestClient) -> None:
@@ -643,7 +643,7 @@ def test_da_sistemare_lists_unpaid_with_quick_pay(client: TestClient) -> None:
     r = client.post(f"/admin/squadre/{a}/pagato", data={"pagato": 1, "back": "/admin/mancanti#non-pagato"}, follow_redirects=False)
     assert r.headers["location"] == "/admin/mancanti#non-pagato"
     assert "Non hanno ancora pagato (1)" in client.get("/admin/mancanti").text
-    assert "1 senza pagamento verificato" in client.get("/admin").text
+    assert "Non pagate 1</button>" in client.get("/admin").text
 
 
 def test_board_shows_provisional_groups_then_live_then_bracket(client: TestClient) -> None:
@@ -693,7 +693,7 @@ def test_chat_list_marks_couples_by_phone(client: TestClient) -> None:
     assert "2 coppie segnate nel gruppo. Numeri senza coppia: +393200000000" in r.text
     in_chat = {t["name"] for t in db_call(service.teams).values() if t["in_chat"]}
     assert in_chat == {"A", "B"}
-    assert "Non ancora nel gruppo WhatsApp (1)" in r.text
+    assert "Fuori dal gruppo 1</button>" in r.text
     assert "lo erano già" in client.post("/admin/gruppo/elenco", data={"elenco": "3331234567"}).text
 
 
@@ -704,7 +704,7 @@ def test_chat_flag_toggles_and_survives_team_edit(client: TestClient) -> None:
     r = client.post(f"/admin/squadre/{a}/gruppo", data={"gruppo": 1, "back": "https://evil.example"}, follow_redirects=False)
     assert r.headers["location"] == "/admin/mancanti#fuori-gruppo"
     assert db_call(service.team, a)["in_chat"] == 1
-    assert "0 fuori dal gruppo" in client.get("/admin").text
+    assert "Fuori dal gruppo 0</button>" in client.get("/admin").text
     form = {"name": "A", "p1": "a1", "p2": "a2", "phone1": "3331110000", "gruppo": "1"}
     client.post(f"/admin/squadre/{a}", data=form)
     assert db_call(service.team, a)["in_chat"] == 1
@@ -718,7 +718,8 @@ def test_couples_list_has_paid_and_chat_toggles(client: TestClient) -> None:
     a = next(t["id"] for t in db_call(service.teams).values() if t["name"] == "A")
     client.post(f"/admin/squadre/{a}/pagato", data={"pagato": 1})
     page = client.get("/admin").text
-    assert "1/2</strong> pagato" in page and "0/2</strong> nel gruppo" in page
+    assert '<div class="big">1/2</div><span class="muted small">pagate</span>' in page
+    assert '<div class="big">0/2</div><span class="muted small">nel gruppo</span>' in page
     assert f'<input type="hidden" name="pagato" value="0"><input type="hidden" name="back" value="/admin#t{a}">' in page
     assert 'class="check on" aria-pressed="true" aria-label="Pagato: A"' in page
     assert 'class="check " aria-pressed="false" aria-label="Nel gruppo: A"' in page
@@ -751,3 +752,15 @@ def test_solo_serata_list(client: TestClient) -> None:
     page = client.get("/admin").text
     assert 'Solo serata <span class="pill">2</span>' in page
     assert "Ada" in page and "Senza nome" in page and "tel:3330000001" in page
+
+
+def test_organizers_are_not_counted_in_checks(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "A; a1; a2; 3331110000\nOrg; o1; o2"})
+    org = next(t["id"] for t in db_call(service.teams).values() if t["name"] == "Org")
+    client.post(f"/admin/squadre/{org}", data={"name": "Org", "p1": "o1", "p2": "o2", "organizzatori": "1"})
+    page = client.get("/admin").text
+    assert '<div class="big">0/1</div><span class="muted small">pagate</span>' in page
+    assert "Senza contare le 1 coppie degli organizzatori" in page and "Senza telefono 0</button>" in page
+    assert f'id="t{org}" data-f=""' in page and "organizzatori</span>" in page
+    assert "Non hanno ancora pagato (1)" in client.get("/admin/mancanti").text

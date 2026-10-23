@@ -249,8 +249,26 @@ details.section > summary::after { content: "›"; color: var(--muted); font-siz
 details.section[open] > summary::after { transform: rotate(90deg); }
 details.section > .body { padding: 0 16px 16px; }
 details.section .list { margin: 8px 0; }
+details.section .search { top: 104px; }
 details.section summary .pill { margin-left: auto; }
 
+.subnav { position: sticky; top: 56px; z-index: 6; display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; background: var(--bg); scrollbar-width: none; }
+.subnav a { flex-shrink: 0; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: .88rem; font-weight: 700; text-decoration: none; }
+.summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0; }
+.summary .tile { background: var(--warn-soft); border-radius: var(--radius); padding: 10px 4px; text-align: center; color: var(--text); text-decoration: none; }
+.summary .tile.ok { background: var(--ok-soft); }
+.summary .tile .big { font-size: 1.3rem; font-weight: 800; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+button.chip { min-height: 36px; padding: 4px 12px; font-size: .85rem; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 999px; }
+button.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+details.section { scroll-margin-top: 104px; }
+#all-teams > .empty-filter { display: none; }
+#all-teams[data-show]:not([data-show=""]):not(:has(> .row[data-f]:not([hidden]))) > .empty-filter { display: flex; }
+#all-teams[data-show="nonpagate"] > .row:not([data-f~="nonpagate"]) { display: none; }
+#all-teams[data-show="fuorigruppo"] > .row:not([data-f~="fuorigruppo"]) { display: none; }
+#all-teams[data-show="senzatelefono"] > .row:not([data-f~="senzatelefono"]) { display: none; }
+#all-teams[data-show="dacompletare"] > .row:not([data-f~="dacompletare"]) { display: none; }
+#all-teams[data-show="dasistemare"] > .row:not([data-f~="dasistemare"]) { display: none; }
 .search { position: sticky; top: 56px; z-index: 5; padding: 8px 0; background: var(--bg); }
 
 .qr-sheet { text-align: center; }

@@ -4,21 +4,93 @@
 {% set ov = overview %}
 {% set setup = cfg.phase == "setup" %}
 <h1>Organizzazione</h1>
-<a class="banner todo" href="/admin/mancanti">
-  <div class="label">Da sistemare</div>
-  {{ ov.present|length + ov.missing|length - ov.partial|length }} coppie complete · {{ ov.partial|length }} da completare ·
-  {{ (ov.present + ov.missing)|rejectattr("paid")|list|length }} senza pagamento verificato ·
-  {{ (ov.present + ov.missing)|rejectattr("in_chat")|list|length }} fuori dal gruppo →
-</a>
+<nav class="subnav" aria-label="Sezioni">
+  <a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
+  <a href="#solo-serata">Solo serata</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
+</nav>
 
-<details class="section" id="torneo" open>
+{% set n = chk.players|length %}
+<div class="summary">
+  <a href="#coppie" data-show="nonpagate" class="tile {{ 'ok' if not chk.failing('nonpagate') }}"><div class="big">{{ n - chk.failing('nonpagate')|length }}/{{ n }}</div><span class="muted small">pagate</span></a>
+  <a href="#coppie" data-show="fuorigruppo" class="tile {{ 'ok' if not chk.failing('fuorigruppo') }}"><div class="big">{{ n - chk.failing('fuorigruppo')|length }}/{{ n }}</div><span class="muted small">nel gruppo</span></a>
+  <a href="#coppie" data-show="senzatelefono" class="tile {{ 'ok' if not chk.failing('senzatelefono') }}"><div class="big">{{ n - chk.failing('senzatelefono')|length }}/{{ n }}</div><span class="muted small">con telefono</span></a>
+  <a href="#coppie" data-show="dasistemare" class="tile {{ 'ok' if chk.done|length == n }}"><div class="big">{{ chk.done|length }}/{{ n }}</div><span class="muted small">tutto ok</span></a>
+</div>
+<p class="muted small">{% if chk.organizers %}Senza contare le {{ chk.organizers|length }} coppie degli organizzatori. {% endif %}Tocca un numero per vedere chi manca.</p>
+
+<details class="section" id="coppie" {{ 'open' if setup }}>
+  <summary>Coppie iscritte <span class="pill">{{ chk.rows|length }}</span></summary>
+  <div class="body">
+    <p class="muted small">Tocca «Pagato» e «Gruppo» per segnare o togliere.</p>
+    <div class="chips" role="group" aria-label="Filtra">
+      <button type="button" class="chip" data-show="" aria-pressed="true">Tutte {{ chk.rows|length }}</button>
+      <button type="button" class="chip" data-show="dasistemare" aria-pressed="false">Da sistemare {{ n - chk.done|length }}</button>
+      {% for key, label in checks.items() %}
+        <button type="button" class="chip" data-show="{{ key }}" aria-pressed="false">{{ label }} {{ chk.failing(key)|length }}</button>
+      {% endfor %}
+    </div>
+    <div class="search"><input type="search" placeholder="Cerca coppia o giocatore" data-filter="#all-teams" autocomplete="off" aria-label="Cerca"></div>
+    <div class="list" id="all-teams">
+      {% for t in chk.rows %}
+        {% set failing = chk.checks[t.id] %}
+        <div class="row" id="t{{ t.id }}" data-f="{{ (failing + ['dasistemare'] if failing else [])|join(' ') }}">
+          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+            <div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span>
+            {% if t.organizer or t.note or t.checked_in or not (t.p1 and t.p2) or not t.phone1 %}<div class="pills">
+              {% if t.organizer %}<span class="pill">organizzatori</span>{% endif %}
+              {% if t.note %}<span class="pill accent">da verificare</span>{% endif %}
+              {% if t.checked_in %}<span class="pill ok">presente</span>{% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
+              {% if not t.phone1 %}<span class="pill warn">senza telefono</span>{% endif %}
+            </div>{% endif %}
+          </a>
+          {{ ui.checks(t, "/admin#t" ~ t.id) }}
+        </div>
+      {% else %}
+        <div class="row muted">Nessuna coppia: aggiungile o importa l'elenco.</div>
+      {% endfor %}
+      <div class="row muted empty-filter">Nessuna coppia in questo filtro. 🍻</div>
+    </div>
+    {% if setup %}
+      <a class="btn wide" href="/admin/squadre/nuova">+ Aggiungi coppia</a>
+    {% endif %}
+    <details>
+      <summary><strong>Incolla un elenco di pagamenti</strong></summary>
+      <form method="post" action="/admin/pagamenti/elenco">
+        <label for="elenco-pagati">Una squadra per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
+        <textarea id="elenco-pagati" name="elenco" required></textarea>
+        <button class="wide" type="submit">Segna pagati</button>
+      </form>
+    </details>
+    <details>
+      <summary><strong>Incolla i numeri del gruppo</strong></summary>
+      <form method="post" action="/admin/gruppo/elenco">
+        <label for="elenco-gruppo">Copia i partecipanti dalle info del gruppo: ogni coppia con un numero nell'elenco viene segnata «nel gruppo».</label>
+        <textarea id="elenco-gruppo" name="elenco" required></textarea>
+        <button class="wide" type="submit">Segna nel gruppo</button>
+      </form>
+    </details>
+    {% if setup %}
+      <details>
+        <summary><strong>Importa un elenco</strong></summary>
+        <form method="post" action="/admin/squadre/importa">
+          <label for="testo">Una riga per iscrizione: <code>Squadra; Giocatore 1; Giocatore 2; Telefono</code><br>
+            Senza giocatore 2 = coppia parziale. Senza nome squadra = iscritto solo serata (nome in «Giocatore 1»).</label>
+          <textarea id="testo" name="testo" required></textarea>
+          <button class="wide" type="submit">Importa</button>
+        </form>
+      </details>
+    {% endif %}
+  </div>
+</details>
+
+<details class="section" id="torneo" {{ 'open' if not setup }}>
   <summary>Torneo <span class="pill accent">{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></summary>
   <div class="body">
     {% if setup %}
       <div class="stats">
         <div><div class="big">{{ ov.present|length }}</div><span class="muted small">presenti</span></div>
         <div><div class="big">{{ ov.missing|length }}</div><span class="muted small">mancano</span></div>
-        <div><div class="big">{{ (ov.present + ov.missing)|rejectattr("paid")|list|length }}</div><span class="muted small">non pagate</span></div>
+        <div><div class="big">{{ chk.failing('nonpagate')|length }}</div><span class="muted small">non pagate</span></div>
       </div>
       <form method="post" action="/admin/avvia"
             onsubmit='return confirm({{ ("Avviare con " ~ ov.present|length ~ " coppie presenti?" ~ (" Ne mancano " ~ ov.missing|length ~ ": resteranno fuori." if ov.missing else ""))|tojson }})'>
@@ -90,80 +162,6 @@
       {% endfor %}
     </div>
     </details>
-  </div>
-</details>
-
-<details class="section" id="pagamenti">
-  <summary>Pagamenti <span class="pill {{ 'ok' if not ov.to_verify else 'warn' }}">{{ ov.to_verify|length }} non pagate</span></summary>
-  <div class="body">
-    <p class="muted small">Il ticket si paga con bonifico prima del torneo: segna qui chi ha pagato. Ogni admin può aggiornarlo dal suo telefono.</p>
-    <div class="search" style="top:0"><input type="search" placeholder="Cerca coppia" data-filter="#pay-list" autocomplete="off" aria-label="Cerca"></div>
-    <div class="list" id="pay-list">
-      {% for t in (ov.present + ov.missing)|sort(attribute="name")|sort(attribute="paid") %}
-        <div class="row">
-          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none"><div class="title">{{ t.name }}</div>{{ ui.payment_pill(t, payments) }}</a>
-          {% if t.phone1 and not t.paid %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
-          <form method="post" action="/admin/squadre/{{ t.id }}/pagato">
-            <input type="hidden" name="pagato" value="{{ 0 if t.paid else 1 }}"><input type="hidden" name="back" value="/admin#pagamenti">
-            <button class="small {{ 'ghost' if t.paid }}" type="submit">{{ "Annulla" if t.paid else "Pagato ✓" }}</button>
-          </form>
-        </div>
-      {% else %}
-        <div class="row muted">Nessuna coppia iscritta.</div>
-      {% endfor %}
-    </div>
-    <details>
-      <summary><strong>Incolla un elenco di pagamenti</strong></summary>
-      <form method="post" action="/admin/pagamenti/elenco">
-        <label for="elenco-pagati">Una squadra per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
-        <textarea id="elenco-pagati" name="elenco" required></textarea>
-        <button class="wide" type="submit">Segna pagati</button>
-      </form>
-    </details>
-  </div>
-</details>
-
-<details class="section" id="coppie">
-  <summary>Coppie iscritte <span class="pill">{{ ov.present|length + ov.missing|length }}</span></summary>
-  <div class="body">
-    {% set all_teams = ov.present + ov.missing %}
-    <p class="small"><strong>{{ all_teams|selectattr("paid")|list|length }}/{{ all_teams|length }}</strong> pagato ·
-      <strong>{{ all_teams|selectattr("in_chat")|list|length }}/{{ all_teams|length }}</strong> nel gruppo · tocca per segnare o togliere.</p>
-    <p class="muted small">{{ ov.partial|length }} coppie da completare ·
-      {{ ov.guests }} iscritti solo serata, di cui {{ ov.guest_teams|length }} diventati coppia al check-in.</p>
-    {% if setup %}
-      <a class="btn wide" href="/admin/squadre/nuova">+ Aggiungi coppia</a>
-    {% endif %}
-    <a class="btn ghost wide" href="/admin/mancanti" style="margin-top:8px">Da sistemare: pagamenti, profili, mancanti</a>
-    <div class="search" style="top:0"><input type="search" placeholder="Cerca coppia o giocatore" data-filter="#all-teams" autocomplete="off" aria-label="Cerca"></div>
-    <div class="list" id="all-teams">
-      {% for t in (ov.present + ov.missing)|sort(attribute="name") %}
-        <div class="row" id="t{{ t.id }}">
-          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
-            <div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span>
-            {% if t.note or t.checked_in or not (t.p1 and t.p2) or not t.phone1 %}<div class="pills">
-              {% if t.note %}<span class="pill accent">da verificare</span>{% endif %}
-              {% if t.checked_in %}<span class="pill ok">presente</span>{% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
-              {% if not t.phone1 %}<span class="pill warn">senza telefono</span>{% endif %}
-            </div>{% endif %}
-          </a>
-          {{ ui.checks(t, "/admin#t" ~ t.id) }}
-        </div>
-      {% else %}
-        <div class="row muted">Nessuna coppia: aggiungile o importa l'elenco.</div>
-      {% endfor %}
-    </div>
-    {% if setup %}
-      <details>
-        <summary><strong>Importa un elenco</strong></summary>
-        <form method="post" action="/admin/squadre/importa">
-          <label for="testo">Una riga per iscrizione: <code>Squadra; Giocatore 1; Giocatore 2; Telefono</code><br>
-            Senza giocatore 2 = coppia parziale. Senza nome squadra = iscritto solo serata (nome in «Giocatore 1»).</label>
-          <textarea id="testo" name="testo" required></textarea>
-          <button class="wide" type="submit">Importa</button>
-        </form>
-      </details>
-    {% endif %}
   </div>
 </details>
 

@@ -316,6 +316,7 @@ def save_team(
     present: bool,
     note: str = "",
     in_chat: bool = False,
+    organizer: bool = False,
 ) -> int:
     """Admin add (team_id None) or edit. After the draw only names, phones and payment can change."""
     setup = get_setting(db, "phase") == "setup"
@@ -337,19 +338,19 @@ def save_team(
             raise TournamentError("A torneo iniziato la coppia deve avere due giocatori.")
     if present and not (p1 and p2):
         raise TournamentError("Per segnarla presente servono entrambi i giocatori.")
-    values = (name, p1, p2, phone1, phone2, payment or None, int(paid), int(present), note.strip(), int(in_chat))
+    values = (name, p1, p2, phone1, phone2, payment or None, int(paid), int(present), note.strip(), int(in_chat), int(organizer))
     try:
         with db:
             if current is None:
                 cur = db.execute(
-                    "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, paid, checked_in, note, in_chat)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, paid, checked_in, note, in_chat, organizer)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     values,
                 )
                 return cur.lastrowid
             db.execute(
                 "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ?, payment = ?, paid = ?,"
-                " checked_in = ?, note = ?, in_chat = ? WHERE id = ?",
+                " checked_in = ?, note = ?, in_chat = ?, organizer = ? WHERE id = ?",
                 (*values, team_id),
             )
             return team_id
@@ -1433,6 +1434,54 @@ def apply_reconciliation(
     return added, renamed
 
 
+# Filter keys of the admin couples list, with the label shown on its buttons.
+CHECKS = {
+    "nonpagate": "Non pagate",
+    "fuorigruppo": "Fuori dal gruppo",
+    "senzatelefono": "Senza telefono",
+    "dacompletare": "Da completare",
+}
+
+
+def team_checks(t: sqlite3.Row) -> list[str]:
+    """What is still to verify for a couple; organizers' couples have nothing to verify."""
+    if t["organizer"]:
+        return []
+    failing = {
+        "nonpagate": not t["paid"],
+        "fuorigruppo": not t["in_chat"],
+        "senzatelefono": not t["phone1"],
+        "dacompletare": not (t["p1"] and t["p2"]) or bool(t["note"]),
+    }
+    return [key for key, bad in failing.items() if bad]
+
+
+@dataclass
+class Checklist:
+    rows: list[sqlite3.Row]
+    checks: dict[int, list[str]]
+
+    @property
+    def players(self) -> list[sqlite3.Row]:
+        return [t for t in self.rows if not t["organizer"]]
+
+    @property
+    def organizers(self) -> list[sqlite3.Row]:
+        return [t for t in self.rows if t["organizer"]]
+
+    def failing(self, key: str) -> list[sqlite3.Row]:
+        return [t for t in self.rows if key in self.checks[t["id"]]]
+
+    @property
+    def done(self) -> list[sqlite3.Row]:
+        return [t for t in self.players if not self.checks[t["id"]]]
+
+
+def checklist(db: sqlite3.Connection) -> Checklist:
+    rows = sorted(teams(db).values(), key=lambda t: t["name"].casefold())
+    return Checklist(rows, {t["id"]: team_checks(t) for t in rows})
+
+
 @dataclass
 class MissingOverview:
     target: int
@@ -1448,10 +1497,10 @@ def missing_overview(db: sqlite3.Connection) -> MissingOverview:
     return MissingOverview(
         target=int(get_setting(db, "target_teams")),
         complete=sum(1 for t in rows if t["p1"] and t["p2"]),
-        incomplete=[t for t in rows if not (t["p1"] and t["p2"]) or not t["phone1"] or t["note"]],
+        incomplete=[t for t in rows if {"senzatelefono", "dacompletare"} & set(team_checks(t))],
         guests=guest_views(db),
-        unpaid=[t for t in rows if not t["paid"]],
-        not_in_chat=[t for t in rows if not t["in_chat"]],
+        unpaid=[t for t in rows if "nonpagate" in team_checks(t)],
+        not_in_chat=[t for t in rows if "fuorigruppo" in team_checks(t)],
     )
 
 

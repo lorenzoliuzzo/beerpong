@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS teams (
     payment TEXT CHECK (payment IN ('contanti', 'online', 'cassa')),
     paid INTEGER NOT NULL DEFAULT 0,
     in_chat INTEGER NOT NULL DEFAULT 0,
+    organizer INTEGER NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
     grp INTEGER
 );
@@ -128,6 +129,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE teams ADD COLUMN note TEXT NOT NULL DEFAULT ''")
     if "in_chat" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN in_chat INTEGER NOT NULL DEFAULT 0")
+    if "organizer" not in team_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN organizer INTEGER NOT NULL DEFAULT 0")
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str:

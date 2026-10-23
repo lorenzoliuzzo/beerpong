@@ -109,14 +109,6 @@
     <div class="row muted">Tutte le coppie sono nel gruppo. 🍻</div>
   {% endfor %}
 </div>
-<details>
-  <summary><strong>Incolla i numeri del gruppo</strong></summary>
-  <form method="post" action="/admin/gruppo/elenco">
-    <label for="elenco-gruppo">Copia i partecipanti dalle info del gruppo: ogni coppia con un numero nell'elenco viene segnata «nel gruppo».</label>
-    <textarea id="elenco-gruppo" name="elenco" required></textarea>
-    <button class="wide" type="submit">Segna nel gruppo</button>
-  </form>
-</details>
 
 <h2 id="da-sistemare" class="anchor">Profili da completare o verificare ({{ ov.incomplete|length }})</h2>
 <div class="list">

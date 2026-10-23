@@ -95,6 +95,27 @@
     value.value = on ? 0 : 1;
   });
 
+  // Admin list filters: <button data-show="key"> shows only rows whose data-f contains key ("" = all).
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-show]");
+    if (!b) return;
+    const list = document.querySelector("#all-teams");
+    if (!list) return;
+    list.dataset.show = b.dataset.show;
+    document.querySelectorAll(".chips [data-show]").forEach((c) => c.setAttribute("aria-pressed", c.dataset.show === b.dataset.show));
+  });
+
+  // Open the collapsed section a link or redirect points to (#coppie, #t12), then scroll to it.
+  const openTarget = () => {
+    const el = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!el) return;
+    for (let d = el.closest("details"); d; d = d.parentElement.closest("details")) d.open = true;
+    el.scrollIntoView({ block: "start" });
+  };
+  window.addEventListener("hashchange", openTarget);
+  document.addEventListener("click", (e) => { if (e.target.closest('a[href^="#"]')) setTimeout(openTarget); });
+  openTarget();
+
   // Client-side filter for long lists: <input data-filter="#list"> hides rows whose text does not match.
   document.addEventListener("input", (e) => {
     const sel = e.target.dataset && e.target.dataset.filter;
