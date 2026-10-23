@@ -1,6 +1,7 @@
 import random
 import threading
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -765,3 +766,28 @@ def test_organizers_are_not_counted_in_checks(client: TestClient) -> None:
     assert "Senza contare le 1 coppie degli organizzatori" in page and "Senza telefono 0</button>" in page
     assert f'id="t{org}" data-f=""' in page and "organizzatori</span>" in page
     assert "Non hanno ancora pagato (1)" in client.get("/admin/mancanti").text
+
+
+def test_provisional_schedule_starts_at_the_planned_time(client: TestClient) -> None:
+    import_teams(client, 16)
+    client.post("/admin/impostazioni", data={"title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1,
+                                             "start_time": "21:30"})
+    plan = db_call(lambda db: service.planned_schedule(db, datetime(2026, 10, 23, 18, 0)))
+    assert plan.start == "21:30" and plan.slots[0][0] == "21:30" and plan.slots[1][0] == "21:36"
+    assert len(plan.slots[0][1]) == 4 and plan.groups_end == "22:06"
+    page = client.get("/programma").text
+    assert "Programma provvisorio" in page and "Tavolo 1 · Girone A" in page
+    assert "Orario di inizio non valido" in client.post("/admin/impostazioni", data={
+        "title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1, "start_time": "25:00"}).text
+    assert "Si comincia alle 21:30" in client.get("/cartellone").text
+
+
+def test_start_uses_planned_time_unless_late(client: TestClient) -> None:
+    import_teams(client, 8)
+    for t in db_call(service.teams).values():
+        client.post(f"/admin/squadre/{t['id']}/presente", data={"presente": 1})
+    db_call(lambda db: service.start_tournament(db, datetime(2026, 10, 23, 21, 10)))
+    assert min(m.time for m in db_call(service.matches) if m.time) == "21:30"
+    db_call(service.reset_tournament)
+    db_call(lambda db: service.start_tournament(db, datetime(2026, 10, 23, 21, 47, 20)))
+    assert min(m.time for m in db_call(service.matches) if m.time) == "21:48"

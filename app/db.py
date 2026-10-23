@@ -77,6 +77,7 @@ DEFAULTS = {
     "title": "Torneo di Beer Pong",
     "target_teams": "32",
     "phase": "setup",
+    "start_time": "21:30",
 }
 
 

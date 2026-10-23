@@ -8,7 +8,31 @@ from datetime import datetime, timedelta
 from app import db, service, tracking
 
 
+# Invented couples: the public demo must never show the real participants.
+DEMO_TEAMS = [
+    "I Gufi", "Le Lontre", "I Castori", "Le Volpi", "I Ricci", "Le Marmotte", "I Fenicotteri", "Le Tartarughe",
+    "I Pinguini", "Le Gazzelle", "I Bradipi", "Le Api", "I Koala", "Le Foche", "I Delfini", "Le Civette",
+    "I Lama", "Le Zebre", "I Panda", "Le Rane", "I Tucani", "Le Orche", "I Canguri", "Le Lucciole",
+    "I Camaleonti", "Le Meduse", "I Gabbiani", "Le Puzzole", "I Polpi", "Le Faine", "I Grilli", "Le Talpe",
+]
+DEMO_PLAYERS = [
+    "Ada", "Bruno", "Carla", "Dario", "Elsa", "Furio", "Gina", "Ivo", "Lia", "Mauro", "Nora", "Otto",
+    "Pia", "Rino", "Sara", "Tullio", "Ugo", "Vera", "Walter", "Zoe", "Aldo", "Bice", "Ciro", "Dora",
+]
+
+
+def add_demo_teams(db_conn: sqlite3.Connection) -> None:
+    rng = random.Random(7)
+    for i, name in enumerate(DEMO_TEAMS):
+        p1, p2 = rng.sample(DEMO_PLAYERS, 2)
+        service.save_team(db_conn, None, name, p1, p2, f"3330000{i:03d}", "", "", paid=True, present=True)
+
+
 def setup_demo(db_conn: sqlite3.Connection) -> None:
+    if not service.teams(db_conn):
+        add_demo_teams(db_conn)
+        db.set_setting(db_conn, "title", "DEMO · Torneo di Beer Pong")
+        db_conn.commit()
     # 1. Ensure all teams are checked in and paid
     with db_conn:
         db_conn.execute("UPDATE teams SET checked_in = 1, paid = 1, payment = 'contanti'")
@@ -20,6 +44,7 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
         service.reset_tournament(db_conn)
     with db_conn:
         db.set_setting(db_conn, "fields", "4")
+        db.set_setting(db_conn, "start_time", "00:00")  # times count from half an hour ago, not from tonight
         db_conn.execute("UPDATE teams SET checked_in = 1, paid = 1, payment = 'contanti'")
         db_conn.execute("DELETE FROM reports")
 

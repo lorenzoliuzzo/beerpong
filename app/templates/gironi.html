@@ -10,6 +10,10 @@
   </div>
 </div>
 
+{% if cfg.phase in ("setup", "groups") %}
+  <a class="btn ghost wide" href="/programma" style="margin:0 0 12px">📅 Programma delle partite{% if cfg.phase == "setup" %} · si comincia alle {{ cfg.start_time }}{% endif %}</a>
+{% endif %}
+
 {% if cfg.phase in ("knockout", "finished") %}
   <div class="banner warm">
     <div class="label">Archivio Gironi</div>

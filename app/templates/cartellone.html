@@ -10,11 +10,12 @@
   <div>
     <div class="board-title">🍺 {{ cfg.title }}</div>
     <div class="board-sub">
-      {% if provisional %}Gironi provvisori · sorteggio di prova con tutte le {{ groups|map(attribute="teams")|map("length")|sum }} coppie iscritte
+      {% if provisional %}Si comincia alle {{ cfg.start_time }} · gironi provvisori con tutte le {{ groups|map(attribute="teams")|map("length")|sum }} coppie iscritte
       {% elif cfg.phase == "groups" %}Fase a gironi
       {% elif cfg.phase == "knockout" %}Eliminazione diretta
       {% else %}Torneo concluso{% endif %}
     </div>
+    {% if cfg.phase in ("setup", "groups") %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
   </div>
   <div class="board-clock" id="board-clock"></div>
   <div class="board-qr"><img src="/qr-sito.svg" alt="QR del sito"><span>Segui dal telefono</span></div>

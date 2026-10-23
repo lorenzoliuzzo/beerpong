@@ -13,6 +13,28 @@
   <div class="slot-head">{{ time or "—" }} <span class="muted small">turno {{ slot + 1 }}</span></div>
   {% for m in ms %}{{ ui.match(m, mine=me.id if me) }}{% endfor %}
 {% else %}
-  <p class="muted">Il programma comparirà all'inizio del torneo.</p>
+  {% if plan %}
+    <div class="banner todo">
+      <div class="label">Programma provvisorio</div>
+      <div class="headline">Si comincia alle {{ plan.start }}</div>
+      Fine gironi verso le {{ plan.groups_end }} · finale verso le {{ plan.final }}
+    </div>
+    <p class="muted small">Calcolato sui gironi provvisori del cartellone: se all'avvio manca qualche coppia, gironi e orari cambiano.</p>
+    {% for time, ms in plan.slots %}
+      {% set ms = ms|selectattr("team1.id", "equalto", team_id)|list + ms|selectattr("team2.id", "equalto", team_id)|list if team_id else ms %}
+      {% if ms %}
+        <div class="slot-head">{{ time }} <span class="muted small">turno {{ loop.index }}</span></div>
+        <div class="list">
+          {% for m in ms %}
+            <div class="row"><div class="grow"><div class="title">{{ m.team1.name }} <span class="muted">vs</span> {{ m.team2.name }}</div>
+              <span class="muted small">Tavolo {{ m.field }} · Girone {{ m.group }}</span></div></div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+    <p class="muted small">Poi eliminazione diretta: gli orari arrivano quando finiscono i gironi.</p>
+  {% else %}
+    <p class="muted">Il programma comparirà all'inizio del torneo.</p>
+  {% endif %}
 {% endfor %}
 {% endblock %}

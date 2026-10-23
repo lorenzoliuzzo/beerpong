@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 import logging
 import secrets
 import sqlite3
@@ -221,7 +222,8 @@ def schedule(request: Request, team: str | None = None, db: sqlite3.Connection =
     views = service.matches(db)
     if team_id:
         views = [m for m in views if team_id in (m.t1, m.t2)]
-    return page(request, db, "programma.html", slots=service.by_slot(views), team_id=team_id, live=True)
+    plan = service.planned_schedule(db, datetime.now()) if not views else None
+    return page(request, db, "programma.html", slots=service.by_slot(views), plan=plan, team_id=team_id, live=True)
 
 
 @router.get("/classifiche")
@@ -880,14 +882,19 @@ def admin_settings(
     ko_min: int = Form(...),
     buffer_min: int = Form(...),
     public_url: str = Form(""),
+    start_time: str = Form(""),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     if not 1 <= fields <= 20 or min(group_min, ko_min) < 1 or buffer_min < 0:
         flash(request, "Valori non validi: almeno 1 campo e durate positive.", "err")
         return redirect("/admin#impostazioni")
+    if start_time and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", start_time):
+        flash(request, "Orario di inizio non valido: usa il formato 21:30.", "err")
+        return redirect("/admin#impostazioni")
     values = {
         "title": title.strip() or "Torneo di Beer Pong", "fields": str(fields), "group_min": str(group_min),
         "ko_min": str(ko_min), "buffer_min": str(buffer_min), "public_url": public_url.strip(),
+        "start_time": start_time or get_setting(db, "start_time"),
     }
     with db:
         for k, v in values.items():

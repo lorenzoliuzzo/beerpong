@@ -410,6 +410,7 @@ body.board .step.done .dot { background: var(--accent); }
   .board-steps .steps { margin: 10px -16px 4px; }
   .board-h { margin: 16px 0 8px; }
 }
+.board-link { display: inline-block; margin-top: 10px; padding: 8px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--beer); font-weight: 800; text-decoration: none; }
 .board-format { margin-top: 20px; color: var(--muted); font-size: clamp(1rem, 1.3vw, 1.4rem); font-weight: 700; }
 body.board .gcard .grow .n { color: #fff; }
 body.board .gcard .grow.plain { padding: 7px 4px; }

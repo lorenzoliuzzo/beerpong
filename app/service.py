@@ -32,6 +32,7 @@ class Config:
     buffer_min: int
     public_url: str
     phase: str
+    start_time: str
 
 
 @dataclass
@@ -88,6 +89,7 @@ def load_config(db: sqlite3.Connection) -> Config:
         buffer_min=int(get_setting(db, "buffer_min")),
         public_url=get_setting(db, "public_url"),
         phase=get_setting(db, "phase"),
+        start_time=get_setting(db, "start_time"),
     )
 
 
@@ -389,6 +391,20 @@ def _next_minute(dt: datetime) -> datetime:
     return floor if floor == dt else floor + timedelta(minutes=1)
 
 
+def planned_start(cfg: Config, now: datetime) -> datetime:
+    """The scheduled start time today, or the next minute if the tournament starts late."""
+    hour, minute = (int(x) for x in cfg.start_time.split(":"))
+    return max(_next_minute(now), now.replace(hour=hour, minute=minute, second=0, microsecond=0))
+
+
+def _knockout_slots(bracket_size: int, fields: int) -> int:
+    slots, remaining = 0, bracket_size
+    while remaining > 2:  # every round before the final
+        slots += -(-(remaining // 2) // fields)
+        remaining //= 2
+    return slots
+
+
 def draw_groups(
     team_ids: list[int], seed: int, fields: int = 1, organizers: frozenset[int] = frozenset()
 ) -> list[list[int]]:
@@ -449,10 +465,7 @@ def preview_draw(db: sqlite3.Connection, present_only: bool, seed: int) -> DrawP
     groups = draw_groups(ids, seed, cfg.fields, _organizers(db))
     schedule = _group_schedule(groups, cfg.fields)
     size, qualifiers = planning.bracket_plan(len(groups))
-    ko_slots, remaining = 0, size
-    while remaining > 2:  # every round before the final
-        ko_slots += -(-(remaining // 2) // cfg.fields)
-        remaining //= 2
+    ko_slots = _knockout_slots(size, cfg.fields)
     return DrawPreview(
         seed=seed,
         groups=[[rows[t] for t in g] for g in groups],
@@ -476,7 +489,7 @@ def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = N
     groups = draw_groups(
         ids, int(get_setting(db, "board_seed")) if seed is None else seed, cfg.fields, _organizers(db)
     )
-    base = _next_minute(now)
+    base = planned_start(cfg, now)
     step = timedelta(minutes=cfg.group_min + cfg.buffer_min)
 
     with db:
@@ -1666,6 +1679,46 @@ def reshuffle_board(db: sqlite3.Connection) -> None:
     _require_setup(db)
     with db:
         set_setting(db, "board_seed", str(secrets.randbits(31)))
+
+
+@dataclass
+class PlannedMatch:
+    field: int
+    group: str
+    team1: sqlite3.Row
+    team2: sqlite3.Row
+
+
+@dataclass
+class PlannedSchedule:
+    start: str
+    slots: list[tuple[str, list[PlannedMatch]]]
+    groups_end: str
+    final: str
+
+
+def planned_schedule(db: sqlite3.Connection, now: datetime) -> PlannedSchedule | None:
+    """Before the draw: the timetable the board's provisional groups would get if the tournament started on time."""
+    groups, provisional = board_groups(db)
+    if not provisional or not groups:
+        return None
+    cfg = load_config(db)
+    base = planned_start(cfg, now)
+    step = timedelta(minutes=cfg.group_min + cfg.buffer_min)
+    by_slot: dict[int, list[PlannedMatch]] = defaultdict(list)
+    rows = {t["id"]: t for g in groups for t in g.teams}
+    for si, field_no, f in _group_schedule([[t["id"] for t in g.teams] for g in groups], cfg.fields):
+        by_slot[si].append(PlannedMatch(field_no, groups[f.grp].letter, rows[f.team1], rows[f.team2]))
+    groups_end = base + len(by_slot) * step
+    ko_end = groups_end + _knockout_slots(planning.bracket_plan(len(groups))[0], cfg.fields) * timedelta(
+        minutes=cfg.ko_min + cfg.buffer_min
+    )
+    return PlannedSchedule(
+        start=base.strftime("%H:%M"),
+        slots=[((base + si * step).strftime("%H:%M"), sorted(ms, key=lambda m: m.field)) for si, ms in sorted(by_slot.items())],
+        groups_end=groups_end.strftime("%H:%M"),
+        final=ko_end.strftime("%H:%M"),
+    )
 
 
 def board_groups(db: sqlite3.Connection) -> tuple[list[BoardGroup], bool]:
