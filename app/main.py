@@ -89,10 +89,22 @@ def my_team_id(request: Request) -> int | None:
     return request.session.get("team")
 
 
-def can_referee(request: Request, m: service.MatchView) -> bool:
+def team_referee_table(request: Request, db: sqlite3.Connection) -> int | None:
+    """The table this couple's referee player looks after, if the couple has one (cached for the request)."""
+    if not hasattr(request.state, "ref_table"):
+        team_id = my_team_id(request)
+        request.state.ref_table = service.referee_table(db, team_id) if team_id is not None else None
+    return request.state.ref_table
+
+
+def can_referee(request: Request, m: service.MatchView, db: sqlite3.Connection) -> bool:
     if m.bye or m.t1 is None or m.t2 is None:
         return False
-    return is_admin(request) or (request.session.get("role") == "referee" and request.session.get("field") == m.field)
+    if is_admin(request):
+        return True
+    if request.session.get("role") == "referee":
+        return request.session.get("field") == m.field
+    return m.field is not None and team_referee_table(request, db) == m.field
 
 
 def split_sides(request: Request, m: service.MatchView) -> list[int]:
@@ -122,7 +134,8 @@ def page(request: Request, db: sqlite3.Connection, name: str, **ctx: object) -> 
         "me": me,
         "flash": request.session.pop("flash", None),
         "path": request.url.path,
-        "can_referee": lambda m: can_referee(request, m),
+        "can_referee": lambda m: can_referee(request, m, db),
+        "ref_table": team_referee_table(request, db),
         "split_sides": lambda m: split_sides(request, m),
         "payments": service.PAYMENTS,
         "server_clock": datetime.now().strftime("%H:%M:%S"),
@@ -763,9 +776,10 @@ def logout(request: Request) -> Response:
 @router.get("/arbitro")
 def referee(request: Request, campo: str | None = None, db: sqlite3.Connection = Depends(get_db)) -> Response:
     role = request.session.get("role")
-    if role not in ("admin", "referee"):
+    own_table = team_referee_table(request, db) if role is None else None
+    if role not in ("admin", "referee") and own_table is None:
         return redirect("/login")
-    field_no = request.session.get("field") if role == "referee" else _int(campo)
+    field_no = request.session.get("field") if role == "referee" else own_table or _int(campo)
     all_views = service.matches(db)
     views = [m for m in all_views if m.slot is not None and (field_no is None or m.field == field_no)]
     # The same "on the table now" as everywhere else, so a referee never starts a couple still playing elsewhere.
@@ -788,7 +802,7 @@ def _refereed(request: Request, db: sqlite3.Connection, match_id: int) -> servic
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
-    if not can_referee(request, m):
+    if not can_referee(request, m, db):
         return None
     _claim_demo_table(db, m.field)
     return m
@@ -852,14 +866,14 @@ def match_undo_start(request: Request, match_id: int, db: sqlite3.Connection = D
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
-    if not can_referee(request, m):
+    if not can_referee(request, m, db):
         return redirect("/login")
     service.undo_start(db, match_id)
     return redirect(_referee_back(request, m))
 
 
 def _referee_back(request: Request, m: service.MatchView) -> str:
-    return "/arbitro" if request.session.get("role") == "referee" else f"/arbitro?campo={m.field}"
+    return f"/arbitro?campo={m.field}" if is_admin(request) else "/arbitro"
 
 
 @router.get("/partita/{match_id}")
@@ -867,7 +881,7 @@ def match_form(request: Request, match_id: int, db: sqlite3.Connection = Depends
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
-    if not can_referee(request, m):
+    if not can_referee(request, m, db):
         return redirect("/login")
     return page(request, db, "partita.html", m=m, live_score=None if m.done else tracking.live_score(db, match_id))
 
@@ -885,7 +899,7 @@ def match_save(
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
-    if not can_referee(request, m):
+    if not can_referee(request, m, db):
         return redirect("/login")
     try:
         service.record_result(db, match_id, s1, s2, _int(vincitore))
@@ -964,11 +978,13 @@ def admin_import(request: Request, testo: str = Form(...), db: sqlite3.Connectio
 def _team_form_values(
     name: str, p1: str, p2: str, phone1: str, phone2: str, payment: str, pagato: str | None, presente: str | None,
     note: str = "", verificata: str | None = None, gruppo: str | None = None, organizzatori: str | None = None,
+    arbitro: str = "",
 ) -> dict:
     return {
         "name": name, "p1": p1, "p2": p2, "phone1": phone1, "phone2": phone2, "payment": payment,
         "paid": pagato == "1", "present": presente == "1", "note": "" if verificata else note, "in_chat": gruppo == "1",
         "organizer": organizzatori == "1",
+        "referee_player": _int(arbitro),
     }
 
 
@@ -983,13 +999,13 @@ def admin_new_team(
     name: str = Form(""), p1: str = Form(""), p2: str = Form(""), phone1: str = Form(""), phone2: str = Form(""),
     payment: str = Form(""), pagato: str | None = Form(None), presente: str | None = Form(None),
     note: str = Form(""), gruppo: str | None = Form(None), organizzatori: str | None = Form(None),
-    db: sqlite3.Connection = Depends(get_db),
+    arbitro: str = Form(""), db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     try:
         service.save_team(
             db, None, **_team_form_values(
                 name, p1, p2, phone1, phone2, payment, pagato, presente, note,
-                gruppo=gruppo, organizzatori=organizzatori,
+                gruppo=gruppo, organizzatori=organizzatori, arbitro=arbitro,
             ),
         )
     except TournamentError as e:
@@ -1017,14 +1033,15 @@ def admin_team_save(
     name: str = Form(""), p1: str = Form(""), p2: str = Form(""), phone1: str = Form(""), phone2: str = Form(""),
     payment: str = Form(""), pagato: str | None = Form(None), presente: str | None = Form(None),
     note: str = Form(""), verificata: str | None = Form(None), gruppo: str | None = Form(None),
-    organizzatori: str | None = Form(None),
+    organizzatori: str | None = Form(None), arbitro: str = Form(""),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     try:
         service.save_team(
             db, team_id,
             **_team_form_values(
-                name, p1, p2, phone1, phone2, payment, pagato, presente, note, verificata, gruppo, organizzatori
+                name, p1, p2, phone1, phone2, payment, pagato, presente, note, verificata, gruppo, organizzatori,
+                arbitro,
             ),
         )
     except TournamentError as e:

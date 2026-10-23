@@ -331,6 +331,7 @@ def save_team(
     note: str = "",
     in_chat: bool = False,
     organizer: bool = False,
+    referee_player: int | None = None,
 ) -> int:
     """Admin add (team_id None) or edit. After the draw only names, phones and payment can change."""
     setup = get_setting(db, "phase") == "setup"
@@ -352,19 +353,20 @@ def save_team(
             raise TournamentError("A torneo iniziato la coppia deve avere due giocatori.")
     if present and not (p1 and p2):
         raise TournamentError("Per segnarla presente servono entrambi i giocatori.")
-    values = (name, p1, p2, phone1, phone2, payment or None, int(paid), int(present), note.strip(), int(in_chat), int(organizer))
+    values = (name, p1, p2, phone1, phone2, payment or None, int(paid), int(present), note.strip(), int(in_chat), int(organizer),
+              referee_player if referee_player in (1, 2) and organizer else None)
     try:
         with db:
             if current is None:
                 cur = db.execute(
-                    "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, paid, checked_in, note, in_chat, organizer)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, paid, checked_in, note, in_chat, organizer,"
+                    " referee_player) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     values,
                 )
                 return cur.lastrowid
             db.execute(
                 "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ?, payment = ?, paid = ?,"
-                " checked_in = ?, note = ?, in_chat = ?, organizer = ? WHERE id = ?",
+                " checked_in = ?, note = ?, in_chat = ?, organizer = ?, referee_player = ? WHERE id = ?",
                 (*values, team_id),
             )
             return team_id
@@ -449,6 +451,24 @@ def draw_groups(
     return groups
 
 
+def _referee_teams(db: sqlite3.Connection) -> frozenset[int]:
+    return frozenset(r["id"] for r in db.execute("SELECT id FROM teams WHERE referee_player IS NOT NULL"))
+
+
+def referee_table(db: sqlite3.Connection, team_id: int) -> int | None:
+    """The table a referee couple plays at, and so referees: its group's table (the provisional one before the draw)."""
+    t = team(db, team_id)
+    if t is None or t["referee_player"] is None:
+        return None
+    if t["grp"] is not None:
+        row = db.execute("SELECT field FROM matches WHERE stage = 'group' AND grp = ? AND field IS NOT NULL LIMIT 1",
+                         (t["grp"],)).fetchone()
+        if row:
+            return row["field"]
+    spot = provisional_spot(db, team_id, datetime.now())
+    return spot.table if spot else None
+
+
 def _organizers(db: sqlite3.Connection) -> frozenset[int]:
     return frozenset(r["id"] for r in db.execute("SELECT id FROM teams WHERE organizer = 1"))
 
@@ -465,11 +485,13 @@ class DrawPreview:
     knockout_minutes: int
 
 
-def _group_schedule(groups: list[list[int]], fields: int) -> list[tuple[int, int, planning.Fixture]]:
+def _group_schedule(
+    groups: list[list[int]], fields: int, referees: frozenset[int] = frozenset()
+) -> list[tuple[int, int, planning.Fixture]]:
     """(slot, field, fixture). With the same number of groups on every table each table runs its own queue;
     otherwise the groups share all tables slot by slot, so no table sits idle while another has a long queue."""
     if len(groups) % fields == 0:
-        queues = planning.build_table_queues(groups, fields)
+        queues = planning.build_table_queues(groups, fields, referees)
         return [(si, f, fx) for f, queue in sorted(queues.items()) for si, fx in enumerate(queue)]
     slots = planning.pack_slots(planning.build_fixtures(groups), fields)
     return [(si, fi + 1, fx) for si, slot in enumerate(slots) for fi, fx in enumerate(slot)]
@@ -482,7 +504,7 @@ def preview_draw(db: sqlite3.Connection, present_only: bool, seed: int) -> DrawP
     if len(ids) < MIN_TEAMS:
         raise TournamentError(f"Servono almeno {MIN_TEAMS} coppie {'presenti' if present_only else 'complete'}.")
     groups = draw_groups(ids, seed, cfg.fields, _organizers(db))
-    schedule = _group_schedule(groups, cfg.fields)
+    schedule = _group_schedule(groups, cfg.fields, _referee_teams(db))
     size, qualifiers = planning.bracket_plan(len(groups))
     ko_slots = _knockout_slots(size, cfg.fields)
     return DrawPreview(
@@ -514,7 +536,7 @@ def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = N
     with db:
         for gi, members in enumerate(groups):
             db.executemany("UPDATE teams SET grp = ? WHERE id = ?", [(gi, t) for t in members])
-        for si, field_no, f in _group_schedule(groups, cfg.fields):
+        for si, field_no, f in _group_schedule(groups, cfg.fields, _referee_teams(db)):
             db.execute(
                 "INSERT INTO matches(stage, grp, round, slot, field, start, duration, team1, team2)"
                 " VALUES ('group', ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1780,7 +1802,7 @@ def planned_schedule(db: sqlite3.Connection, now: datetime) -> PlannedSchedule |
     step = timedelta(minutes=cfg.group_min + cfg.buffer_min)
     by_slot: dict[int, list[PlannedMatch]] = defaultdict(list)
     rows = {t["id"]: t for g in groups for t in g.teams}
-    for si, field_no, f in _group_schedule([[t["id"] for t in g.teams] for g in groups], cfg.fields):
+    for si, field_no, f in _group_schedule([[t["id"] for t in g.teams] for g in groups], cfg.fields, _referee_teams(db)):
         by_slot[si].append(PlannedMatch(field_no, groups[f.grp].letter, rows[f.team1], rows[f.team2]))
     groups_end = base + len(by_slot) * step
     ko_end = groups_end + _knockout_slots(planning.bracket_plan(len(groups))[0], cfg.fields) * timedelta(

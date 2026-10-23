@@ -111,8 +111,34 @@ def table_for_group(grp: int, n_groups: int, fields: int) -> int:
     return (grp % fields) + 1
 
 
-def build_table_queues(groups: list[list[int]], fields: int) -> dict[int, list[Fixture]]:
-    """Build an independent match queue for each table (1..fields) from its assigned groups."""
+def space_out(queue: list[Fixture], team: int) -> list[Fixture]:
+    """Reorder a table's queue so `team` (the table's referee, who also plays) gets its matches spread along
+    the evening, with room to referee in between; still nobody plays twice in a row when it can be avoided."""
+    k = sum(1 for f in queue if team in (f.team1, f.team2))
+    if k < 2:
+        return queue
+    gap = len(queue) // k  # ideal distance between two of its matches
+    remaining, out, last = list(queue), [], -len(queue)
+
+    def ok(f: Fixture, spaced: bool) -> bool:
+        clash = bool(out) and {f.team1, f.team2} & {out[-1].team1, out[-1].team2}
+        return not clash and (not spaced or team not in (f.team1, f.team2) or len(out) - last >= gap)
+
+    while remaining:
+        pick = next((f for f in remaining if ok(f, True)), None) or next((f for f in remaining if ok(f, False)), remaining[0])
+        if team in (pick.team1, pick.team2):
+            last = len(out)
+        out.append(pick)
+        remaining.remove(pick)
+    return out
+
+
+def build_table_queues(
+    groups: list[list[int]], fields: int, spread: frozenset[int] = frozenset()
+) -> dict[int, list[Fixture]]:
+    """Build an independent match queue for each table (1..fields) from its assigned groups.
+
+    `spread` are the referees' couples: on their table their matches are spaced out (see space_out)."""
     n_groups = len(groups)
     by_table: dict[int, dict[int, list[int]]] = {f: {} for f in range(1, fields + 1)}
     for gi, members in enumerate(groups):
@@ -132,6 +158,9 @@ def build_table_queues(groups: list[list[int]], fields: int) -> dict[int, list[F
                 if r < len(rounds):
                     raw_fixtures += [Fixture(gi, r + 1, a, b) for a, b in rounds[r]]
         # Order single-table queue so no team plays back-to-back and everyone rests evenly
-        queues[f] = [slot[0] for slot in pack_slots(raw_fixtures, 1)]
+        queue = [slot[0] for slot in pack_slots(raw_fixtures, 1)]
+        for team in sorted(spread & {t for members in grp_map.values() for t in members}):
+            queue = space_out(queue, team)
+        queues[f] = queue
     return queues
 

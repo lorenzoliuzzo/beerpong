@@ -56,6 +56,14 @@
   {% endif %}
 </div>
 
+{% if own and t.referee_player %}
+  <a class="banner todo ref-entry" href="/arbitro">
+    <div class="label">🧑‍⚖️ Arbitro{% if ref_table %} · Tavolo {{ ref_table }}{% endif %}</div>
+    <div class="headline">{{ t["p" ~ t.referee_player] }} arbitra {{ "il Tavolo " ~ ref_table if ref_table else "il tavolo del vostro girone" }}</div>
+    {% if cfg.phase in ("groups", "knockout") %}Apri la schermata arbitro →{% else %}La schermata arbitro si apre all'avvio del torneo.{% endif %}
+  </a>
+{% endif %}
+
 {% if own %}
   {% if cfg.phase == "setup" %}
     <div class="banner" style="margin-top:12px">

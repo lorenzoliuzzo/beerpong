@@ -1103,3 +1103,43 @@ def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient)
     db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
     page = client.get("/arbitro").text
     assert 'class="ref-win ref-timeout" hidden' in page and "✓ Conferma 1–0" in page  # shown by the clock
+
+
+def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(8))})
+    client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 7, "buffer_min": 1})
+    ref = next(t for t in db_call(service.teams).values() if t["name"] == "S0")
+    client.post(f"/admin/squadre/{ref['id']}", data={"name": "S0", "p1": "A0", "p2": "B0", "phone1": "3331110000",
+                                                     "organizzatori": "1", "arbitro": "2"})
+    assert db_call(service.team, ref["id"])["referee_player"] == 2
+    for t in db_call(service.teams).values():
+        client.post(f"/admin/squadre/{t['id']}/presente", data={"presente": 1})
+    client.post("/admin/avvia")
+    client.post("/logout")
+
+    with TestClient(client.app) as phone:
+        phone.post("/checkin/accedi", data={"phone": "3331110000"})
+        table = db_call(lambda db: service.referee_table(db, ref["id"]))
+        profile = phone.get("/io").text
+        assert f"B0 arbitra il Tavolo {table}" in profile and 'href="/arbitro"' in profile
+        screen = phone.get("/arbitro").text
+        assert f"🏓 Tavolo {table} · Arbitro · B0" in screen and 'class="tabbar"' not in screen
+        mine = next(m for m in db_call(service.matches) if m.playing and m.field == table)
+        other = next(m for m in db_call(service.matches) if m.playing and m.field != table)
+        phone.post(f"/partita/{mine.id}/inizia", data={"primo": 1})
+        assert db_call(service.match, mine.id).started_at is not None
+        assert phone.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"
+        assert db_call(service.match, other.id).started_at is None
+
+
+def test_the_referee_couples_matches_are_spaced_out_on_its_table() -> None:
+    from app import planning
+
+    groups = [[1, 2, 3, 4], [5, 6, 7, 8]]  # both on one table: 12 matches, the referee couple 1 plays 3
+    for ref in (1, 6):
+        queue = planning.build_table_queues(groups, 1, frozenset({ref}))[1]
+        assert len(queue) == 12
+        spots = [i for i, f in enumerate(queue) if ref in (f.team1, f.team2)]
+        assert len(spots) == 3 and min(b - a for a, b in zip(spots, spots[1:])) >= 3
+        assert all({a.team1, a.team2}.isdisjoint({b.team1, b.team2}) for a, b in zip(queue, queue[1:]))

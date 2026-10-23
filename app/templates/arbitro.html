@@ -1,17 +1,20 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block title %}{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }} · Arbitro{% endblock %}
+{% set focused = role == "referee" or (not role and ref_table) %}
 {% block header %}
-  {% if role == "referee" %}
+  {% if focused %}
     <header class="top ref-top">
-      <strong>🏓 Tavolo {{ field_no }} · Arbitro</strong>
-      <form method="post" action="/logout" onsubmit="return confirm('Uscire dall\'area arbitro?')"><button class="link" type="submit">Esci</button></form>
+      <strong>🏓 Tavolo {{ field_no }} · Arbitro{% if not role and me %} · {{ me["p" ~ me.referee_player] }}{% endif %}</strong>
+      {% if role == "referee" %}
+        <form method="post" action="/logout" onsubmit="return confirm('Uscire dall\'area arbitro?')"><button class="link" type="submit">Esci</button></form>
+      {% else %}<a href="/io">‹ Profilo</a>{% endif %}
     </header>
   {% else %}{{ super() }}{% endif %}
 {% endblock %}
-{% block tabbar %}{% if role != "referee" %}{{ super() }}{% endif %}{% endblock %}
+{% block tabbar %}{% if not focused %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-{% if role != "referee" %}<h1>{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }}</h1>{% endif %}
+{% if not focused %}<h1>{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }}</h1>{% endif %}
 {% if role == "admin" %}
   <nav class="segmented">
     <a href="/arbitro" class="{{ 'on' if not field_no }}">Tutti</a>

@@ -26,6 +26,13 @@
       <label><input type="checkbox" name="gruppo" value="1" {{ 'checked' if t and t.in_chat }}> Nel gruppo WhatsApp</label>
       <label><input type="checkbox" name="organizzatori" value="1" {{ 'checked' if t and t.organizer }}> Organizzatori (non conta nelle verifiche)</label>
     </div>
+    <label for="arbitro">Arbitro del tavolo (solo organizzatori: arbitra il tavolo dove gioca la coppia)</label>
+    <select id="arbitro" name="arbitro">
+      <option value="">Nessuno</option>
+      {% for pl in (1, 2) %}<option value="{{ pl }}" {{ 'selected' if t and t.referee_player == pl }}>{{ (t["p" ~ pl] if t and t["p" ~ pl]) or "Giocatore " ~ pl }}</option>{% endfor %}
+    </select>
+    <div>
+    </div>
   </div>
   <div class="card">
     <h2 style="margin-top:0">Ticket</h2>
