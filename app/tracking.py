@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from . import live, service
 from .service import TournamentError
 
-UNDO_WINDOW_S = 30.0
 # Many phones poll the same match every couple of seconds: replay only when its reports change,
 # and rebuild tournament-wide context only when any report or result changes.
 _state_cache: dict[int, tuple[tuple[int, int], live.LiveState]] = {}
@@ -36,8 +35,7 @@ def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
         _, _, started, first, stage, cups, _ = key
         # The tiro della salvezza is a knockout rule (the final included).
         st = live.replay(reports(db, match_id), cups, first or 1, salvezza=stage == "ko", reracks=reracks)
-        if started is not None:  # the referee's start is the clock; the crowd's "start" taps only stand in for it
-            st.started_at = started
+        st.started_at = started  # the referee's start is the match clock
         cached = (key, st)
         _state_cache[match_id] = cached
     return cached[1]
@@ -60,40 +58,21 @@ def _context(db: sqlite3.Connection) -> dict:
     return _context_cache[0][1]
 
 
-def add_report(
-    db: sqlite3.Connection, match_id: int, device: str, kind: str, side: int | None, player: int | None,
-    cup: int | None, now: float,
-) -> int:
+def add_shot(db: sqlite3.Connection, match_id: int, side: int, player: int, cup: int, now: float) -> int:
+    """Stores one of the referee's shots (cup 0 = miss): the only source of shot data."""
     m = service.match(db, match_id)
     if m is None or m.bye or m.t1 is None or m.t2 is None:
         raise TournamentError("Partita non disponibile.")
     if m.done:
         raise TournamentError("La partita è già conclusa.")
-    if kind == "start":
-        side = player = cup = None
-        if db.execute("SELECT 1 FROM reports WHERE match_id = ? AND device = ? AND kind = 'start'", (match_id, device)).fetchone():
-            raise TournamentError("Hai già segnalato l'inizio.")
-    elif kind == "shot":
-        if side not in (1, 2) or player not in (1, 2) or cup is None or not 0 <= cup <= live.CUPS:
-            raise TournamentError("Tiro non valido.")
-    else:
-        raise TournamentError("Segnalazione non valida.")
+    if side not in (1, 2) or player not in (1, 2) or not 0 <= cup <= live.CUPS:
+        raise TournamentError("Tiro non valido.")
     with db:
         cur = db.execute(
-            "INSERT INTO reports(match_id, device, kind, side, player, cup, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (match_id, device, kind, side, player, cup, now),
+            "INSERT INTO reports(match_id, device, kind, side, player, cup, at) VALUES (?, ?, 'shot', ?, ?, ?, ?)",
+            (match_id, live.REFEREE, side, player, cup, now),
         )
     return cur.lastrowid
-
-
-def undo_report(db: sqlite3.Connection, match_id: int, device: str, report_id: int, now: float) -> None:
-    row = db.execute("SELECT * FROM reports WHERE id = ? AND match_id = ?", (report_id, match_id)).fetchone()
-    if row is None or row["device"] != device:
-        raise TournamentError("Segnalazione non trovata.")
-    if now - row["at"] > UNDO_WINDOW_S:
-        raise TournamentError("Troppo tardi per annullare.")
-    with db:
-        db.execute("DELETE FROM reports WHERE id = ?", (report_id,))
 
 
 @dataclass
@@ -195,7 +174,7 @@ def referee_shot(
         raise TournamentError("Scegli chi ha tirato.")
     if cup and cup not in view.state.racks[3 - view.turn_side].cups:
         raise TournamentError("Quel bicchiere non c'è più.")
-    report_id = add_report(db, match_id, live.REFEREE, "shot", view.turn_side, player, 0 if blown else cup, now)
+    report_id = add_shot(db, match_id, view.turn_side, player, 0 if blown else cup, now)
     if blown:
         with db:
             db.execute("INSERT INTO blows(report_id, match_id, side) VALUES (?, ?, ?)", (report_id, match_id, 3 - view.turn_side))
@@ -274,7 +253,7 @@ def _team_side_stats(db: sqlite3.Connection) -> dict[int, list[int]]:
     return stats
 
 
-def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | None) -> dict:
+def live_view(db: sqlite3.Connection, match_id: int, now: float) -> dict:
     m = service.match(db, match_id)
     if m is None or m.bye or m.t1 is None or m.t2 is None:
         raise TournamentError("Partita non disponibile.")
@@ -314,19 +293,9 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
         }
 
     cheers = _cheers(db, match_id)
-    mine = []
-    if device:
-        mine = [
-            {"id": r["id"], "kind": r["kind"], "at": r["at"]}
-            for r in db.execute(
-                "SELECT id, kind, at FROM reports WHERE match_id = ? AND device = ? AND at >= ? ORDER BY at DESC",
-                (match_id, device, now - UNDO_WINDOW_S),
-            )
-        ]
     return {
         "now": now,
-        # The referee scores this match: the crowd watches, its taps would not count.
-        "official": m.started_at is not None or any(live.REFEREE in s.devices for s in st.shots),
+        "official": True,  # only the table's referee scores matches
         "phase": st.phase,
         "started_at": st.started_at,
         "duration": duration,
@@ -344,7 +313,6 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
             }
             for s in reversed(st.shots[-30:])
         ],
-        "mine": mine,
         "timeline": _cached_timeline(st, rates, duration, service.cups_in_play(db, match_id), match_id),
         "streak": [live.streak(st, 1), live.streak(st, 2)],
         "blows": list(blow_counts(db, match_id)),

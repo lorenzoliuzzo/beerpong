@@ -51,38 +51,19 @@
     </div>
 
     <div id="result" class="banner gold" hidden></div>
-    <button id="start" class="wide" hidden>▶ Inizia la partita</button>
 
-    <p id="official" class="muted small" style="text-align:center" hidden>🧑‍⚖️ I tiri di questa partita li segna l'arbitro.</p>
+    <p class="muted small" style="text-align:center">🧑‍⚖️ I tiri li segna l'arbitro del tavolo.</p>
     <div class="pstats" id="pstats" hidden></div>
-    <div id="shooters">
-      <p class="muted small" style="text-align:center;margin:12px 0 6px">Chi sta tirando? Tocca il giocatore</p>
-      <div class="shooters">
-        <div class="col s1" id="players1"></div>
-        <div class="col s2" id="players2"></div>
-      </div>
-    </div>
   </section>
 
-  <div class="sheet" id="sheet" hidden>
-    <div class="sheet-card">
-      <div class="sheet-title" id="sheet-title"></div>
-      <div class="rack big" id="sheet-rack"></div>
-      <div class="sheet-actions">
-        <button class="danger wide" id="miss">❌ Fuori</button>
-        <button class="ghost wide" id="cancel">Annulla</button>
-      </div>
-    </div>
-  </div>
   <div class="toast" id="toast" hidden></div>
 
-  <p id="you-play" class="banner warm" hidden>🏓 State giocando: tifo e segnalazioni tornano quando finisce la vostra partita.</p>
+  <p id="you-play" class="banner warm" hidden>🏓 State giocando: il tifo torna quando finisce la vostra partita.</p>
   <section class="cheers" aria-label="Tifo">
     <div class="cheer-col" id="cheer1"></div>
     <div class="cheer-col" id="cheer2"></div>
   </section>
 
-  <p class="muted small" id="crowd-note">Tutti possono segnalare i tiri: vale ciò che segnala la maggioranza dei telefoni che seguono la partita. L'orologio è lo stesso per tutti.</p>
 </div>
 
 <script>
@@ -90,29 +71,25 @@
   const root = document.getElementById("live");
   const id = root.dataset.match;
   let ROWS = [[4, 5, 6], [2, 3], [1]];  // far row first, apex closest to the shooter; the final has 10 cups
-  let data = null, offset = 0, shooter = null, busy = false;
+  let data = null, offset = 0, busy = false;
 
   const $ = (sel) => document.querySelector(sel);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const serverNow = () => (Date.now() + offset) / 1000;
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-  function toast(text, undoId) {
+  function toast(text) {
     const t = $("#toast");
-    t.innerHTML = esc(text) + (undoId ? ` <button class="link" data-undo="${undoId}">Annulla</button>` : "");
+    t.textContent = text;
     t.hidden = false;
     clearTimeout(toast.timer);
     toast.timer = setTimeout(() => (t.hidden = true), 4000);
   }
 
-  function rackHTML(cups, interactive, rows) {
+  function rackHTML(cups, rows) {
     const standing = new Set(cups);
-    return (rows || ROWS).map((row) => `<div class="rrow">${row.map((c) => {
-      const up = standing.has(c);
-      return interactive && up
-        ? `<button class="cup up" data-cup="${c}" aria-label="Bicchiere ${c}">${c}</button>`
-        : `<span class="cup ${up ? "up" : "down"}">${c}</span>`;
-    }).join("")}</div>`).join("");
+    return (rows || ROWS).map((row) => `<div class="rrow">${row.map((c) =>
+      `<span class="cup ${standing.has(c) ? "up" : "down"}">${c}</span>`).join("")}</div>`).join("");
   }
 
   function render() {
@@ -122,12 +99,7 @@
       document.querySelectorAll(`[data-f="name${i}"], [data-f="name${i}b"]`).forEach((el) => (el.textContent = t.name));
       const bits = [t.label, t.record, t.accuracy != null ? `🎯 ${t.accuracy}%` : ""].filter(Boolean);
       $(`[data-f="meta${i}"]`).innerHTML = bits.map(esc).join("<br>");
-      $(`#rack${i}`).innerHTML = rackHTML(t.rack, false, t.rows);
-      $(`#players${i}`).innerHTML = t.players.map((p, k) => {
-        const st = t.player_stats[k];
-        return `<button class="shooter" data-side="${i}" data-player="${k + 1}" ${p ? "" : "disabled"}>
-          <span>${esc(p || "Giocatore " + (k + 1))}</span><small>${st.hits}/${st.shots}</small></button>`;
-      }).join("");
+      $(`#rack${i}`).innerHTML = rackHTML(t.rack, t.rows);
     }
     const score = data.done ? data.score : [t1.hits, t2.hits];
     $("#sc1").textContent = score[0];
@@ -173,10 +145,6 @@
     $("#odds2-t").textContent = 100 - p1 + "%";
 
     const over = data.done || data.winner_side;
-    $("#start").hidden = over || data.started_at != null || data.official;
-    $("#shooters").hidden = over || data.started_at == null || data.official || data.you_play;
-    $("#official").hidden = over || !data.official;
-    $("#crowd-note").hidden = data.official;
     const res = $("#result");
     if (over) {
       const w = data.teams[data.winner_side - 1];
@@ -248,46 +216,14 @@
     }
   }
 
-  function openSheet(side, player) {
-    shooter = { side, player };
-    const t = data.teams[side - 1], target = data.teams[2 - side];
-    $("#sheet-title").innerHTML = `<b>${esc(t.players[player - 1])}</b> tira sui bicchieri di <b>${esc(target.name)}</b>`;
-    $("#sheet-rack").innerHTML = rackHTML(target.rack, true, target.rows);
-    $("#sheet").hidden = false;
-  }
-
-  async function report(cup) {
-    $("#sheet").hidden = true;
-    if (!shooter) return;
-    const { side, player } = shooter;
-    shooter = null;
-    if (navigator.vibrate) navigator.vibrate(30);
-    const json = await send("segnala", { kind: "shot", side, player, cup });
-    if (json) toast(cup ? `🎯 Bicchiere ${cup} segnalato` : "❌ Tiro fuori segnalato", json.mine[0]?.id);
-  }
 
   document.addEventListener("click", async (e) => {
-    const shooterBtn = e.target.closest(".shooter");
-    if (shooterBtn) return openSheet(+shooterBtn.dataset.side, +shooterBtn.dataset.player);
-    const cupBtn = e.target.closest("#sheet-rack [data-cup]");
-    if (cupBtn) return report(+cupBtn.dataset.cup);
-    if (e.target.closest("#miss")) return report(0);
-    if (e.target.closest("#cancel") || e.target === $("#sheet")) { $("#sheet").hidden = true; shooter = null; return; }
-    if (e.target.closest("#start")) {
-      const json = await send("segnala", { kind: "start" });
-      if (json) toast("▶ Inizio segnalato", json.mine[0]?.id);
-      return;
-    }
     const cheerBtn = e.target.closest("[data-cheer]");
     if (cheerBtn) {
       cheerBtn.classList.remove("pop"); void cheerBtn.offsetWidth; cheerBtn.classList.add("pop");
       if (navigator.vibrate) navigator.vibrate(15);
       await send("tifo", { side: +cheerBtn.dataset.cheer, emoji: cheerBtn.dataset.emoji });
       return;
-    }
-    const undo = e.target.closest("[data-undo]");
-    if (undo) {
-      if (await send("annulla", { id: +undo.dataset.undo })) toast("Segnalazione annullata");
     }
   });
 

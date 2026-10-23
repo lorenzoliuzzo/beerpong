@@ -430,17 +430,6 @@ def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3
 # --- Live tracking ---------------------------------------------------------
 
 
-class ReportIn(BaseModel):
-    kind: str
-    side: int | None = None
-    player: int | None = None
-    cup: int | None = None
-
-
-class UndoIn(BaseModel):
-    id: int
-
-
 def server_now() -> float:
     """The one clock every phone follows (wall time on the Pi)."""
     return time.time()
@@ -496,7 +485,7 @@ PLAYING_MSG = "State giocando: occhi sul tavolo! 🏓 Il live lo seguite dopo."
 
 
 def _live_json(request: Request, db: sqlite3.Connection, match_id: int, device: str | None) -> JSONResponse:
-    data = tracking.live_view(db, match_id, server_now(), device)
+    data = tracking.live_view(db, match_id, server_now())
     data["my_cheers"] = tracking.my_cheers(db, match_id, cheer_account(request) if device else None)
     data["you_play"] = playing_now(request, db)
     return JSONResponse(data)
@@ -508,22 +497,6 @@ def live_state(request: Request, match_id: int, db: sqlite3.Connection = Depends
         return _live_json(request, db, match_id, request.session.get("device"))
     except TournamentError as e:
         return JSONResponse({"error": str(e)}, status_code=404)
-
-
-@router.post("/api/live/{match_id}/segnala")
-def live_report(
-    request: Request, match_id: int, body: ReportIn, db: sqlite3.Connection = Depends(get_db)
-) -> JSONResponse:
-    device = device_id(request)
-    if playing_now(request, db):
-        return JSONResponse({"error": PLAYING_MSG}, status_code=403)
-    if not _report_allowed(request, device):
-        return JSONResponse({"error": "Piano! Troppe segnalazioni ravvicinate."}, status_code=429)
-    try:
-        tracking.add_report(db, match_id, device, body.kind, body.side, body.player, body.cup, server_now())
-        return _live_json(request, db, match_id, device)
-    except TournamentError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
 
 
 class CheerIn(BaseModel):
@@ -540,16 +513,6 @@ def live_cheer(request: Request, match_id: int, body: CheerIn, db: sqlite3.Conne
         return JSONResponse({"error": "Piano! 🍻"}, status_code=429)
     try:
         tracking.cheer(db, match_id, body.side, body.emoji, cheer_account(request), server_now())
-        return _live_json(request, db, match_id, device)
-    except TournamentError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-
-
-@router.post("/api/live/{match_id}/annulla")
-def live_undo(request: Request, match_id: int, body: UndoIn, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
-    device = device_id(request)
-    try:
-        tracking.undo_report(db, match_id, device, body.id, server_now())
         return _live_json(request, db, match_id, device)
     except TournamentError as e:
         return JSONResponse({"error": str(e)}, status_code=400)

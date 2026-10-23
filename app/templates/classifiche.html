@@ -120,7 +120,7 @@
 
 {% elif view == "tiri" %}
   {% if shots.total_shots %}
-    <p class="muted small">Dai tiri segnati dagli arbitri e dal pubblico ({{ shots.total_shots }} tiri). Precisione minima {{ 8 }} tiri.</p>
+    <p class="muted small">Dai tiri segnati dagli arbitri ({{ shots.total_shots }} tiri). Precisione minima {{ 8 }} tiri.</p>
     <div class="awards">
       {% for icon, title, p in shots.awards %}
         <div class="card award">

@@ -75,20 +75,14 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
             s2 = service.CUPS if s1 < service.CUPS else rng.randint(1, service.CUPS - 1)
             base_t = now_ts + idx * 300
 
-            tracking.add_report(db_conn, m.id, f"ref-{field_no}", "start", None, None, None, base_t)
+            # Scored by the table's referee, as every match: their shots are the statistics.
             for side, score in [(1, s1), (2, s2)]:
                 cups = rng.sample(range(1, service.CUPS + 1), min(service.CUPS, score))
                 for shot_i, cup in enumerate(cups):
                     player = 1 if shot_i % 2 == 0 else 2
-                    tracking.add_report(
-                        db_conn, m.id, f"fan-{field_no}-{side}", "shot", side, player, cup, base_t + 10 + shot_i * 6
-                    )
-                # Add a few misses for realistic accuracy stats
-                for miss_i in range(rng.randint(2, 5)):
-                    player = rng.choice([1, 2])
-                    tracking.add_report(
-                        db_conn, m.id, f"fan-{field_no}-{side}", "shot", side, player, 0, base_t + 100 + miss_i * 5
-                    )
+                    tracking.add_shot(db_conn, m.id, side, player, cup, base_t + 10 + shot_i * 6)
+                for miss_i in range(rng.randint(2, 5)):  # a few misses for realistic accuracy
+                    tracking.add_shot(db_conn, m.id, side, rng.choice([1, 2]), 0, base_t + 100 + miss_i * 5)
 
             service.record_result(db_conn, m.id, s1, s2)
             p1_cups_s1 = rng.randint(1, s1 - 1) if s1 > 1 else s1

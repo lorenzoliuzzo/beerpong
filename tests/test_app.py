@@ -1028,9 +1028,6 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     setup_tournament(client, 8, fields=2)
     login(client, db_call(service.referee_pin, 1))
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    # a fan's tap before the referee scores: it must not count once the referee does
-    with TestClient(client.app) as fan:
-        fan.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 5})
 
     client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
     page = client.get(f"/segna/{m.id}").text
@@ -1079,7 +1076,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     stats = {(p.team_id, p.player): p for p in db_call(tracking.shot_stats).players}
     p1 = db_call(service.team, m.t1)["p1"]
     assert stats[(m.t1, p1)].hits == 6  # the referee's shots are the players' statistics
-    assert "I tiri di questa partita li segna l" in client.get(f"/live/{m.id}").text
+    assert "I tiri li segna l" in client.get(f"/live/{m.id}").text
 
 
 def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:

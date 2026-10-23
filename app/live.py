@@ -1,19 +1,15 @@
-"""Live shot tracking: crowd-sourced reports reconciled by majority, a shared clock, win odds.
+"""Live shot tracking: the referee's shots replayed turn by turn, a shared clock, win odds.
 
 Pure functions over plain data, so the consensus rules can be tested without a database.
 """
 
 from __future__ import annotations
 
-import math
 import random
-import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 
 CUPS = 10  # the highest cup number: the final's rack; other matches use the first 6 (see service.cups_in_play)
-SHOT_WINDOW_S = 6.0  # reports of the same player this close together describe one shot
-ACTIVE_WINDOW_S = 60.0  # a device "is watching" a shot if it reported anything this close to it
 DEFAULT_SECONDS_PER_SHOT = 12.0  # per team, until the match itself gives a better estimate
 PRIOR_HITS, PRIOR_SHOTS = 3, 10  # Beta prior: an unknown team hits about 30% of its shots
 SIMULATIONS = 1000
@@ -42,48 +38,10 @@ class Shot:
     removed: int | None = None  # the cup actually taken off the rack, after replay
 
 
-def start_time(reports: list[Report]) -> float | None:
-    """The median of everyone's "start" taps, so one early or late tap barely moves the clock."""
-    starts = sorted(r.at for r in reports if r.kind == "start")
-    return statistics.median(starts) if starts else None
-
-
-def cluster_shots(reports: list[Report]) -> list[Shot]:
-    clusters: list[list[Report]] = []
-    open_by_player: dict[tuple[int, int], list[Report]] = {}
-    for r in sorted((r for r in reports if r.kind == "shot"), key=lambda r: r.at):
-        key = (r.side, r.player)
-        current = open_by_player.get(key)
-        if current is None or r.at - current[0].at > SHOT_WINDOW_S or any(x.device == r.device for x in current):
-            current = [r]
-            clusters.append(current)
-            open_by_player[key] = current
-        else:
-            current.append(r)
-    shots = []
-    for c in clusters:
-        votes = Counter(r.cup for r in c)
-        top = max(votes.values())
-        # Ties go to the most recent report among the tied answers.
-        cup = next(r.cup for r in reversed(c) if votes[r.cup] == top)
-        shots.append(Shot(c[0].side, c[0].player, cup, statistics.median(r.at for r in c), len(c), frozenset(r.device for r in c)))
-    return sorted(shots, key=lambda s: s.at)
-
-
 def accepted_shots(reports: list[Report]) -> list[Shot]:
-    """A shot counts when at least half of the devices following the match around that moment reported it.
-
-    When the referee scores the match, their shots are the official record and the crowd's are ignored:
-    every referee tap is one shot."""
+    """The referee's shots, in order: only the table's referee scores a match, every tap is one shot."""
     official = sorted((r for r in reports if r.kind == "shot" and r.device == REFEREE), key=lambda r: (r.at, r.id))
-    if official:
-        return [Shot(r.side, r.player, r.cup, r.at, 1, frozenset({r.device})) for r in official]
-    accepted = []
-    for shot in cluster_shots(reports):
-        watching = {r.device for r in reports if abs(r.at - shot.at) <= ACTIVE_WINDOW_S}
-        if shot.votes >= math.ceil(len(watching) / 2):
-            accepted.append(shot)
-    return accepted
+    return [Shot(r.side, r.player, r.cup, r.at, 1, frozenset({r.device})) for r in official]
 
 
 # Rows as the shooter sees them, the far row first and the apex closest.
@@ -201,33 +159,7 @@ def replay(
     reports: list[Report], cups: int = CUPS, first_side: int = 1, salvezza: bool = False,
     reracks: list[tuple[int, float]] = (),
 ) -> LiveState:
-    accepted = accepted_shots(reports)
-    if (accepted and REFEREE in accepted[0].devices) or reracks:
-        return _referee_replay(accepted, start_time(reports), cups, first_side, salvezza, reracks)
-    racks = {1: Rack(set(range(1, cups + 1))), 2: Rack(set(range(1, cups + 1)))}
-    hits: Counter[tuple[int, int]] = Counter()
-    attempts: Counter[tuple[int, int]] = Counter()
-    shots: list[Shot] = []
-    winner = None
-    for shot in accepted:
-        if winner is not None:
-            break
-        target = racks[3 - shot.side]
-        attempts[(shot.side, shot.player)] += 1
-        if shot.cup:
-            # A cup already gone means the reporters mislabeled it: still a hit, take the closest one left.
-            removed = shot.cup if shot.cup in target.cups else min(target.cups, default=None)
-            if removed is not None:
-                target.cups.discard(removed)
-                hits[(shot.side, shot.player)] += 1
-                shot.removed = removed
-            if not target.cups:
-                winner = shot.side
-        shots.append(shot)
-    return LiveState(
-        start_time(reports), shots, racks, dict(hits), dict(attempts), winner, rack_cups=cups,
-        rows={1: RACK_ROWS[cups], 2: RACK_ROWS[cups]}, rack_start={1: 0, 2: 0},
-    )
+    return _referee_replay(accepted_shots(reports), None, cups, first_side, salvezza, reracks)
 
 
 def hit_rate(hits: int, shots: int, prior: float | None = None) -> float:

@@ -17,45 +17,19 @@ def shot(i: int, device: str, at: float, side: int = 1, player: int = 1, cup: in
     return Report(i, device, "shot", side, player, cup, at)
 
 
-def test_start_time_is_median_of_taps() -> None:
-    taps = [Report(i, f"d{i}", "start", None, None, None, at) for i, at in enumerate([100.0, 101.0, 140.0])]
-    assert live.start_time(taps) == 101.0
-    assert live.start_time([]) is None
+def test_only_the_referees_shots_count() -> None:
+    fan = Report(1, "some-phone", "shot", 1, 1, 3, 10.0)
+    ref = Report(2, live.REFEREE, "shot", 1, 2, 4, 11.0)
+    assert [(s.player, s.cup) for s in live.accepted_shots([fan, ref])] == [(2, 4)]
+    assert live.accepted_shots([fan]) == []
 
 
-def test_reports_close_together_are_one_shot_with_majority_cup() -> None:
-    reports = [shot(1, "a", 10.0, cup=3), shot(2, "b", 11.5, cup=3), shot(3, "c", 12.0, cup=5)]
-    (s,) = live.cluster_shots(reports)
-    assert (s.cup, s.votes) == (3, 3)
-
-
-def test_same_device_twice_means_two_shots() -> None:
-    shots = live.cluster_shots([shot(1, "a", 10.0), shot(2, "a", 12.0, cup=0)])
-    assert [s.cup for s in shots] == [3, 0]
-
-
-def test_isolated_prank_is_rejected_by_majority() -> None:
-    watchers = [shot(i, d, 10.0 + i * 0.3) for i, d in enumerate("abcd")]
-    prank = shot(9, "x", 30.0, side=2, cup=1)
-    accepted = live.accepted_shots(watchers + [prank])
-    assert len(accepted) == 1 and accepted[0].side == 1
-
-
-def test_single_watcher_counts() -> None:
-    assert len(live.accepted_shots([shot(1, "a", 10.0)])) == 1
-
-
-def test_replay_removes_cups_and_handles_mislabeled_cup() -> None:
-    reports = [shot(1, "a", 10.0, cup=3), shot(2, "a", 30.0, cup=3), shot(3, "a", 50.0, side=2, cup=0)]
-    st = live.replay(reports)
-    assert st.racks[2].cups == set(range(1, 11)) - {1, 3}  # second "3" was already gone: closest cup taken
-    assert st.hits == {(1, 1): 2} and st.attempts == {(1, 1): 2, (2, 1): 1}
-
-
-def test_clearing_the_rack_ends_the_match() -> None:
-    reports = [shot(i, "a", 10.0 * i, cup=i) for i in range(1, 11)] + [shot(99, "a", 500.0, side=2)]
-    st = live.replay(reports)
-    assert st.winner_side == 1 and not st.racks[2].cups and st.side_attempts(2) == 0
+def test_replay_removes_cups_and_handles_a_cup_already_gone() -> None:
+    taps = [Report(1, live.REFEREE, "shot", 1, 1, 3, 10.0), Report(2, live.REFEREE, "shot", 1, 2, 3, 11.0),
+            Report(3, live.REFEREE, "shot", 2, 1, 0, 12.0)]
+    st = live.replay(taps)
+    assert st.racks[2].cups == set(range(1, 11)) - {1, 3}  # the second "3" was already gone: the closest one went
+    assert st.hits == {(1, 1): 1, (1, 2): 1} and st.attempts == {(1, 1): 1, (1, 2): 1, (2, 1): 1}
 
 
 def test_win_probability_behaves() -> None:
@@ -76,59 +50,34 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
         yield c
 
 
-def test_live_flow_with_several_phones(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_live_page_is_for_watching(client: TestClient) -> None:
     setup_tournament(client, 8, fields=4)
     m = db_call(service.matches)[0]
-    clock = [1000.0]
-    monkeypatch.setattr("app.main.server_now", lambda: clock[0])
-    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    assert "in chiamata" in client.get("/").text  # called to the table, the referee has not started it yet
+    page = client.get(f"/live/{m.id}").text
+    assert "Chi sta tirando" not in page and 'id="sheet"' not in page and "segna l'arbitro" in page
+    for path in ("segnala", "annulla"):  # nobody but the referee records shots
+        r = client.post(f"/api/live/{m.id}/{path}", json={"kind": "shot", "side": 1, "player": 1, "cup": 1})
+        assert r.status_code in (404, 405)
 
-    assert "in chiamata" in client.get("/").text  # called to the table, nobody has started it yet
-    assert client.get(f"/live/{m.id}").status_code == 200
-    phones = [TestClient(client.app) for _ in range(3)]
-    for p in phones:
-        p.get(f"/live/{m.id}")
-        clock[0] += 0.5
-        assert p.post(f"/api/live/{m.id}/segnala", json={"kind": "start"}).status_code == 200
-    assert phones[0].post(f"/api/live/{m.id}/segnala", json={"kind": "start"}).json()["error"].startswith("Hai già")
-
-    clock[0] = 1010.0
-    for p in phones[:2]:
-        p.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 2, "cup": 4})
-    state = phones[2].post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 2, "cup": 7}).json()
-    assert state["started_at"] == 1001.0  # median of the three taps
-    assert state["shots"][0]["removed"] == 4 and state["shots"][0]["votes"] == 3
-    assert 4 not in state["teams"][1]["rack"] and len(state["teams"][1]["rack"]) == 5  # 6 cups, one taken
-    assert state["prob"][0] > 0.5
-    assert state["duration"] == 300
-
-    clock[0] = 1020.0
-    wrong = phones[0].post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 2, "player": 1, "cup": 2}).json()
-    mine = wrong["mine"][0]["id"]
-    assert phones[1].post(f"/api/live/{m.id}/annulla", json={"id": mine}).status_code == 400  # not their report
-    after = phones[0].post(f"/api/live/{m.id}/annulla", json={"id": mine}).json()
-    assert len(after["shots"]) == 1
-
-    assert client.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 3, "player": 1, "cup": 1}).status_code == 400
-
-    # The referee confirms 1-0: tracked hits match, so the players' split is filled in automatically.
+    # The referee scores, and that is what the live page and the statistics show.
+    db_call(lambda db: service.start_match(db, m.id, 1000.0, 1))
+    db_call(lambda db: tracking.referee_shot(db, m.id, 2, 4, 1010.0, 0))
+    state = client.get(f"/api/live/{m.id}").json()
+    assert state["started_at"] == 1000.0 and state["duration"] == 300
+    assert 4 not in state["teams"][1]["rack"] and len(state["teams"][1]["rack"]) == 5 and state["prob"][0] > 0.5
     client.post(f"/partita/{m.id}", data={"s1": 1, "s2": 0})
-    view = db_call(service.match, m.id)
-    assert view.split1 == (0, 1) and view.split2 == (0, 0)
-    assert client.post(f"/api/live/{m.id}/segnala", json={"kind": "start"}).json()["error"] == "La partita è già conclusa."
-
-    page = client.get("/classifiche?vista=tiri").text
-    assert "Bomber" in page and "Mappa dei bicchieri" in page
+    assert db_call(service.match, m.id).split1 == (0, 1)  # the referee's hits fill in the players' split
     stats = db_call(tracking.shot_stats)
     assert stats.total_shots == 1 and stats.heatmap[4] == 1
+    assert "Bomber" in client.get("/classifiche?vista=tiri").text
 
 
-def test_report_rate_limit(client: TestClient) -> None:
+def test_cheer_rate_limit(client: TestClient) -> None:
     setup_tournament(client, 8, fields=4)
     m = db_call(service.matches)[0]
-    client.get(f"/live/{m.id}")
-    assert client.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 1}).status_code == 200
-    assert client.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 2}).status_code == 429
+    assert client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🍺"}).status_code == 200
+    assert client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🔥"}).status_code == 429  # too close
 
 
 def _ref(cups_seq: list[tuple[int, int, int]]) -> list[live.Report]:
@@ -234,7 +183,5 @@ def test_one_cheer_of_each_kind_per_account_and_none_while_playing(client: TestC
         at_table.post("/checkin/accedi", data={"phone": db_call(service.team, m.t1)["phone1"]})
         r = tifo(at_table)
         assert r.status_code == 403 and "occhi sul tavolo" in r.json()["error"]
-        r = at_table.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 1})
-        assert r.status_code == 403
         assert at_table.get(f"/api/live/{m.id}").json()["you_play"] is True
     assert client.get(f"/api/live/{m.id}").json()["you_play"] is False
