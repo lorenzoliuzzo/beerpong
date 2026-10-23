@@ -1343,3 +1343,27 @@ nav.tabbar a.on svg {
 }
 
 
+
+/* Referee table: two halves as the referee sees them, the target rack's apex facing the shooters */
+.ref-bar { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; }
+.ref-bar .ref-clock { text-align: left; }
+.ref-bar .ref-clock .ref-clock-time { font-size: 1.6rem; }
+.ref-score-big { font-size: 2rem; font-weight: 900; display: flex; gap: 6px; align-items: baseline; }
+.ref-score-big span { color: var(--muted); font-weight: 400; }
+button.ref-swap { min-width: 56px; min-height: 48px; font-size: 1.5rem; background: var(--surface); color: var(--text); border: 2px solid var(--line); border-radius: 14px; }
+.ref-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; }
+.ref-names strong { overflow-wrap: anywhere; line-height: 1.15; }
+.ref-table { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
+.ref-table .ref-miss { grid-column: 1 / -1; }
+.ref-half { border: 2px solid var(--line); border-radius: 14px; padding: 8px 6px; display: grid; gap: 8px; align-content: start; justify-items: stretch; }
+.ref-half.shooting { border-color: var(--accent); background: var(--accent-soft); }
+.ref-role { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: center; }
+.ref-half .ref-pick span { min-height: 64px; }
+.ref-rack { display: flex; justify-content: center; align-items: center; gap: 6px; }
+.ref-col { display: flex; flex-direction: column; gap: 6px; }
+.ref-rack .cup { width: 46px; height: 46px; font-size: 1.05rem; flex-direction: column; line-height: 1; }
+.ref-rack.big .cup { width: 36px; height: 36px; font-size: .9rem; }
+.ref-rack .cup.down small { font-size: .6rem; font-weight: 800; color: var(--accent); }
+.ref-undo button { width: 100%; min-height: 48px; }
+.ref-more summary { text-align: center; color: var(--muted); font-weight: 700; cursor: pointer; padding: 6px; }
+.ref-more { display: grid; gap: 8px; justify-items: center; }

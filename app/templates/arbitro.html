@@ -28,86 +28,89 @@
   {% set order = [2, 1] if flip else [1, 2] %}
   {% set team = {1: players[m.t1], 2: players[m.t2]} %}
   <div class="ref-card {{ 'running' if m.started_at }}">
-    <div class="ref-meta">{{ m.label }} · Tavolo {{ m.field }}{% if not m.started_at and m.time %} · ore {{ m.time }}{% endif %}</div>
+    <div class="ref-bar">
+      {% if m.started_at %}
+        <div class="ref-clock" data-started="{{ m.started_at }}" data-duration="{{ (m.duration or 0) * 60 }}" data-now="{{ now_ts }}"><span class="ref-clock-time">--:--</span></div>
+        <div class="ref-score-big">{{ rv.state.side_hits(order[0]) }}<span>–</span>{{ rv.state.side_hits(order[1]) }}</div>
+      {% else %}
+        <div class="ref-meta">{{ m.label }}{% if m.time %} · ore {{ m.time }}{% endif %}</div>
+      {% endif %}
+      <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="ref-swap" type="submit" aria-label="Scambia i lati">⇄</button></form>
+    </div>
+    <div class="ref-names">{% for s in order %}<strong>{{ team[s].name }}</strong>{% endfor %}</div>
+
     {% if not m.started_at %}
-      <div class="ref-teams">{% for s in order %}<div><strong>{{ team[s].name }}</strong></div>{% if loop.first %}<span class="muted">vs</span>{% endif %}{% endfor %}</div>
       <form method="post" action="/partita/{{ m.id }}/inizia" data-ajax>
         <p class="ref-q">Chi tira per primo?</p>
         <div class="ref-picks">
-          {% for s in order %}<label class="ref-pick"><input type="radio" name="primo" value="{{ s }}" {{ 'checked' if s == 1 }}><span>{{ team[s].name }}</span></label>{% endfor %}
+          {% for s in order %}<label class="ref-pick"><input type="radio" name="primo" value="{{ s }}" {{ 'checked' if s == order[0] }}><span>{{ team[s].name }}</span></label>{% endfor %}
         </div>
         <button class="ref-go" type="submit">▶ Inizia: parte il tempo</button>
       </form>
     {% else %}
       {% set st = rv.state %}
-      <div class="ref-clock" data-started="{{ m.started_at }}" data-duration="{{ (m.duration or 0) * 60 }}" data-now="{{ now_ts }}">
-        <span class="ref-clock-time">--:--</span>
-        <span class="ref-clock-label">{{ "rimanenti" if m.duration else "senza limite di tempo" }}</span>
-      </div>
-      <div class="ref-board">
-        {% for s in order %}
-          <div class="ref-team {{ 'turn' if rv.turn_side == s and not st.winner_side }}">
-            <strong>{{ team[s].name }}</strong>
-            <span class="ref-score">{{ st.side_hits(s) }}</span>
-            {% for pl in ([2, 1] if flip else [1, 2]) %}
-              <div class="ref-player">{{ team[s]["p" ~ pl] }} <b>{{ st.hits.get((s, pl), 0) }}/{{ st.attempts.get((s, pl), 0) }}</b></div>
-            {% endfor %}
-          </div>
-        {% endfor %}
-      </div>
-      {% if m.duration and not st.winner_side %}
-        <form method="post" action="/partita/{{ m.id }}" class="ref-win ref-timeout" hidden>
-          <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
-          {% if m.stage == "ko" and st.side_hits(1) == st.side_hits(2) %}
-            <p class="ref-q">⏱ Tempo scaduto in parità: overtime, continuate a segnare i tiri.</p>
-          {% else %}
-            <p class="ref-q">⏱ Tempo scaduto</p>
-            <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
-          {% endif %}
-        </form>
-      {% endif %}
       {% if st.winner_side %}
         {% set w = st.winner_side %}
         <form method="post" action="/partita/{{ m.id }}" class="ref-win">
           <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
           <input type="hidden" name="vincitore" value="{{ w }}">
-          <p class="ref-q">🏆 Bicchieri finiti: vince <strong>{{ team[w].name }}</strong></p>
+          <p class="ref-q">🏆 Vince <strong>{{ team[w].name }}</strong></p>
           <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
         </form>
       {% else %}
-        <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-shot">
-          <input type="hidden" name="n" value="{{ official_counts[m.id] }}">
-          {% set shooting, target = team[rv.turn_side], team[3 - rv.turn_side] %}
-          <p class="ref-q">Tira <strong>{{ shooting.name }}</strong>: chi sta tirando?</p>
-          <div class="ref-picks">
-            {% for pl in ([2, 1] if flip else [1, 2]) %}
-              <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>🎯 {{ shooting["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
-            {% endfor %}
-          </div>
-          {% set standing = st.racks[3 - rv.turn_side].cups %}
-          <p class="ref-rack-title">Bicchieri di <strong>{{ target.name }}</strong> in gioco: {{ standing|length }}<br><span class="muted small">tocca quello centrato</span></p>
-          <div class="rack big">
-            {% for row in rv.rows %}<div class="rrow">
-              {% for c in row %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}{% set who = shooting["p" ~ rv.hit_by[3 - rv.turn_side].get(c, 0)] if rv.hit_by[3 - rv.turn_side].get(c) else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{{ c }}{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
-            </div>{% endfor %}
-          </div>
-          <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
-          <p class="muted small" style="text-align:center;margin:6px 0 0">Palla in un bicchiere già tolto? Non segnare niente: chi ha tirato ritira (regola 6).</p>
-        </form>
-        {% if rv.last_shot %}
-          {% set ls = rv.last_shot %}
-          <p class="muted small" style="text-align:center;margin:0">Ultimo tiro: {{ team[ls.side]["p" ~ ls.player] }} {{ "🎯 bicchiere " ~ ls.removed if ls.removed else "✗ fuori" }}</p>
+        {% if m.duration %}
+          <form method="post" action="/partita/{{ m.id }}" class="ref-win ref-timeout" hidden>
+            <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
+            {% if m.stage == "ko" and st.side_hits(1) == st.side_hits(2) %}
+              <p class="ref-q">⏱ Tempo scaduto in parità: overtime, continuate a segnare.</p>
+            {% else %}
+              <p class="ref-q">⏱ Tempo scaduto</p>
+              <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+            {% endif %}
+          </form>
         {% endif %}
+        {% set shooter, target = rv.turn_side, 3 - rv.turn_side %}
+        {% set target_on_right = order[1] == target %}
+        {% set cols = rv.rows|reverse|list if target_on_right else rv.rows %}
+        <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-table">
+          <input type="hidden" name="n" value="{{ official_counts[m.id] }}">
+          {% for s in order %}
+            {% if s == shooter %}
+              <div class="ref-half shooting">
+                <span class="ref-role">tira</span>
+                {% for pl in ([2, 1] if flip else [1, 2]) %}
+                  <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>🎯 {{ team[s]["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
+                {% endfor %}
+              </div>
+            {% else %}
+              {% set standing = st.racks[s].cups %}
+              <div class="ref-half target">
+                <span class="ref-role">bicchieri ({{ standing|length }})</span>
+                <div class="ref-rack {{ 'big' if rv.rows|length > 3 }}">
+                  {% for col in cols %}<div class="ref-col">
+                    {% for c in col %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}{% set by = rv.hit_by[s].get(c) %}{% set who = team[shooter]["p" ~ by] if by else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{{ c }}{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
+                  </div>{% endfor %}
+                </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+          <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
+        </form>
       {% endif %}
-      <div class="ref-tools">
-        {% if rv.last_shot %}<form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax><button class="small ghost" type="submit">↶ Annulla ultimo</button></form>{% endif %}
-        <a class="btn small ghost" href="/partita/{{ m.id }}">Risultato a mano</a>
-      </div>
+      {% if rv.last_shot %}
+        {% set ls = rv.last_shot %}
+        <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
+          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "🎯 " ~ ls.removed if ls.removed else "✗ fuori" }}</button>
+        </form>
+      {% endif %}
+      <details class="ref-more">
+        <summary>Altro</summary>
+        <p class="muted small">Palla in un bicchiere già tolto? Non segnare niente: chi ha tirato ritira (regola 6).</p>
+        <a class="btn small ghost" href="/partita/{{ m.id }}">Inserisci il risultato a mano</a>
+        <form method="post" action="/partita/{{ m.id }}/annulla-inizio" onsubmit="return confirm('Annullare l\'inizio? I tiri segnati si perdono.')"><button class="link" type="submit">Annulla inizio partita</button></form>
+        <a class="small" href="/live/{{ m.id }}">Pagina live della partita ›</a>
+      </details>
     {% endif %}
-    <div class="ref-tools">
-      <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="small ghost" type="submit">⇄ Scambia lati</button></form>
-      {% if m.started_at %}<form method="post" action="/partita/{{ m.id }}/annulla-inizio" onsubmit="return confirm('Annullare l\'inizio? I tiri segnati si perdono.')"><button class="link" type="submit">Annulla inizio</button></form>{% endif %}
-    </div>
   </div>
 {% endmacro %}
 
@@ -123,8 +126,9 @@
   <p class="muted small">Un risultato sbagliato? Aprilo in «Risultati del tuo tavolo» e tocca «Correggi».</p>
 {% endif %}
 {% if pending %}
-  <h2>{{ "Prossime al tuo tavolo" if field_no else "A seguire" }}</h2>
-  <div class="list queue">
+  <details class="section" {{ 'open' if not current or not field_no }}>
+  <summary>{{ "Prossime al tuo tavolo" if field_no else "A seguire" }} ({{ pending|length }})</summary>
+  <div class="list queue" style="margin:0 12px 12px">
     {% for m in pending %}
       <a class="row" href="{{ '/partita/' ~ m.id if can_referee(m) else '/live/' ~ m.id }}" style="color:inherit;text-decoration:none">
         <span class="when">{{ m.time }}</span>
@@ -134,6 +138,7 @@
       </a>
     {% endfor %}
   </div>
+  </details>
 {% endif %}
 {% if played %}
   <details class="section">

@@ -1003,7 +1003,7 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     started = db_call(service.match, m.id)
     assert started.started_at is not None and db_call(lambda db: tracking.state(db, m.id)).started_at == started.started_at
     page = client.get("/arbitro").text
-    assert "chi sta tirando?" in page and "Risultato a mano" in page and 'class="ref-clock"' in page
+    assert 'class="ref-half shooting"' in page and "Inserisci il risultato a mano" in page and 'class="ref-clock"' in page
     assert "● LIVE" in client.get("/").text
     assert "già iniziata" in client.post(f"/partita/{m.id}/inizia").text
     assert db_call(service.match, later[0].id).time >= started.time  # the table's next times run from the start
@@ -1029,7 +1029,10 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
 
     client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
     page = client.get("/arbitro").text
-    assert f"Tira <strong>{m.n2}</strong>: chi sta tirando?" in page and f"Bicchieri di <strong>{m.n1}</strong> in gioco: 6" in page
+    halves = page[page.index('class="ref-table"'):page.index('class="ref-miss"')]
+    p1_name = db_call(service.team, m.t2)["p1"]
+    assert halves.index('ref-half target') < halves.index('ref-half shooting')  # couple 2 shoots, from the right
+    assert f"🎯 {p1_name}" in halves and "bicchieri (6)" in halves
     script = page[page.rindex("<script>"):page.rindex("</script>")]
     assert script.count("(() => {") == script.count("})();")  # the scoring script is closed, so it runs
 
@@ -1063,7 +1066,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
         shoot(1, 0)
         shoot(2, 0)
     page = client.get("/arbitro").text
-    assert "Bicchieri finiti: vince" in page and "✓ Conferma 6–1" in page
+    assert "🏆 Vince" in page and "✓ Conferma 6–1" in page
     client.post(f"/partita/{m.id}", data={"s1": 6, "s2": 1, "vincitore": 1})
     done = db_call(service.match, m.id)
     assert (done.s1, done.s2, done.winner) == (6, 1, m.t1) and done.split1 == (6, 0)
