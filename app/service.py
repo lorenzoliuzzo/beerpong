@@ -306,6 +306,14 @@ def phone_matches(t: sqlite3.Row, phone: str) -> bool:
     return any(p and _same_phone(p, phone) for p in (t["phone1"], t["phone2"]))
 
 
+def teams_by_phone(db: sqlite3.Connection, phone: str) -> list[sqlite3.Row]:
+    return [t for t in teams(db).values() if phone_matches(t, phone)]
+
+
+def is_unpaired_guest(db: sqlite3.Connection, phone: str) -> bool:
+    return any(_same_phone(g["phone"], phone) for g in unassigned_guests(db))
+
+
 def save_team(
     db: sqlite3.Connection,
     team_id: int | None,

@@ -503,6 +503,46 @@ def checkin_list(request: Request, k: str = "", db: sqlite3.Connection = Depends
     )
 
 
+@router.post("/checkin/accedi")
+def checkin_phone(
+    request: Request, phone: str = Form(""), team_id: str | None = Form(None), db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    """Scan the QR, type your number (or your partner's): the couple is checked in and you are in its profile."""
+    if _throttled(request):
+        flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
+        return redirect("/checkin")
+    found = service.teams_by_phone(db, phone)
+    if _int(team_id) is not None:
+        found = [t for t in found if t["id"] == _int(team_id)]
+    if not found:
+        if service.is_unpaired_guest(db, phone):
+            flash(request, "Siete iscritti «solo serata»: se giocate in coppia, completate qui.")
+            return redirect("/checkin/nuova")
+        _record_failure(request)
+        flash(request, "Numero non trovato: provate quello del compagno, o scegliete la coppia dall'elenco.", "err")
+        return redirect("/checkin")
+    if len(found) > 1:
+        return page(request, db, "checkin_scegli.html", found=found, phone=phone)
+    t = found[0]
+    if not t["checked_in"]:
+        if get_setting(db, "phase") != "setup":
+            flash(request, f"Il torneo è già iniziato e «{t['name']}» non ha fatto il check-in: parlate con l'organizzazione.", "err")
+            return redirect("/checkin")
+        if not request.session.get("checkin_ok"):
+            flash(request, "Per il check-in scansionate il QR code sul tavolo.", "err")
+            return redirect("/checkin")
+        try:
+            service.admin_check_in(db, t["id"], True)
+        except TournamentError as e:
+            flash(request, f"{e} Parlate con l'organizzazione.", "err")
+            return redirect("/checkin")
+        flash(request, f"Check-in fatto ✓ Benvenuti, {t['name']}!")
+    else:
+        flash(request, f"Bentornati, {t['name']}!")
+    request.session["team"] = t["id"]
+    return redirect("/io")
+
+
 @router.get("/checkin/nuova")
 def guest_team_form(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
     return page(request, db, "checkin_nuova.html", allowed=request.session.get("checkin_ok", False))

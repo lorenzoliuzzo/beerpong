@@ -8,7 +8,7 @@
   {% if cfg.phase == "setup" %}
     <p class="small">Appena arrivati fate il <strong>check-in</strong> scansionando il QR code sul tavolo.</p>
   {% endif %}
-  <a class="btn wide" href="/checkin">{{ "Check-in o entra con il vostro numero" if cfg.phase == "setup" else "Entra con il vostro numero" }}</a>
+  <a class="btn wide" href="/checkin">Entra con il vostro numero</a>
 </div>
 <p class="muted small">Guardate solo? Le partite in corso sono in <a href="/">Live</a>, gironi e tavoli in <a href="/gironi">Tavoli</a>.</p>
 {% endblock %}

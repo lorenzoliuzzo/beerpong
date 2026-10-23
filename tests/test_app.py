@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app import main as app_main
 from app import service
 from app.db import connect, get_setting, init_db
 from app.main import create_app, get_db
@@ -18,8 +19,10 @@ ADMIN_PIN = "123456"
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
+    app_main._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
     with TestClient(create_app()) as c:
         yield c
+    app_main._failures.clear()
 
 
 def db_call(fn, *args):
@@ -921,3 +924,52 @@ def test_draw_with_more_organizers_than_spread_slots(client: TestClient) -> None
     for seed in range(30):
         groups = draw_groups(list(range(11)), seed, fields=1, organizers=frozenset(range(11)))
         assert sorted(t for g in groups for t in g) == list(range(11))
+
+
+def test_qr_then_phone_checks_in_and_opens_the_profile(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": (
+        "Gufi; Ada; Bice; 3331110001; 3331110002\nLontre; Ciro; Dora; 3331110003\nCastori; Elsa; Furio; 3331110001\n"
+        "; Gina; ; 3339990000"
+    )})
+    client.post("/logout")
+    ids = {t["name"]: t["id"] for t in db_call(service.teams).values()}
+
+    # without the QR: no check-in, only a way back in for couples already present
+    r = client.post("/checkin/accedi", data={"phone": "333 111 0003"})
+    assert "scansionate il QR code" in r.text and not db_call(service.team, ids["Lontre"])["checked_in"]
+
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    r = client.post("/checkin/accedi", data={"phone": "+39 333 111 0003"}, follow_redirects=False)
+    assert r.headers["location"] == "/io" and db_call(service.team, ids["Lontre"])["checked_in"] == 1
+    assert "Check-in fatto ✓ Benvenuti, Lontre!" in client.get("/io").text
+
+    # the partner's number works too; a number in two couples asks which one
+    r = client.post("/checkin/accedi", data={"phone": "3331110001"})
+    assert "Quale coppia?" in r.text and "Gufi" in r.text and "Castori" in r.text
+    client.post("/checkin/accedi", data={"phone": "3331110001", "team_id": ids["Castori"]})
+    assert db_call(service.team, ids["Castori"])["checked_in"] == 1 and not db_call(service.team, ids["Gufi"])["checked_in"]
+
+    # a party-only guest goes to the couple form; an unknown number gets a hint
+    assert client.post("/checkin/accedi", data={"phone": "3339990000"}, follow_redirects=False).headers["location"] == "/checkin/nuova"
+    assert "Numero non trovato" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text
+
+
+def test_phone_login_after_the_start(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(5))})
+    for t in list(db_call(service.teams).values())[:4]:
+        client.post(f"/admin/squadre/{t['id']}/presente", data={"presente": 1})
+    client.post("/admin/avvia")
+    client.post("/logout")
+    with TestClient(client.app) as phone:
+        assert "Bentornati, S0!" in phone.post("/checkin/accedi", data={"phone": "3331110000"}).text
+        assert "Il torneo è già iniziato" in phone.post("/checkin/accedi", data={"phone": "3331110004"}).text
+
+
+def test_wrong_numbers_are_throttled(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    for _ in range(8):
+        client.post("/checkin/accedi", data={"phone": "3330000000"})
+    assert "Troppi tentativi" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text

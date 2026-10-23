@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block content %}
+<h1>Quale coppia?</h1>
+<p class="muted">Questo numero è in più coppie: toccate la vostra.</p>
+<div class="list">
+  {% for t in found %}
+    <form method="post" action="/checkin/accedi" class="row">
+      <input type="hidden" name="phone" value="{{ phone }}"><input type="hidden" name="team_id" value="{{ t.id }}">
+      <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+      <button class="small" type="submit">Siamo noi</button>
+    </form>
+  {% endfor %}
+</div>
+{% endblock %}
