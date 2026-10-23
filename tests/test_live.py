@@ -81,7 +81,7 @@ def test_live_flow_with_several_phones(client: TestClient, monkeypatch: pytest.M
     monkeypatch.setattr("app.main.server_now", lambda: clock[0])
     monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
 
-    assert "LIVE" in client.get("/").text
+    assert "in chiamata" in client.get("/").text  # called to the table, nobody has started it yet
     assert client.get(f"/live/{m.id}").status_code == 200
     phones = [TestClient(client.app) for _ in range(3)]
     for p in phones:

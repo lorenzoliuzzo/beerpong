@@ -78,7 +78,8 @@ CREATE TABLE IF NOT EXISTS matches (
     score2 INTEGER,
     winner INTEGER REFERENCES teams(id),
     done INTEGER NOT NULL DEFAULT 0,
-    bye INTEGER NOT NULL DEFAULT 0
+    bye INTEGER NOT NULL DEFAULT 0,
+    started_at REAL  -- set when the referee starts the match: its clock and the table's times run from here
 );
 """
 
@@ -144,6 +145,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE teams ADD COLUMN note TEXT NOT NULL DEFAULT ''")
     if "in_chat" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN in_chat INTEGER NOT NULL DEFAULT 0")
+    match_columns = {row[1] for row in conn.execute("PRAGMA table_info(matches)")}
+    if "started_at" not in match_columns:
+        conn.execute("ALTER TABLE matches ADD COLUMN started_at REAL")
     if "organizer" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN organizer INTEGER NOT NULL DEFAULT 0")
 

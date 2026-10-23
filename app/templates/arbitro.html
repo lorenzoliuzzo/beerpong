@@ -8,14 +8,42 @@
     {% for f in range(1, cfg.fields + 1) %}<a href="/arbitro?campo={{ f }}" class="{{ 'on' if f == field_no }}">{{ f }}</a>{% endfor %}
   </nav>
 {% endif %}
+
+{% macro ref_card(m) %}
+  <div class="ref-card {{ 'running' if m.started_at }}">
+    <div class="ref-meta">{{ m.label }} · Tavolo {{ m.field }}{% if not m.started_at and m.time %} · ore {{ m.time }}{% endif %}</div>
+    <div class="ref-teams">
+      <div><strong>{{ m.n1 }}</strong>{% if m.live_score %}<span class="ref-score">{{ m.live_score[0] }}</span>{% endif %}</div>
+      <span class="muted">vs</span>
+      <div><strong>{{ m.n2 }}</strong>{% if m.live_score %}<span class="ref-score">{{ m.live_score[1] }}</span>{% endif %}</div>
+    </div>
+    {% if not m.started_at %}
+      <p class="muted small">Le coppie sono state chiamate al tavolo: avvia quando sono pronte.</p>
+      <form method="post" action="/partita/{{ m.id }}/inizia">
+        <button class="ref-go" type="submit">▶ Inizia partita</button>
+      </form>
+    {% else %}
+      <div class="ref-clock" data-started="{{ m.started_at }}" data-duration="{{ (m.duration or 0) * 60 }}" data-now="{{ now_ts }}">
+        <span class="ref-clock-time">--:--</span>
+        <span class="ref-clock-label">{{ "rimanenti" if m.duration else "senza limite di tempo" }}</span>
+      </div>
+      <a class="ref-end" href="/partita/{{ m.id }}">🏁 Fine: inserisci risultato</a>
+      <form method="post" action="/partita/{{ m.id }}/annulla-inizio" style="text-align:center;margin-top:10px">
+        <button class="link" type="submit">Annulla inizio</button>
+      </form>
+    {% endif %}
+    <a class="small" href="/live/{{ m.id }}">Pagina live della partita ›</a>
+  </div>
+{% endmacro %}
+
 {% if current %}
-  <h2>In campo ora</h2>
-  {% for m in current %}{{ ui.match(m) }}{% endfor %}
+  {% for m in current %}{{ ref_card(m) }}{% endfor %}
 {% elif cfg.phase == "setup" %}
   <p class="muted">Il torneo non è ancora iniziato.</p>
 {% else %}
   <p class="muted">Nessuna partita in attesa{{ " su questo tavolo" if field_no }}.</p>
 {% endif %}
+
 {% if pending %}
   <h2>A seguire</h2>
   <div class="list queue">
@@ -38,4 +66,23 @@
 {% if role == "referee" %}
 <div class="foot"><form method="post" action="/logout"><button class="link" type="submit">Esci dall'area arbitro</button></form></div>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // The match clock: server start time and duration, corrected by the server/phone clock offset.
+  (() => {
+    const tick = () => document.querySelectorAll(".ref-clock").forEach((el) => {
+      const started = +el.dataset.started, total = +el.dataset.duration;
+      if (el.dataset.offset === undefined) el.dataset.offset = +el.dataset.now - Date.now() / 1000;
+      const elapsed = Date.now() / 1000 + +el.dataset.offset - started;
+      const left = total ? total - elapsed : elapsed;
+      const s = Math.max(0, Math.floor(Math.abs(left)));
+      el.querySelector(".ref-clock-time").textContent =
+        (total && left < 0 ? "+" : "") + String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+      el.classList.toggle("over", Boolean(total) && left < 0);
+    });
+    tick(); setInterval(tick, 500);
+  })();
+</script>
 {% endblock %}

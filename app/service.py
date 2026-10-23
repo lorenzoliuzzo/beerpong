@@ -59,7 +59,8 @@ class MatchView:
     round: int
     pos: int
     live_score: tuple[int, int] | None = None
-    playing: bool = False  # on a table right now (see live())
+    playing: bool = False  # its turn on a table right now (see live()): the couples are called
+    started_at: float | None = None  # the referee started it
 
     def side(self, team: int | None) -> int | None:
         return 1 if team is not None and team == self.t1 else 2 if team is not None and team == self.t2 else None
@@ -570,6 +571,29 @@ def recalc_table_schedule(
             db.execute("UPDATE matches SET start = ? WHERE id = ?", (_fmt(base + idx * step), r["id"]))
 
 
+def start_match(db: sqlite3.Connection, match_id: int, now: float) -> None:
+    """The referee starts the match on the table: its clock runs from now, and so do the table's next times."""
+    m = db.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+    if m is None or m["bye"] or m["team1"] is None or m["team2"] is None:
+        raise TournamentError("Partita non disponibile.")
+    if m["done"]:
+        raise TournamentError("La partita è già conclusa.")
+    if m["started_at"] is not None:
+        raise TournamentError("La partita è già iniziata.")
+    with db:
+        db.execute("UPDATE matches SET started_at = ? WHERE id = ?", (now, match_id))
+    pending = db.execute(
+        "SELECT field, team1, team2 FROM matches WHERE stage = ? AND done = 0 AND bye = 0", (m["stage"],)
+    ).fetchall()
+    if m["field"] is not None and tables_independent([tuple(r) for r in pending]):
+        recalc_table_schedule(db, m["field"], m["stage"], datetime.fromtimestamp(now).replace(second=0, microsecond=0))
+
+
+def undo_start(db: sqlite3.Connection, match_id: int) -> None:
+    with db:
+        db.execute("UPDATE matches SET started_at = NULL WHERE id = ? AND done = 0", (match_id,))
+
+
 def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winner_side: int | None = None) -> None:
     m = db.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
     if m is None or m["bye"]:
@@ -759,6 +783,7 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 round=r["round"],
                 pos=r["pos"],
                 live_score=ls,
+                started_at=r["started_at"],
             )
         )
     for m in live(views)[0]:

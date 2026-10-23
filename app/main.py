@@ -742,21 +742,46 @@ def referee(request: Request, campo: str | None = None, db: sqlite3.Connection =
     if role not in ("admin", "referee"):
         return redirect("/login")
     field_no = request.session.get("field") if role == "referee" else _int(campo)
-    views = [m for m in service.matches(db) if m.slot is not None and (field_no is None or m.field == field_no)]
-    if field_no is None:
-        now_ms, _ = service.live(views)
-        now_ids = {m.id for m in now_ms}
-        current = now_ms
-        pending = [m for m in views if not m.done and m.id not in now_ids]
-    else:
-        all_pending = [m for m in views if not m.done]
-        current = all_pending[:1]
-        pending = all_pending[1:]
+    all_views = service.matches(db)
+    views = [m for m in all_views if m.slot is not None and (field_no is None or m.field == field_no)]
+    # The same "on the table now" as everywhere else, so a referee never starts a couple still playing elsewhere.
+    now_ids = {m.id for m in all_views if m.playing}
+    current = [m for m in views if m.id in now_ids]
+    pending = [m for m in views if not m.done and m.id not in now_ids]
     pending = sorted(pending, key=lambda m: (m.time or "", m.field or 0))  # each table runs its own queue
     return page(
         request, db, "arbitro.html", current=current, pending=pending,
-        played=[m for m in views if m.done][::-1], field_no=field_no, live=True,
+        played=[m for m in views if m.done][::-1], field_no=field_no, live=True, now_ts=time.time(),
     )
+
+
+@router.post("/partita/{match_id}/inizia")
+def match_start(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    m = service.match(db, match_id)
+    if m is None:
+        raise HTTPException(404)
+    if not can_referee(request, m):
+        return redirect("/login")
+    try:
+        service.start_match(db, match_id, time.time())
+    except TournamentError as e:
+        flash(request, str(e), "err")
+    return redirect(_referee_back(request, m))
+
+
+@router.post("/partita/{match_id}/annulla-inizio")
+def match_undo_start(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    m = service.match(db, match_id)
+    if m is None:
+        raise HTTPException(404)
+    if not can_referee(request, m):
+        return redirect("/login")
+    service.undo_start(db, match_id)
+    return redirect(_referee_back(request, m))
+
+
+def _referee_back(request: Request, m: service.MatchView) -> str:
+    return "/arbitro" if request.session.get("role") == "referee" else f"/arbitro?campo={m.field}"
 
 
 @router.get("/partita/{match_id}")

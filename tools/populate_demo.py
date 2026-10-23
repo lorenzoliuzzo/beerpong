@@ -103,7 +103,7 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
     target_scores = [(7, 5), (6, 8), (4, 4), (3, 1)]
     for idx, m in enumerate(now_matches):
         s1_hits, s2_hits = target_scores[idx % len(target_scores)]
-        tracking.add_report(db_conn, m.id, "ref-dev", "start", None, None, None, live_now_ts - 240)
+        service.start_match(db_conn, m.id, live_now_ts - 240)
 
         cups1 = rng.sample(range(1, 11), s1_hits)
         for i, c in enumerate(cups1):

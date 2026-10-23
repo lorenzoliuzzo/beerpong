@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app import service
+from app import service, tracking
 from app.db import connect, get_setting, init_db
 from app.main import create_app, get_db
 
@@ -839,7 +839,7 @@ def test_rankings_default_to_groups_with_my_position(client: TestClient) -> None
     assert "La vostra posizione · Squadra 0" in page and '<span class="pill accent">il vostro</span>' in page
     mine = [m for m in db_call(service.matches) if m.side(1)]
     profile = client.get("/io").text
-    assert profile.count("● LIVE") == sum(m.playing for m in mine) <= 1  # later matches get no LIVE pill
+    assert "● LIVE" not in profile and profile.count("in chiamata") == sum(m.playing for m in mine) <= 1
     assert "Attiva le notifiche" in profile
 
 
@@ -984,7 +984,34 @@ def test_admin_control_room_during_the_groups(client: TestClient) -> None:
     assert len(current) == 4 and all(f'href="/partita/{m.id}">Risultato</a>' in page for m in current)
 
     referee = client.get("/arbitro").text
-    assert referee.count("Inserisci risultato") == 4  # only the matches on a table, the queue is a list
+    assert referee.count("▶ Inizia partita") == 4  # only the matches on a table, the queue is a list
     m = current[0]
     form = client.get(f"/partita/{m.id}").text
     assert f"{m.n1} <span class=\"muted\">vs</span> {m.n2}" in form and f"‹ Tavolo {m.field}" in form
+
+
+def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    login(client, db_call(service.referee_pin, 1))
+    page = client.get("/arbitro").text
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    assert "▶ Inizia partita" in page and f"{m.n1}</strong>" in page
+
+    later = sorted((x for x in db_call(service.matches) if x.field == 1 and not x.done and x.id != m.id), key=lambda x: x.slot)
+    client.post(f"/partita/{m.id}/inizia")
+    started = db_call(service.match, m.id)
+    assert started.started_at is not None and db_call(lambda db: tracking.state(db, m.id)).started_at == started.started_at
+    page = client.get("/arbitro").text
+    assert "🏁 Fine: inserisci risultato" in page and 'class="ref-clock"' in page and "● LIVE" in client.get("/").text
+    assert "già iniziata" in client.post(f"/partita/{m.id}/inizia").text
+    assert db_call(service.match, later[0].id).time >= started.time  # the table's next times run from the start
+
+    client.post(f"/partita/{m.id}/annulla-inizio")
+    assert db_call(service.match, m.id).started_at is None
+    client.post(f"/partita/{m.id}/inizia")
+    client.post(f"/partita/{m.id}", data={"s1": 10, "s2": 6})
+    nxt = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
+    assert nxt.id != m.id and "▶ Inizia partita" in client.get("/arbitro").text
+
+    other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
+    assert client.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"

@@ -3,7 +3,8 @@
   <div class="meta">
     <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
     <span>{{ m.time }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
-      {%- if m.t1 and m.t2 and not m.bye and (m.done or m.playing) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Cronaca" if m.done else "● LIVE" }}</a>{% endif %}</span>
+      {%- if m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Cronaca" if m.done else "● LIVE" }}</a>
+      {%- elif m.t1 and m.t2 and m.playing %}<a class="live-pill past" href="/live/{{ m.id }}">📣 in chiamata</a>{% endif %}</span>
   </div>
   <div class="teams">
     {% if m.t1 %}<a class="t {{ 'win' if m.winner == m.t1 }}" href="/squadra/{{ m.t1 }}">{{ m.n1 }}{% if labels and m.t1 in labels %}<small class="origin">{{ labels[m.t1] }}</small>{% endif %}</a>{% else %}<span class="t muted">{{ m.n1 }}</span>{% endif %}
@@ -26,7 +27,9 @@
       {% elif sides %}
         <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica canestri</a>
       {% endif %}
-      {% if can_referee(m) %}
+      {% if can_referee(m) and m.playing and not m.started_at and not m.done %}
+        <form method="post" action="/partita/{{ m.id }}/inizia"><button class="small" type="submit">▶ Inizia</button></form>
+      {% elif can_referee(m) %}
         <a class="btn small {{ 'ghost' if m.done }}" href="/partita/{{ m.id }}">{{ "Correggi" if m.done else "Inserisci risultato" }}</a>
       {% endif %}
     </div>

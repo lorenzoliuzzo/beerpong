@@ -1,4 +1,5 @@
-"""Keep the demo alive: every few seconds each match on a table gets a shot, finished matches get their result.
+"""Keep the demo alive: the "referee" starts each called match, every few seconds it gets a shot, and
+finished matches get their result.
 
 It goes through the real paths (live reports, record_result, notices), so the demo shows racks emptying,
 tables moving on, the bracket filling and "tocca a voi" notifications. When the final is over it waits a
@@ -39,10 +40,10 @@ def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:
     for m in now_ms:
         if m.done or m.t1 is None or m.t2 is None:
             continue
-        st = tracking.state(conn, m.id)
-        if st.started_at is None:
-            tracking.add_report(conn, m.id, DEVICE, "start", None, None, None, now)
+        if m.started_at is None:  # the couples were called: the referee starts the match
+            service.start_match(conn, m.id, now)
             continue
+        st = tracking.state(conn, m.id)
         out_of_time = m.duration is not None and now - st.started_at >= m.duration * 60
         if st.winner_side or out_of_time:
             _finish(conn, m, st, rng)

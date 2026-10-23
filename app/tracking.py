@@ -25,10 +25,16 @@ def reports(db: sqlite3.Connection, match_id: int) -> list[live.Report]:
 
 def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
     """Replayed live state, cached until a report of this match is added or removed."""
-    key = tuple(db.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM reports WHERE match_id = ?", (match_id,)).fetchone())
+    key = tuple(db.execute(
+        "SELECT COUNT(*), COALESCE(MAX(id), 0), (SELECT started_at FROM matches WHERE id = ?) FROM reports WHERE match_id = ?",
+        (match_id, match_id),
+    ).fetchone())
     cached = _state_cache.get(match_id)
     if cached is None or cached[0] != key:
-        cached = (key, live.replay(reports(db, match_id)))
+        st = live.replay(reports(db, match_id))
+        if key[2] is not None:  # the referee's start is the clock; the crowd's "start" taps only stand in for it
+            st.started_at = key[2]
+        cached = (key, st)
         _state_cache[match_id] = cached
     return cached[1]
 
