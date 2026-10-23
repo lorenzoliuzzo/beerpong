@@ -1721,6 +1721,41 @@ def planned_schedule(db: sqlite3.Connection, now: datetime) -> PlannedSchedule |
     )
 
 
+def board_tables(db: sqlite3.Connection, groups: list[BoardGroup]) -> list[tuple[int, list[BoardGroup]]] | None:
+    """Groups by table when every table hosts its own groups (see _group_schedule); None when they share tables."""
+    fields = load_config(db).fields
+    if not groups or fields < 2 or len(groups) % fields:
+        return None
+    return [
+        (f, [g for g in groups if planning.table_for_group(ord(g.letter) - 65, len(groups), fields) == f])
+        for f in range(1, fields + 1)
+    ]
+
+
+@dataclass
+class ProvisionalSpot:
+    group: BoardGroup
+    table: int | None
+    first_time: str | None
+    first_rival: sqlite3.Row | None
+
+
+def provisional_spot(db: sqlite3.Connection, team_id: int, now: datetime) -> ProvisionalSpot | None:
+    """Before the draw: the couple's group, table and first match on the board's provisional draw."""
+    groups, provisional = board_groups(db)
+    group = next((g for g in groups if any(t["id"] == team_id for t in g.teams)), None) if provisional else None
+    if group is None:
+        return None
+    table = next((f for f, gs in board_tables(db, groups) or [] if group in gs), None)
+    plan = planned_schedule(db, now)
+    first = next(
+        ((time, m) for time, ms in (plan.slots if plan else []) for m in ms if team_id in (m.team1["id"], m.team2["id"])),
+        None,
+    )
+    rival = (first[1].team2 if first[1].team1["id"] == team_id else first[1].team1) if first else None
+    return ProvisionalSpot(group, table, first[0] if first else None, rival)
+
+
 def board_groups(db: sqlite3.Connection) -> tuple[list[BoardGroup], bool]:
     """Groups for the board and whether they are provisional (every registered couple, as if confirmed)."""
     rows = teams(db)

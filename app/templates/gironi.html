@@ -246,6 +246,38 @@
     {% endif %}
   </div>
 
+{% elif setup_tables %}
+  {% set all_teams = setup_tables|map(attribute=1)|sum(start=[])|map(attribute="teams")|sum(start=[]) %}
+  {% set arrived = all_teams|selectattr("checked_in")|list|length %}
+  <div class="card presence-card">
+    <div class="presence-head"><div class="big">{{ arrived }}/{{ all_teams|length }}</div>
+      <div><strong>coppie arrivate</strong><div class="muted small">Gironi provvisori: all'avvio entra solo chi ha fatto il check-in.</div></div></div>
+    <div class="progress"><span style="width:{{ (arrived * 100 // all_teams|length) if all_teams else 0 }}%"></span></div>
+  </div>
+  {% if setup_tables|length > 1 %}
+    <nav class="segmented">
+      {% for f, gs in setup_tables %}
+        <a href="/gironi?tavolo={{ f }}" class="{{ 'on' if active_tavolo == f }}">Tavolo {{ f }}{% if me and gs|map(attribute="teams")|sum(start=[])|selectattr("id", "equalto", me.id)|list %} ★{% endif %}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+  {% for f, gs in setup_tables if setup_tables|length == 1 or f == active_tavolo %}
+    {% for g in gs %}
+      {% set here = g.teams|selectattr("checked_in")|list|length %}
+      <div class="card">
+        <div class="presence-group"><h2 style="margin:0">Girone {{ g.letter }}</h2>
+          <span class="pill {{ 'ok' if here == g.teams|length }}">{{ here }}/{{ g.teams|length }} arrivate</span></div>
+        <div class="list">
+          {% for t in g.teams %}
+            <div class="row {{ 'mine' if me and me.id == t.id }}">
+              <div class="grow"><div class="title">{{ t.name }}{% if me and me.id == t.id %} ★{% endif %}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+              {% if t.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  {% endfor %}
 {% else %}
   <div class="card" style="text-align:center;padding:24px 16px">
     <div style="font-size:2rem;margin-bottom:6px">🎲</div>

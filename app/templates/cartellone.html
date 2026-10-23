@@ -10,7 +10,7 @@
   <div>
     <div class="board-title">🍺 {{ cfg.title }}</div>
     <div class="board-sub">
-      {% if provisional %}Si comincia alle {{ cfg.start_time }} · gironi provvisori con tutte le {{ groups|map(attribute="teams")|map("length")|sum }} coppie iscritte
+      {% if provisional %}Si comincia alle {{ cfg.start_time }} · arrivate {{ groups|map(attribute="teams")|sum(start=[])|selectattr("checked_in")|list|length }} coppie su {{ groups|map(attribute="teams")|map("length")|sum }}
       {% elif cfg.phase == "groups" %}Fase a gironi
       {% elif cfg.phase == "knockout" %}Eliminazione diretta
       {% else %}Torneo concluso{% endif %}
@@ -78,7 +78,8 @@
 {% macro group_card(g) %}
         <div class="gcard">
           <div class="ghead"><span class="gletter">{{ g.letter }}</span><span>Girone {{ g.letter }}</span>
-            {% if g.table %}<span class="gcount">{{ g.table.matches|selectattr("done")|list|length }}/{{ g.table.matches|length }}</span>{% endif %}</div>
+            {% if g.table %}<span class="gcount">{{ g.table.matches|selectattr("done")|list|length }}/{{ g.table.matches|length }}</span>
+            {% else %}<span class="gcount">{{ g.teams|selectattr("checked_in")|list|length }}/{{ g.teams|length }} arrivate</span>{% endif %}</div>
           {% if g.table %}
             <div class="grow head"><span>#</span><span>Squadra</span><span>G</span><span>DB</span><span>Pt</span></div>
             {% for r in g.table.rows %}
@@ -89,7 +90,7 @@
             {% endfor %}
           {% else %}
             {% for t in g.teams %}
-              <div class="grow plain"><span class="n">{{ t.name }}</span>
+              <div class="grow plain {{ 'here' if t.checked_in }}"><span class="n">{% if t.checked_in %}<span class="tick">✓</span> {% endif %}{{ t.name }}</span>
                 <span class="pl">{% if t.p1 %}{{ t.p1 }}{% if t.p2 %} &amp; {{ t.p2 }}{% endif %}{% else %}giocatori da definire{% endif %}</span></div>
             {% endfor %}
           {% endif %}

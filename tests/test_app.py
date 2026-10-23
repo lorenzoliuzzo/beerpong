@@ -791,3 +791,36 @@ def test_start_uses_planned_time_unless_late(client: TestClient) -> None:
     db_call(service.reset_tournament)
     db_call(lambda db: service.start_tournament(db, datetime(2026, 10, 23, 21, 47, 20)))
     assert min(m.time for m in db_call(service.matches) if m.time) == "21:48"
+
+
+def test_player_journey_checkin_then_group_presence(client: TestClient) -> None:
+    import_teams(client, 16)
+    client.post("/admin/impostazioni", data={"title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1,
+                                             "start_time": "21:30"})
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    me = db_call(service.team, 1)
+    client.post("/checkin/1", data=checkin_form(me, phone1=f"+39 333 000 {1:04d}"))
+
+    home = client.get("/").text
+    spot = db_call(lambda db: service.provisional_spot(db, 1, datetime(2026, 10, 23, 18, 0)))
+    assert f"Girone {spot.group.letter} · 🏓 Tavolo {spot.table}" in home
+    assert f"contro <strong>{spot.first_rival['name']}</strong>" in home and "✓ arrivata" in home
+
+    gironi = client.get("/gironi").text
+    assert "1/16</div>" in gironi and "coppie arrivate" in gironi
+    assert f'href="/gironi?tavolo={spot.table}" class="on">Tavolo {spot.table} ★' in gironi
+    assert "arrivate 1 coppie su 16" in client.get("/cartellone").text
+
+
+def test_home_shows_the_queue_at_my_table(client: TestClient) -> None:
+    import_teams(client, 16)
+    client.post("/admin/impostazioni", data={"title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1})
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    for t in db_call(service.teams).values():
+        client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
+    client.post("/checkin/1", data=checkin_form(db_call(service.team, 1), phone1="+39 333 000 0001"))
+    client.post("/admin/avvia")
+    home = client.get("/").text
+    field = next(m.field for m in db_call(service.matches) if m.side(1))
+    assert f"Al vostro tavolo · 🏓 Tavolo {field}" in home and '<span class="when">Ora</span>' in home

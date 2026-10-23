@@ -147,9 +147,13 @@ def home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response
     total_cups = sum((m.s1 or 0) + (m.s2 or 0) for m in done_matches)
     total_valid_matches = len([m for m in views if not m.bye])
     recent_matches = done_matches[-4:][::-1]
+    dash = service.team_dashboard(db, team_id) if team_id else None
+    spot = service.provisional_spot(db, team_id, datetime.now()) if dash and service.load_config(db).phase == "setup" else None
+    my_field = next((m.field for m in dash.matches if m.stage == "group" and m.field), None) if dash else None
+    my_table = next((tv for tv in service.table_views(db) if tv.field == my_field), None) if my_field else None
     return page(
         request, db, "home.html", now=now, upcoming=upcoming, overview=service.checkin_overview(db),
-        dash=service.team_dashboard(db, team_id) if team_id else None,
+        dash=dash, spot=spot, my_table=my_table,
         final=ko[-1][1][0] if ko else None, progress=service.tournament_progress(db),
         total_cups=total_cups, played_count=len(done_matches), total_matches=total_valid_matches,
         top_scorer=scorers[0] if scorers else None, shots=shots, recent_matches=recent_matches,
@@ -207,8 +211,15 @@ def groups_page(
     else:
         active_sez = "tavoli"
 
+    setup_tables = None
+    if cfg.phase == "setup":
+        board, _ = service.board_groups(db)
+        setup_tables = service.board_tables(db, board) or ([(0, board)] if board else None)
+        spot = service.provisional_spot(db, team_id, datetime.now()) if team_id else None
+        if not tavolo.isdigit() and spot and spot.table:
+            active_tavolo = spot.table
     return page(
-        request, db, "gironi.html", tables=tables, table_views=t_views, T=service.teams(db),
+        request, db, "gironi.html", tables=tables, table_views=t_views, T=service.teams(db), setup_tables=setup_tables,
         active_grp=active_grp, active_tavolo=active_tavolo, active_sez=active_sez, my_table=my_table,
         thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
         projection=service.projected_first_round(db), labels=service.standing_labels(db),
@@ -255,19 +266,9 @@ def board(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Respons
     views = service.matches(db)
     now, upcoming = service.live(views)
     ko = service.knockout_rounds(db)
-    fields = service.load_config(db).fields
     # Two or more groups per table: show the board as one column per table, with what is playing there.
-    tables = None
-    if groups and fields > 1 and len(groups) % fields == 0:
-        live_tables = {} if provisional else {tv.field: tv for tv in service.table_views(db)}
-        tables = [
-            (
-                f,
-                [g for g in groups if planning.table_for_group(ord(g.letter) - 65, len(groups), fields) == f],
-                live_tables.get(f),
-            )
-            for f in range(1, fields + 1)
-        ]
+    live_tables = {} if provisional else {tv.field: tv for tv in service.table_views(db)}
+    tables = [(f, gs, live_tables.get(f)) for f, gs in service.board_tables(db, groups) or []] or None
     return page(
         request, db, "cartellone.html", groups=groups, provisional=provisional, now=now, upcoming=upcoming,
         tables=tables,

@@ -31,7 +31,23 @@
         <span class="sub">al fischio d'inizio</span>
       </div>
     </div>
-    <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
+    {% if spot %}
+      <div class="card">
+        <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
+        <div class="headline" style="font-size:1.3rem;font-weight:900;margin:4px 0">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
+        {% if spot.first_time %}<p style="margin:0 0 8px">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
+        <div class="list">
+          {% for m in spot.group.teams %}
+            <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
+              {% if m.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
+          {% endfor %}
+        </div>
+        <p class="muted small" style="margin:8px 0 0">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
+      </div>
+      <p><a class="btn ghost wide" href="/gironi">Tutti i gironi e le presenze</a></p>
+    {% else %}
+      <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
+    {% endif %}
     <p><a class="btn ghost wide" href="/checkin/{{ t.id }}">Modifica i vostri dati</a></p>
   {% else %}
     {% if dash.champion %}
@@ -57,6 +73,19 @@
         <div class="headline">vs {{ dash.next_match.n2 if dash.next_match.t1 == t.id else dash.next_match.n1 }}</div>
         {% if dash.next_match.field %}🏓 Tavolo {{ dash.next_match.field }}{% endif %}
       </div>
+    {% endif %}
+
+    {% if my_table and cfg.phase == "groups" and (my_table.current or my_table.next_match) %}
+      <h2>Al vostro tavolo · 🏓 Tavolo {{ my_table.field }}</h2>
+      <div class="list table-queue">
+        {% for m in ([my_table.current, my_table.next_match] + my_table.upcoming[:3])|select %}
+          <a class="row {{ 'mine' if m.side(t.id) }}" href="/live/{{ m.id }}" style="text-decoration:none">
+            <span class="when">{{ "Ora" if loop.first and my_table.current else m.time }}</span>
+            <div class="grow"><div class="title">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</div><span class="muted small">{{ m.label }}</span></div>
+          </a>
+        {% endfor %}
+      </div>
+      <p><a class="btn ghost wide" href="/gironi?tavolo={{ my_table.field }}">Tutto il tavolo e le classifiche</a></p>
     {% endif %}
 
     {% if dash.to_split %}
