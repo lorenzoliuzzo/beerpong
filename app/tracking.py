@@ -220,7 +220,7 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
     labels, records, totals = context["labels"], context["records"], context["totals"]
     duration = m.duration * 60 if m.duration else None
 
-    rates = tuple(live.hit_rate(*totals.get(t, [0, 0])) for t in (m.t1, m.t2))
+    rates = tuple(live.hit_rate(*totals.get(t, [0, 0]), service.prior_rate(team_rows[t])) for t in (m.t1, m.t2))
     cups_to_hit = (len(st.racks[2].cups), len(st.racks[1].cups))
     if m.done:
         prob1 = 1.0 if m.winner == m.t1 else 0.0 if m.winner == m.t2 else 0.5

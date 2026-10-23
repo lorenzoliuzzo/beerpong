@@ -230,8 +230,10 @@ def replay(
     )
 
 
-def hit_rate(hits: int, shots: int) -> float:
-    return (hits + PRIOR_HITS) / (shots + PRIOR_SHOTS)
+def hit_rate(hits: int, shots: int, prior: float | None = None) -> float:
+    """Expected hit rate: the prior (the couple's questionnaire, else 30%) worth PRIOR_SHOTS shots, then real shots."""
+    prior_hits = PRIOR_HITS if prior is None else prior * PRIOR_SHOTS
+    return (hits + prior_hits) / (shots + PRIOR_SHOTS)
 
 
 def win_probability(

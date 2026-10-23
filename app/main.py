@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 import re
@@ -36,6 +37,8 @@ from .service import TournamentError
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE / "templates")
+# Changes with the stylesheet, so phones never keep an old copy after a deploy.
+templates.env.globals["static_v"] = hashlib.sha256((BASE / "static" / "style.css").read_bytes()).hexdigest()[:10]
 router = APIRouter()
 log = logging.getLogger("beerpong")
 
@@ -400,15 +403,12 @@ def _team_page(request: Request, db: sqlite3.Connection, team_id: int, vs: str |
     other = _int(vs)
     h2h = service.head_to_head(db, team_id, other) if other and other != team_id else None
     rivals = [t for t in service.teams(db).values() if t["checked_in"] and t["id"] != team_id]
-    spot = my_table = None
-    if own:
-        if get_setting(db, "phase") == "setup":
-            spot = service.provisional_spot(db, team_id, datetime.now())
-        my_field = next((m.field for m in dash.matches if m.stage == "group" and m.field), None)
-        my_table = next((tv for tv in service.table_views(db) if tv.field == my_field), None) if my_field else None
+    spot = None
+    if own and get_setting(db, "phase") == "setup":
+        spot = service.provisional_spot(db, team_id, datetime.now())
     return page(
         request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db), own=own, spot=spot,
-        my_table=my_table, thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
+        thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
     )
 
 
@@ -559,6 +559,31 @@ def checkin_phone(
     else:
         flash(request, f"Bentornati, {t['name']}!")
     request.session["team"] = t["id"]
+    return redirect("/io" if t["q_at"] else "/questionario")
+
+
+@router.get("/questionario")
+def questionnaire_form(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    t = service.team(db, my_team_id(request)) if my_team_id(request) is not None else None
+    if t is None:
+        return redirect("/checkin")
+    return page(request, db, "questionario.html", t=t, levels=service.LEVELS, goals=service.GOALS)
+
+
+@router.post("/questionario")
+def questionnaire_save(
+    request: Request, livello: str = Form(""), mira1: int = Form(-1), mira2: int = Form(-1), obiettivo: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    team_id = my_team_id(request)
+    if team_id is None:
+        return redirect("/checkin")
+    try:
+        service.save_questionnaire(db, team_id, livello, mira1, mira2, obiettivo)
+    except TournamentError as e:
+        flash(request, str(e), "err")
+        return redirect("/questionario")
+    flash(request, "Grazie! Adesso vediamo se avete ragione 😉")
     return redirect("/io")
 
 
@@ -947,6 +972,7 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
     return page(
         request, db, "admin.html", overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
         push_subs=push.subscriber_count(db),
+        answered=sum(1 for t in service.teams(db).values() if t["q_at"]),
         solo=service.unassigned_guests(db), pins=pins,
         admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
         checkin_url=checkin_url(request, db), tables=tables,

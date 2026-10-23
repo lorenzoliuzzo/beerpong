@@ -305,6 +305,33 @@ def check_in(
         raise TournamentError(f"Esiste già una squadra chiamata «{name}».") from None
 
 
+# The questionnaire: how often they play, and the hit rate that habit usually comes with.
+LEVELS = {"mai": ("Mai o quasi", 0.20), "qualche": ("Qualche volta", 0.28), "spesso": ("Spesso", 0.36), "pro": ("Siamo dei pro", 0.45)}
+GOALS = {
+    "gironi": "Ai gironi", "ottavi": "Agli ottavi", "quarti": "Ai quarti", "semi": "In semifinale",
+    "finale": "In finale", "vittoria": "Vinciamo noi",
+}
+
+
+def save_questionnaire(db: sqlite3.Connection, team_id: int, level: str, aim1: int, aim2: int, goal: str) -> None:
+    if level not in LEVELS or goal not in GOALS or not (0 <= aim1 <= 10 and 0 <= aim2 <= 10):
+        raise TournamentError("Rispondi a tutte le domande.")
+    with db:
+        db.execute(
+            "UPDATE teams SET q_level = ?, q_aim1 = ?, q_aim2 = ?, q_goal = ?, q_at = ? WHERE id = ?",
+            (level, aim1, aim2, goal, datetime.now().isoformat(timespec="minutes"), team_id),
+        )
+
+
+def prior_rate(t: sqlite3.Row) -> float | None:
+    """The couple's expected hit rate from its answers: its players' guesses, tempered by how often they play
+    (people overrate themselves), kept within what beer pong players actually hit."""
+    if t["q_level"] not in LEVELS or t["q_aim1"] is None or t["q_aim2"] is None:
+        return None
+    guess = (t["q_aim1"] + t["q_aim2"]) / 20
+    return min(0.6, max(0.1, (guess + LEVELS[t["q_level"]][1]) / 2))
+
+
 def phone_matches(t: sqlite3.Row, phone: str) -> bool:
     return any(p and _same_phone(p, phone) for p in (t["phone1"], t["phone2"]))
 

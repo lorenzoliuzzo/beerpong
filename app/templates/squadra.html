@@ -56,6 +56,13 @@
   {% endif %}
 </div>
 
+{% if own and not t.q_at %}
+  <a class="banner todo" href="/questionario">
+    <div class="label">📋 Due domande veloci</div>
+    Diteci quanto mirate bene: serve alle probabilità durante le partite →
+  </a>
+{% endif %}
+
 {% if own and t.referee_player %}
   <a class="banner todo ref-entry" href="/arbitro">
     <div class="label">🧑‍⚖️ Arbitro{% if ref_table %} · Tavolo {{ ref_table }}{% endif %}</div>
@@ -88,18 +95,6 @@
       <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
     {% endif %}
   {% endif %}
-    {% if my_table and cfg.phase == "groups" and (my_table.current or my_table.next_match) %}
-      <h2>Al vostro tavolo · 🏓 Tavolo {{ my_table.field }}</h2>
-      <div class="list table-queue">
-        {% for m in ([my_table.current, my_table.next_match] + my_table.upcoming[:3])|select %}
-          <a class="row {{ 'mine' if m.side(t.id) }}" href="/live/{{ m.id }}" style="text-decoration:none">
-            <span class="when">{{ "Ora" if loop.first and my_table.current else m.time }}</span>
-            <div class="grow"><div class="title">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</div><span class="muted small">{{ m.label }}</span></div>
-          </a>
-        {% endfor %}
-      </div>
-      <p><a class="btn ghost wide" href="/gironi?tavolo={{ my_table.field }}">Tutto il tavolo e le classifiche</a></p>
-    {% endif %}
 
 {% endif %}
 
@@ -245,6 +240,12 @@
             <span class="ppc-val">{{ p.live_hits }}/{{ p.live_shots }}</span>
             <span class="ppc-lbl">Tiri a segno</span>
           </div>
+          {% if t["q_aim" ~ p.index] is not none %}
+            <div class="ppc-stat">
+              <span class="ppc-val">{{ t["q_aim" ~ p.index] * 10 }}%</span>
+              <span class="ppc-lbl">Dichiarato{% if p.live_shots %} · reale {{ "%.0f"|format(p.live_accuracy) }}%{% endif %}</span>
+            </div>
+          {% endif %}
           <div class="ppc-stat">
             <span class="ppc-val">{% if p.fav_cup %}#{{ p.fav_cup }} <small>({{ p.fav_cup_hits }}x)</small>{% else %}—{% endif %}</span>
             <span class="ppc-lbl">Bicchiere Pref.</span>

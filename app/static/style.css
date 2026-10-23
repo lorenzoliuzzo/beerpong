@@ -1371,3 +1371,4 @@ button.ref-rerack { justify-self: center; min-height: 36px; }
 .ref-phase.overtime { background: var(--accent); color: var(--accent-ink); }
 .ref-more summary { text-align: center; color: var(--muted); font-weight: 700; cursor: pointer; padding: 6px; }
 .ref-more { display: grid; gap: 8px; justify-items: center; }
+input[type="range"] { -webkit-appearance: auto; appearance: auto; border: 0; padding: 0; background: transparent; min-height: 44px; accent-color: var(--accent); }

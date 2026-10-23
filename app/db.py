@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS teams (
     in_chat INTEGER NOT NULL DEFAULT 0,
     organizer INTEGER NOT NULL DEFAULT 0,
     referee_player INTEGER CHECK (referee_player IN (1, 2)),  -- an organizer couple's player who referees its table
+    -- The short questionnaire after check-in: the couple's own guess, a prior for the live odds.
+    q_level TEXT, q_aim1 INTEGER, q_aim2 INTEGER, q_goal TEXT, q_at TEXT,
     note TEXT NOT NULL DEFAULT '',
     grp INTEGER
 );
@@ -161,6 +163,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE matches ADD COLUMN first_side INTEGER CHECK (first_side IN (1, 2))")
     if "organizer" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN organizer INTEGER NOT NULL DEFAULT 0")
+    for column, kind in (("q_level", "TEXT"), ("q_aim1", "INTEGER"), ("q_aim2", "INTEGER"), ("q_goal", "TEXT"), ("q_at", "TEXT")):
+        if column not in team_columns:
+            conn.execute(f"ALTER TABLE teams ADD COLUMN {column} {kind}")
     if "referee_player" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN referee_player INTEGER CHECK (referee_player IN (1, 2))")
 

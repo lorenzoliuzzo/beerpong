@@ -817,7 +817,7 @@ def test_player_journey_checkin_then_group_presence(client: TestClient) -> None:
     assert "arrivate 1 coppie su 16" in client.get("/cartellone").text
 
 
-def test_home_shows_the_queue_at_my_table(client: TestClient) -> None:
+def test_profile_stays_short_without_the_table_queue(client: TestClient) -> None:
     import_teams(client, 16)
     client.post("/admin/impostazioni", data={"title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1})
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
@@ -826,7 +826,8 @@ def test_home_shows_the_queue_at_my_table(client: TestClient) -> None:
     client.post("/admin/avvia")
     home = client.get("/io").text
     field = next(m.field for m in db_call(service.matches) if m.side(1))
-    assert f"Al vostro tavolo · 🏓 Tavolo {field}" in home and '<span class="when">Ora</span>' in home
+    assert "Al vostro tavolo" not in home  # the table's queue lives on the Tavoli page, the profile stays short
+    assert f"Tavolo {field}" in home and "Partite di Squadra 0" in home
 
 
 def test_rankings_default_to_groups_with_my_position(client: TestClient) -> None:
@@ -942,8 +943,8 @@ def test_qr_then_phone_checks_in_and_opens_the_profile(client: TestClient) -> No
 
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     r = client.post("/checkin/accedi", data={"phone": "+39 333 111 0003"}, follow_redirects=False)
-    assert r.headers["location"] == "/io" and db_call(service.team, ids["Lontre"])["checked_in"] == 1
-    assert "Check-in fatto ✓ Benvenuti, Lontre!" in client.get("/io").text
+    assert r.headers["location"] == "/questionario" and db_call(service.team, ids["Lontre"])["checked_in"] == 1
+    assert "Check-in fatto ✓ Benvenuti, Lontre!" in client.get("/questionario").text
 
     # the partner's number works too; a number in two couples asks which one
     r = client.post("/checkin/accedi", data={"phone": "3331110001"})
@@ -1166,3 +1167,34 @@ def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
     assert f"↶ Annulla: riordino bicchieri di {m.n2}" in page
     client.post(f"/partita/{m.id}/annulla-tiro")
     assert db_call(lambda db: tracking.state(db, m.id)).racks[2].cups == {2, 3, 5, 6}
+
+
+def test_questionnaire_after_check_in_sets_the_couples_prior(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 1)
+    client.post("/checkin/1", data=checkin_form(t, phone1="+39 333 000 0001"))
+    assert "Due domande veloci" in client.get("/io").text  # not answered yet: the profile reminds them
+    assert db_call(lambda db: service.prior_rate(service.team(db, 1))) is None
+
+    assert "Rispondi a tutte" in client.post("/questionario", data={"livello": "x", "mira1": 3, "mira2": 3, "obiettivo": "quarti"}).text
+    r = client.post("/questionario", data={"livello": "spesso", "mira1": 6, "mira2": 4, "obiettivo": "quarti"}, follow_redirects=False)
+    assert r.headers["location"] == "/io"
+    prior = db_call(lambda db: service.prior_rate(service.team(db, 1)))
+    assert prior == pytest.approx((0.5 + 0.36) / 2)
+    assert "Due domande veloci" not in client.get("/io").text
+    # the prior moves the expected hit rate, and real shots soon outweigh it
+    assert live.hit_rate(0, 0, prior) == pytest.approx(prior) and live.hit_rate(0, 0) == pytest.approx(0.3)
+    assert abs(live.hit_rate(40, 100, prior) - 0.4) < abs(live.hit_rate(0, 0, prior) - 0.4)
+
+    # a couple already answered goes straight to its profile at the next login
+    client.post("/esci-squadra")
+    assert client.post("/checkin/accedi", data={"phone": "3330000001"}, follow_redirects=False).headers["location"] == "/io"
+
+
+def test_stylesheet_link_changes_with_the_file(client: TestClient) -> None:
+    import hashlib
+
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "style.css").read_bytes()
+    assert f'/static/style.css?v={hashlib.sha256(css).hexdigest()[:10]}"' in client.get("/").text
