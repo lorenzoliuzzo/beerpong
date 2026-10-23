@@ -196,6 +196,47 @@ def referee_undo(db: sqlite3.Connection, match_id: int) -> None:
         db.execute(f"DELETE FROM {'reracks' if last[0] == 'rerack' else 'reports'} WHERE id = ?", (last[1],))
 
 
+CHEERS = ("🍺", "🔥", "👏")
+CHEERS_PER_DEVICE = 60  # per match: enough to cheer, not to flood
+
+
+def cheer(db: sqlite3.Connection, match_id: int, side: int, emoji: str, device: str, now: float) -> None:
+    m = service.match(db, match_id)
+    if m is None or m.bye or m.t1 is None or m.t2 is None:
+        raise TournamentError("Partita non disponibile.")
+    if side not in (1, 2) or emoji not in CHEERS:
+        raise TournamentError("Tifo non valido.")
+    used = db.execute("SELECT COUNT(*) FROM cheers WHERE match_id = ? AND device = ?", (match_id, device)).fetchone()[0]
+    if used >= CHEERS_PER_DEVICE:
+        raise TournamentError("Hai tifato abbastanza per questa partita! 🍻")
+    with db:
+        db.execute("INSERT INTO cheers(match_id, side, emoji, device, at) VALUES (?, ?, ?, ?, ?)", (match_id, side, emoji, device, now))
+
+
+def _cheers(db: sqlite3.Connection, match_id: int) -> dict[int, dict[str, int]]:
+    out = {1: dict.fromkeys(CHEERS, 0), 2: dict.fromkeys(CHEERS, 0)}
+    for r in db.execute("SELECT side, emoji, COUNT(*) AS n FROM cheers WHERE match_id = ? GROUP BY side, emoji", (match_id,)):
+        if r["emoji"] in out[r["side"]]:
+            out[r["side"]][r["emoji"]] = r["n"]
+    return out
+
+
+_others_cache: tuple[float, list[dict]] = (0.0, [])
+
+
+def _on_tables(db: sqlite3.Connection, now: float) -> list[dict]:
+    """Every match on a table now, for the strip on top of the live page. Shared for a few seconds: every
+    viewer polls every two seconds, and the full match list is the costly part."""
+    global _others_cache
+    if now - _others_cache[0] > 5:
+        _others_cache = (now, [
+            {"id": m.id, "field": m.field, "n1": m.n1, "n2": m.n2, "score": list(m.live_score) if m.live_score else None,
+             "label": m.label}
+            for m in service.matches(db) if m.playing and m.t1 and m.t2
+        ])
+    return _others_cache[1]
+
+
 def _team_side_stats(db: sqlite3.Connection) -> dict[int, list[int]]:
     """team id -> [hits, shots] over every tracked match."""
     stats: dict[int, list[int]] = {}
@@ -249,6 +290,7 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
             ],
         }
 
+    cheers = _cheers(db, match_id)
     mine = []
     if device:
         mine = [
@@ -280,7 +322,23 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
             for s in reversed(st.shots[-30:])
         ],
         "mine": mine,
+        "timeline": _cached_timeline(st, rates, duration, service.cups_in_play(db, match_id), match_id),
+        "streak": [live.streak(st, 1), live.streak(st, 2)],
+        "cheers": [cheers[1], cheers[2]],
+        "others": [o for o in _on_tables(db, now) if o["id"] != match_id],
     }
+
+
+def _cached_timeline(
+    st: live.LiveState, rates: tuple[float, float], duration: float | None, cups: int, match_id: int
+) -> list[dict]:
+    # Kept on the cached state, so it is simulated once per new shot, not once per viewer poll.
+    key = (rates, duration, cups)
+    cached = getattr(st, "_timeline", None)
+    if cached is None or cached[0] != key:
+        cached = (key, live.timeline(st, rates, duration, cups, match_id))
+        st._timeline = cached
+    return cached[1]
 
 
 def live_score(db: sqlite3.Connection, match_id: int) -> tuple[int, int] | None:

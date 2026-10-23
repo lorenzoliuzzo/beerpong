@@ -1372,3 +1372,33 @@ button.ref-rerack { justify-self: center; min-height: 36px; }
 .ref-more summary { text-align: center; color: var(--muted); font-weight: 700; cursor: pointer; padding: 6px; }
 .ref-more { display: grid; gap: 8px; justify-items: center; }
 input[type="range"] { -webkit-appearance: auto; appearance: auto; border: 0; padding: 0; background: transparent; min-height: 44px; accent-color: var(--accent); }
+
+/* Live page: other tables, big score, streaks, trend, players, cheering */
+.live-others { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 8px; padding: 2px 16px 6px; scrollbar-width: none; }
+.live-others a { flex-shrink: 0; display: flex; gap: 6px; align-items: center; padding: 6px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--text); text-decoration: none; font-size: .82rem; white-space: nowrap; }
+.live-others .tno { font-weight: 900; color: var(--accent); }
+.bigscore { font: 900 2.6rem/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; display: flex; gap: 6px; justify-content: center; }
+.bigscore #sc1 { color: var(--t1); }
+.bigscore #sc2 { color: var(--t2); }
+.bigscore .dash { color: var(--muted); font-weight: 400; }
+.clockbox .clock { font-size: 1.3rem; margin-top: 4px; }
+.streak { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; background: var(--warn-soft); font-size: .78rem; font-weight: 800; }
+.trend-box { margin-top: 10px; }
+.trend { width: 100%; height: 64px; display: block; }
+.trend .mid { stroke: var(--line); stroke-dasharray: 4 4; }
+.trend .line { fill: none; stroke: var(--t1); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.trend .area { fill: var(--t1); opacity: .12; }
+.trend-label { text-align: center; margin-top: 2px; }
+.pstats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.pcol { display: grid; gap: 4px; }
+.prow { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: baseline; font-size: .9rem; padding: 6px 8px; border-radius: 10px; background: var(--bg); }
+.pcol.s1 .prow { border-left: 3px solid var(--t1); }
+.pcol.s2 .prow { border-left: 3px solid var(--t2); }
+.prow small { color: var(--muted); }
+.cheers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 16px; }
+.cheer-col { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
+.cheer-team { width: 100%; text-align: center; font-size: .78rem; font-weight: 800; color: var(--muted); overflow-wrap: anywhere; }
+button.cheer { min-height: 44px; flex: 1 1 0; min-width: 0; padding: 4px 2px; justify-content: center; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px; font-size: 1.3rem; display: flex; gap: 4px; align-items: center; }
+button.cheer small { font-size: .78rem; font-weight: 800; color: var(--muted); }
+button.cheer.pop { animation: cheer-pop .35s ease-out; }
+@keyframes cheer-pop { 50% { transform: scale(1.25); } }

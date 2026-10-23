@@ -21,6 +21,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
     app_main._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
+    app_main._report_times.clear()
     with TestClient(create_app()) as c:
         yield c
     app_main._failures.clear()

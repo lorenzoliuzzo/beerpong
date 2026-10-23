@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import live, service, tracking
+from app import main as app_main
 from app.db import connect
 from app.live import Report
 from app.main import create_app
@@ -70,6 +71,7 @@ def test_win_probability_behaves() -> None:
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
+    app_main._report_times.clear()
     with TestClient(create_app()) as c:
         yield c
 
@@ -174,3 +176,36 @@ def test_rerack_compacts_the_remaining_cups() -> None:
     assert st.rows[1] == live.RACK_ROWS[6]  # the other rack is untouched
     st = live.replay(_ref(seq + [(2, 1, 0), (2, 2, 0), (1, 1, 3)]), 6, 1, reracks=[(2, 106.0)])
     assert st.racks[2].cups == {1, 2} and st.side_hits(1) == 4
+
+
+def test_live_view_has_trend_streak_cheers_and_other_tables(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    setup_tournament(client, 8, fields=2)
+    m = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
+    other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
+    tracking._others_cache = (0.0, [])  # a fresh tournament: do not reuse another test's strip
+    db_call(lambda db: service.start_match(db, m.id, 1000.0, 1))
+    for n, (pl, cup) in enumerate([(1, 1), (2, 2), (1, 0), (2, 0), (1, 3)]):
+        db_call(lambda db: tracking.referee_shot(db, m.id, pl, cup, 1001.0 + n, n))
+    data = client.get(f"/api/live/{m.id}").json()
+    assert len(data["timeline"]) == 1 + 3 and all(0 <= p["p"] <= 1 for p in data["timeline"])
+    assert data["timeline"][-1]["p"] > data["timeline"][0]["p"]  # couple 1 leads 3-0
+    assert data["streak"] == [3, 0]  # couple 1 hit all three of its shots; the misses were couple 2
+    assert [o["id"] for o in data["others"]] == [other.id]
+
+    r = client.post(f"/api/live/{m.id}/tifo", json={"side": 2, "emoji": "🔥"})
+    assert r.status_code == 200 and r.json()["cheers"][1]["🔥"] == 1
+    assert client.post(f"/api/live/{m.id}/tifo", json={"side": 2, "emoji": "💩"}).status_code == 400
+    page = client.get(f"/live/{m.id}").text
+    assert 'id="trend"' in page and 'id="cheer1"' in page and 'id="others"' in page
+
+
+def test_cheers_are_capped_per_phone(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    setup_tournament(client, 8, fields=2)
+    m = next(x for x in db_call(service.matches) if x.playing)
+    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    monkeypatch.setattr("app.main.REPORT_MAX_PER_MINUTE", 1000)
+    for _ in range(tracking.CHEERS_PER_DEVICE):
+        assert client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🍺"}).status_code == 200
+    r = client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🍺"})
+    assert r.status_code == 400 and "abbastanza" in r.json()["error"]

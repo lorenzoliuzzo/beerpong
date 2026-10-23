@@ -9,19 +9,24 @@
     {% endif %}
   </div>
 
+  <nav class="live-others" id="others" aria-label="Altre partite in campo" hidden></nav>
+
   <section class="arena">
     <div class="vs">
       <div class="side s1">
         <a class="tname" data-f="name1" href="/squadra/{{ m.t1 }}" style="text-decoration:none;color:inherit">{{ m.n1 }}</a>
         <div class="tmeta" data-f="meta1"></div>
+        <div class="streak" id="streak1" hidden></div>
       </div>
       <div class="clockbox">
+        <div class="bigscore"><span id="sc1">0</span><span class="dash">–</span><span id="sc2">0</span></div>
         <div class="clock" id="clock">--:--</div>
         <div class="clock-sub" id="clock-sub"></div>
       </div>
       <div class="side s2">
         <a class="tname" data-f="name2" href="/squadra/{{ m.t2 }}" style="text-decoration:none;color:inherit">{{ m.n2 }}</a>
         <div class="tmeta" data-f="meta2"></div>
+        <div class="streak" id="streak2" hidden></div>
       </div>
     </div>
 
@@ -29,6 +34,10 @@
       <span class="o1" id="odds1"></span><span class="o2" id="odds2"></span>
     </div>
     <div class="odds-labels"><span id="odds1-t"></span><span class="muted small">probabilità di vittoria</span><span id="odds2-t"></span></div>
+    <div class="trend-box" id="trend-box" hidden>
+      <svg class="trend" id="trend" viewBox="0 0 300 64" preserveAspectRatio="none" aria-label="Andamento della probabilità di vittoria"></svg>
+      <div class="trend-label muted small">andamento tiro dopo tiro</div>
+    </div>
 
     <div class="racks">
       <div class="rack-block">
@@ -45,6 +54,7 @@
     <button id="start" class="wide" hidden>▶ Inizia la partita</button>
 
     <p id="official" class="muted small" style="text-align:center" hidden>🧑‍⚖️ I tiri di questa partita li segna l'arbitro.</p>
+    <div class="pstats" id="pstats" hidden></div>
     <div id="shooters">
       <p class="muted small" style="text-align:center;margin:12px 0 6px">Chi sta tirando? Tocca il giocatore</p>
       <div class="shooters">
@@ -66,9 +76,14 @@
   </div>
   <div class="toast" id="toast" hidden></div>
 
+  <section class="cheers" aria-label="Tifo">
+    <div class="cheer-col" id="cheer1"></div>
+    <div class="cheer-col" id="cheer2"></div>
+  </section>
+
   <h2>Cronaca</h2>
   <div class="feed" id="feed"><p class="muted">Ancora nessun tiro segnalato.</p></div>
-  <p class="muted small">Tutti possono segnalare i tiri: vale ciò che segnala la maggioranza dei telefoni che seguono la partita. L'orologio è lo stesso per tutti.</p>
+  <p class="muted small" id="crowd-note">Tutti possono segnalare i tiri: vale ciò che segnala la maggioranza dei telefoni che seguono la partita. L'orologio è lo stesso per tutti.</p>
 </div>
 
 <script>
@@ -115,6 +130,37 @@
           <span>${esc(p || "Giocatore " + (k + 1))}</span><small>${st.hits}/${st.shots}</small></button>`;
       }).join("");
     }
+    const score = data.done ? data.score : [t1.hits, t2.hits];
+    $("#sc1").textContent = score[0];
+    $("#sc2").textContent = score[1];
+    for (const i of [1, 2]) {
+      const n = (data.streak || [0, 0])[i - 1], el = $(`#streak${i}`);
+      el.hidden = n < 2 || data.done;
+      el.textContent = `🔥 ${n} di fila`;
+    }
+    const pts = data.timeline || [];
+    $("#trend-box").hidden = pts.length < 2;
+    if (pts.length >= 2) {
+      const xy = pts.map((p, k) => `${(k / (pts.length - 1)) * 300},${(1 - p.p) * 60 + 2}`);
+      $("#trend").innerHTML = `<line x1="0" y1="32" x2="300" y2="32" class="mid"/>
+        <polygon points="0,62 ${xy.join(" ")} 300,62" class="area"/><polyline points="${xy.join(" ")}" class="line"/>`;
+    }
+    $("#pstats").hidden = !data.official;
+    $("#pstats").innerHTML = data.teams.map((t, k) => `<div class="pcol s${k + 1}">${t.players.map((p, j) => {
+      const st = t.player_stats[j], pct = st.shots ? Math.round(100 * st.hits / st.shots) + "%" : "—";
+      return `<div class="prow"><span>${esc(p || "Giocatore " + (j + 1))}</span><b>${st.hits}/${st.shots}</b><small>${pct}</small></div>`;
+    }).join("")}</div>`).join("");
+    const cheers = data.cheers || [{}, {}];
+    for (const i of [1, 2]) {
+      $(`#cheer${i}`).innerHTML = `<div class="cheer-team">${esc(data.teams[i - 1].name)}</div>` +
+        Object.entries(cheers[i - 1]).map(([emo, n]) =>
+          `<button class="cheer" data-cheer="${i}" data-emoji="${emo}" aria-label="Tifa ${esc(data.teams[i - 1].name)} ${emo}">${emo}<small>${n}</small></button>`).join("");
+    }
+    const others = data.others || [];
+    $("#others").hidden = !others.length;
+    $("#others").innerHTML = others.map((o) => `<a href="/live/${o.id}"><span class="tno">T${o.field}</span>
+      ${esc(o.n1)} <b>${o.score ? o.score[0] + "–" + o.score[1] : "vs"}</b> ${esc(o.n2)}</a>`).join("");
+
     const p1 = Math.round(data.prob[0] * 100);
     $("#odds1").style.width = p1 + "%";
     $("#odds2").style.width = 100 - p1 + "%";
@@ -125,6 +171,7 @@
     $("#start").hidden = over || data.started_at != null || data.official;
     $("#shooters").hidden = over || data.started_at == null || data.official;
     $("#official").hidden = over || !data.official;
+    $("#crowd-note").hidden = data.official;
     const res = $("#result");
     if (over) {
       const w = data.teams[data.winner_side - 1];
@@ -143,7 +190,7 @@
       const what = s.removed != null ? `🎯 centra il bicchiere <b>${s.removed}</b>` : "❌ fuori";
       return `<div class="fitem s${s.side}"><span class="ftime">${when}</span>
         <span class="ftext"><b>${who}</b> <span class="muted">(${esc(t.name)})</span> ${what}</span>
-        <span class="fvotes" title="segnalazioni">👥${s.votes}</span></div>`;
+        ${data.official ? "" : `<span class="fvotes" title="segnalazioni">👥${s.votes}</span>`}</div>`;
     }).join("");
     $("#feed").innerHTML = feed || '<p class="muted">Ancora nessun tiro segnalato.</p>';
   }
@@ -234,6 +281,13 @@
     if (e.target.closest("#start")) {
       const json = await send("segnala", { kind: "start" });
       if (json) toast("▶ Inizio segnalato", json.mine[0]?.id);
+      return;
+    }
+    const cheerBtn = e.target.closest("[data-cheer]");
+    if (cheerBtn) {
+      cheerBtn.classList.remove("pop"); void cheerBtn.offsetWidth; cheerBtn.classList.add("pop");
+      if (navigator.vibrate) navigator.vibrate(15);
+      await send("tifo", { side: +cheerBtn.dataset.cheer, emoji: cheerBtn.dataset.emoji });
       return;
     }
     const undo = e.target.closest("[data-undo]");

@@ -498,6 +498,23 @@ def live_report(
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
+class CheerIn(BaseModel):
+    side: int
+    emoji: str = Field(max_length=8)
+
+
+@router.post("/api/live/{match_id}/tifo")
+def live_cheer(request: Request, match_id: int, body: CheerIn, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
+    device = device_id(request)
+    if not _report_allowed(request, device):
+        return JSONResponse({"error": "Piano! 🍻"}, status_code=429)
+    try:
+        tracking.cheer(db, match_id, body.side, body.emoji, device, server_now())
+        return JSONResponse(tracking.live_view(db, match_id, server_now(), device))
+    except TournamentError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
 @router.post("/api/live/{match_id}/annulla")
 def live_undo(request: Request, match_id: int, body: UndoIn, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
     device = device_id(request)

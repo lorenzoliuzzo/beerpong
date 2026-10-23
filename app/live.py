@@ -237,7 +237,8 @@ def hit_rate(hits: int, shots: int, prior: float | None = None) -> float:
 
 
 def win_probability(
-    cups_to_hit: tuple[int, int], rates: tuple[float, float], shots_left: int | None, seed: int = 0
+    cups_to_hit: tuple[int, int], rates: tuple[float, float], shots_left: int | None, seed: int = 0,
+    simulations: int = SIMULATIONS,
 ) -> float:
     """Chance that side 1 wins: teams alternate two-shot turns until a rack is cleared or time runs out.
 
@@ -252,7 +253,7 @@ def win_probability(
     rng = random.Random(seed)
     wins = 0.0
     cap = shots_left if shots_left is not None else 400
-    for _ in range(SIMULATIONS):
+    for _ in range(simulations):
         left1, left2, taken = need1, need2, 0
         while taken < cap and left1 > 0 and left2 > 0:
             for _ in range(2):
@@ -270,7 +271,7 @@ def win_probability(
             wins += 1
         elif left1 == left2:
             wins += rates[0] / (rates[0] + rates[1])
-    return wins / SIMULATIONS
+    return wins / simulations
 
 
 def shots_left_per_team(state: LiveState, now: float, duration_s: float | None) -> int | None:
@@ -284,3 +285,30 @@ def shots_left_per_team(state: LiveState, now: float, duration_s: float | None) 
         per_team = max(state.side_attempts(1), state.side_attempts(2))
         pace = elapsed / per_team if per_team >= 4 else DEFAULT_SECONDS_PER_SHOT
     return max(0, int((duration_s - elapsed) / max(pace, 3.0)))
+
+
+def timeline(state: LiveState, rates: tuple[float, float], duration_s: float | None, cups: int, seed: int = 0) -> list[dict]:
+    """Side 1's chance to win at the start and after every hit, for the live chart (misses barely move it)."""
+    need = {1: cups, 2: cups}  # cups still standing in each side's rack
+    points = [{"at": state.started_at, "p": round(win_probability((cups, cups), rates, None, seed, 300), 3)}]
+    for i, shot in enumerate(state.shots):
+        if state.phase_start and i == state.phase_start:
+            need = {1: OVERTIME_CUPS, 2: OVERTIME_CUPS}
+        if shot.removed is None:
+            continue
+        need[3 - shot.side] = max(0, need[3 - shot.side] - 1)
+        left = None
+        if duration_s is not None and state.started_at is not None:
+            left = max(0, int((duration_s - (shot.at - state.started_at)) / DEFAULT_SECONDS_PER_SHOT))
+        points.append({"at": shot.at, "p": round(win_probability((need[2], need[1]), rates, left, seed + i, 300), 3)})
+    return points
+
+
+def streak(state: LiveState, side: int) -> int:
+    """Hits in a row of `side`, counting back from its last shot."""
+    n = 0
+    for shot in reversed([s for s in state.shots if s.side == side]):
+        if shot.removed is None:
+            break
+        n += 1
+    return n
