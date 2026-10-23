@@ -14,14 +14,38 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
-<body {% if live %}data-live{% endif %} data-server-ts="{{ server_ts }}" class="{% block body_class %}{% endblock %}">
+<body {% if live %}data-live{% endif %} data-server-ts="{{ server_ts }}"{% if demo and (role or me) %} data-demo-role="1"{% endif %} class="{% block body_class %}{% endblock %}">
 {% if demo %}
 <div class="demo-bar">
   <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">squadre inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
   <form method="post" action="/demo/coppia"><button class="small {{ 'ghost' if me and not role }}" type="submit">Coppia</button></form>
   <form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>
   <form method="post" action="/demo/admin"><button class="small {{ 'ghost' if role == 'admin' }}" type="submit">Admin</button></form>
+  <button class="small ghost demo-help" type="button" data-demo-guide aria-label="Come funziona la demo">?</button>
 </div>
+
+<div class="demo-guide" id="demo-guide" hidden>
+  <div class="demo-guide-card">
+    <h2 style="margin-top:0">Come vuoi provare la demo?</h2>
+    <p class="muted small">Le squadre sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
+    <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
+      <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: profilo, prossima partita, notifiche «tocca a voi» e tifo nel live.</span></button></form>
+    <form method="post" action="/demo/arbitro" class="demo-role"><button type="submit">
+      <strong>🧑‍⚖️ Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
+    <form method="post" action="/demo/admin" class="demo-role"><button type="submit">
+      <strong>📋 Da organizzatore</strong><span>La regia: coppie, pagamenti, tavoli in tempo reale, notifiche a tutti.</span></button></form>
+    <button class="link" type="button" data-demo-close>Guardo e basta</button>
+  </div>
+</div>
+{% set demo_tip = ("arbitro", "Tocca «Segna la partita», scegli chi tira per primo e poi tocca il giocatore e il bicchiere centrato. Il simulatore lascia a te questo tavolo.") if role == "referee" and path.startswith("/arbitro")
+  else (("admin", "Guarda la regia dei tavoli in «Torneo», tocca «Arbitra» su un tavolo per segnare tu, oppure manda una notifica a tutti da «Notifiche».") if role == "admin" and path == "/admin"
+  else (("coppia", "Tocca «Attiva le notifiche»: tra un paio di minuti arriva «Preparatevi», poi «Tocca a voi». Nel Live puoi tifare le altre coppie.") if me and not role and path == "/io" else none)) %}
+{% if demo_tip %}
+  <div class="demo-tip" data-demo-tip="{{ demo_tip[0] }}" hidden>
+    <span>💡 {{ demo_tip[1] }}</span>
+    <button class="link" type="button" data-demo-tip-close aria-label="Chiudi il suggerimento">✕</button>
+  </div>
+{% endif %}
 {% endif %}
 {% block header %}
 <header class="top">
@@ -179,6 +203,23 @@
     });
     tick(); setInterval(tick, 20000);
     document.addEventListener("bp:refresh", tick);
+  })();
+
+  // Demo guide: shown on the first visit, then from the "?" in the demo bar; tips can be dismissed.
+  (() => {
+    const guide = document.getElementById("demo-guide");
+    if (!guide) return;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const set = (k) => { try { localStorage.setItem(k, "1"); } catch (_) {} };
+    if (!get("demo-guide-seen") && !document.body.dataset.demoRole) guide.hidden = false;
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("[data-demo-guide]")) guide.hidden = false;
+      if (e.target.closest("[data-demo-close]") || e.target === guide) { guide.hidden = true; set("demo-guide-seen"); }
+      if (e.target.closest(".demo-role")) set("demo-guide-seen");
+      const close = e.target.closest("[data-demo-tip-close]");
+      if (close) { const tip = close.closest("[data-demo-tip]"); tip.hidden = true; set("demo-tip-" + tip.dataset.demoTip); }
+    });
+    document.querySelectorAll("[data-demo-tip]").forEach((tip) => { tip.hidden = Boolean(get("demo-tip-" + tip.dataset.demoTip)); });
   })();
 
   // Client-side filter for long lists: <input data-filter="#list"> hides rows whose text does not match.

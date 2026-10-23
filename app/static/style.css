@@ -110,6 +110,16 @@ button.ref-miss { width: 100%; min-height: 60px; font-size: 1.2rem; background: 
 .ko-preview .teams a, .tabellone .teams a, .teams .t a { color: inherit; text-decoration: none; }
 .demo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 16px; background: var(--accent); color: var(--accent-ink); font-size: .82rem; }
 .demo-bar span { flex: 1 1 auto; min-width: 0; }
+.demo-bar .demo-help { min-width: 32px; font-weight: 900; }
+.demo-guide { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .55); display: grid; place-items: end center; padding: 16px; }
+.demo-guide[hidden] { display: none; }
+.demo-guide-card { background: var(--surface); color: var(--text); border-radius: 20px; padding: 18px; width: min(100%, 520px); display: grid; gap: 10px; max-height: 90vh; overflow: auto; }
+.demo-role button { width: 100%; display: grid; gap: 4px; text-align: left; justify-items: start; padding: 14px; background: var(--bg); color: var(--text); border: 2px solid var(--line); border-radius: 16px; }
+.demo-role button strong { font-size: 1.1rem; }
+.demo-role button span { font-weight: 500; color: var(--muted); font-size: .9rem; }
+.demo-tip { display: flex; gap: 8px; align-items: flex-start; margin: 8px 16px 0; padding: 10px 12px; border-radius: 14px; background: var(--warn-soft); border: 1px solid var(--gold); font-size: .9rem; }
+.demo-tip[hidden] { display: none; }
+.demo-tip span { flex: 1; }
 @media (max-width: 480px) { .demo-bar .long { display: none; } }
 .demo-bar button.small { min-height: 32px; padding: 4px 10px; background: var(--accent-ink); color: var(--accent); }
 .demo-bar button.small.ghost { background: transparent; color: var(--accent-ink); border-color: var(--accent-ink); }
@@ -1408,3 +1418,13 @@ button.cheer.on small { color: var(--accent); }
 button.cheer:disabled { opacity: .45; }
 button.cheer.pop { animation: cheer-pop .35s ease-out; }
 @keyframes cheer-pop { 50% { transform: scale(1.25); } }
+
+/* Referee table overview: the match on the table, one tap to the scoring screen */
+a.ref-overview { display: grid; gap: 10px; text-decoration: none; color: var(--text); background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 12px 0; }
+a.ref-overview.running { border-color: var(--accent); }
+.ref-ov-teams { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; text-align: center; }
+.ref-ov-teams strong { font-size: 1.2rem; overflow-wrap: anywhere; }
+.ref-ov-score { font-weight: 900; font-size: 1.3rem; color: var(--accent); }
+a.ref-overview .ref-go { display: flex; align-items: center; justify-content: center; min-height: 64px; border-radius: 16px; font-size: 1.25rem; font-weight: 900; background: var(--ok); color: #fff; }
+a.ref-overview.running .ref-go { background: var(--accent); }
+.ref-top a { font-weight: 800; text-decoration: none; }

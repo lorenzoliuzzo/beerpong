@@ -83,3 +83,22 @@ def test_demo_referee_takes_a_table_from_the_simulator(tmp_path: Path, monkeypat
         demo_sim.tick(conn, rng, time.time() + i)
     assert tracking.official_count(tracking.referee_view(conn, mine.id)) == before  # the simulator left it alone
     conn.close()
+
+
+def test_demo_guide_and_role_tips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BP_DB", str(tmp_path / "demo.db"))
+    db.init_db()
+    conn = db.connect()
+    setup_demo(conn)
+    conn.close()
+    from app.main import create_app
+
+    with TestClient(create_app()) as c:
+        home = c.get("/").text
+        assert 'id="demo-guide"' in home and "Come vuoi provare la demo?" in home and "data-demo-role" not in home
+        c.post("/demo/arbitro")
+        assert 'data-demo-tip="arbitro"' in c.get("/arbitro").text
+        c.post("/demo/admin")
+        assert 'data-demo-tip="admin"' in c.get("/admin").text
+        c.post("/demo/coppia")
+        assert 'data-demo-tip="coppia"' in c.get("/io").text and "data-demo-role" in c.get("/io").text

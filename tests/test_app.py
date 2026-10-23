@@ -67,7 +67,7 @@ def play_all(c: TestClient, stage: str, rng: random.Random) -> None:
             data={"s1": rng.randint(0, 10), "s2": rng.randint(0, 10), "vincitore": "1"},
             follow_redirects=False,
         )
-        assert r.status_code == 303 and r.headers["location"] == "/arbitro", r.headers
+        assert r.status_code == 303 and r.headers["location"].startswith("/arbitro"), r.headers
 
 
 def test_db_dependency_closes_from_another_thread(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -987,7 +987,7 @@ def test_admin_control_room_during_the_groups(client: TestClient) -> None:
     assert len(current) == 4 and all(f'href="/arbitro?campo={m.field}">Arbitra</a>' in page for m in current)
 
     referee = client.get("/arbitro").text
-    assert referee.count("▶ Inizia: parte il tempo") == 4  # only the matches on a table, the queue is a list
+    assert referee.count("▶ Segna la partita") == 4  # one card per table, the scoring has its own page
     m = current[0]
     form = client.get(f"/partita/{m.id}").text
     assert f"{m.n1} <span class=\"muted\">vs</span> {m.n2}" in form and f"‹ Tavolo {m.field}" in form
@@ -996,15 +996,18 @@ def test_admin_control_room_during_the_groups(client: TestClient) -> None:
 def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     setup_tournament(client, 8, fields=2)
     login(client, db_call(service.referee_pin, 1))
-    page = client.get("/arbitro").text
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    overview = client.get("/arbitro").text
+    assert f'href="/segna/{m.id}"' in overview and "▶ Segna la partita" in overview
+    page = client.get(f"/segna/{m.id}").text
+    assert 'class="tabbar"' not in page and "/live/" not in page  # the scoring screen stands on its own
     assert "▶ Inizia: parte il tempo" in page and "Chi tira per primo?" in page and f"{m.n1}</strong>" in page
 
     later = sorted((x for x in db_call(service.matches) if x.field == 1 and not x.done and x.id != m.id), key=lambda x: x.slot)
     client.post(f"/partita/{m.id}/inizia")
     started = db_call(service.match, m.id)
     assert started.started_at is not None and db_call(lambda db: tracking.state(db, m.id)).started_at == started.started_at
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     assert 'class="ref-half shooting"' in page and "Inserisci il risultato a mano" in page and 'class="ref-clock"' in page
     assert "● LIVE" in client.get("/").text
     assert "già iniziata" in client.post(f"/partita/{m.id}/inizia").text
@@ -1015,7 +1018,7 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     client.post(f"/partita/{m.id}/inizia")
     client.post(f"/partita/{m.id}", data={"s1": 10, "s2": 6})
     nxt = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
-    assert nxt.id != m.id and "▶ Inizia: parte il tempo" in client.get("/arbitro").text
+    assert nxt.id != m.id and "▶ Segna la partita" in client.get("/arbitro").text
 
     other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
     assert client.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"
@@ -1030,7 +1033,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
         fan.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 5})
 
     client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     halves = page[page.index('class="ref-table"'):page.index('class="ref-miss"')]
     p1_name = db_call(service.team, m.t2)["p1"]
     assert halves.index('ref-half target') < halves.index('ref-half shooting')  # couple 2 shoots, from the right
@@ -1049,7 +1052,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     assert rv.hit_by[1] == {5: 2}  # couple 1's cup 5, taken by couple 2's second player
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 0})
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": 0})
-    assert f'title="Colpito da {p2}">5<small>{p2[:2]}</small>' in client.get("/arbitro").text
+    assert f'title="Colpito da {p2}">5<small>{p2[:2]}</small>' in client.get(f"/segna/{m.id}").text
     client.post(f"/partita/{m.id}/annulla-tiro")
     client.post(f"/partita/{m.id}/annulla-tiro")
     assert "Quel bicchiere non c" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 7}).text  # 6 cups
@@ -1058,7 +1061,8 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     assert db_call(lambda db: tracking.referee_view(db, m.id)).turn_side == 1
 
     swapped = client.post(f"/partita/{m.id}/lati").text
-    assert swapped.index(m.n2) < swapped.index(m.n1)  # mirrored: couple 2 on the left for this referee
+    names = swapped[swapped.index('class="ref-names"'):]
+    assert names.index(m.n2) < names.index(m.n1)  # mirrored: couple 2 on the left for this referee
 
     for cup in range(1, service.CUPS + 1):  # couple 1 clears couple 2's 6 cups, alternating with misses
         shoot(1, cup)
@@ -1067,7 +1071,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
             break
         shoot(1, 0)
         shoot(2, 0)
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     assert "🏆 Vince" in page and "✓ Conferma 6–1" in page
     client.post(f"/partita/{m.id}", data={"s1": 6, "s2": 1, "vincitore": 1})
     done = db_call(service.match, m.id)
@@ -1083,9 +1087,9 @@ def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
     login(client, db_call(service.referee_pin, 1))
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     assert 'name="n" value="0"' in page and "data-live" not in page.split("<body", 1)[1].split(">", 1)[0]
-    assert 'class="tabbar"' not in page and "🏓 Tavolo 1 · Arbitro" in page
+    assert 'class="tabbar"' not in page and "‹ Tavolo 1" in page
 
     def tap(n: int, player: int, cup: int) -> str:
         return client.post(f"/partita/{m.id}/tiro", data={"giocatore": player, "bicchiere": cup, "n": n}).text
@@ -1097,7 +1101,7 @@ def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
     assert "La schermata non era aggiornata" in tap(0, 2, 5)  # a stale screen does not guess
     assert count() == 1
     tap(1, 2, 0)
-    assert count() == 2 and 'name="n" value="2"' in client.get("/arbitro").text
+    assert count() == 2 and 'name="n" value="2"' in client.get(f"/segna/{m.id}").text
 
 
 def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient) -> None:
@@ -1106,7 +1110,7 @@ def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     db_call(lambda db: service.start_match(db, m.id, time.time() - 6 * 60, 1))
     db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     assert 'class="ref-win ref-timeout" hidden' in page and "✓ Conferma 1–0" in page  # shown by the clock
 
 
@@ -1159,12 +1163,12 @@ def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
         client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": cup, "n": n})
     for n, pl in ((2, 1), (3, 2)):
         client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": 0, "n": n})
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     assert "⟲ Riordina" in page  # couple 1 shoots again at couple 2's 4 cups
     client.post(f"/partita/{m.id}/riordina", data={"lato": 2})
     st = db_call(lambda db: tracking.state(db, m.id))
     assert st.racks[2].cups == {1, 2, 3, 4} and st.rows[2] == live.FORMATIONS[4]
-    page = client.get("/arbitro").text
+    page = client.get(f"/segna/{m.id}").text
     assert f"↶ Annulla: riordino bicchieri di {m.n2}" in page
     client.post(f"/partita/{m.id}/annulla-tiro")
     assert db_call(lambda db: tracking.state(db, m.id)).racks[2].cups == {2, 3, 5, 6}

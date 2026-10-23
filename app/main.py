@@ -859,14 +859,9 @@ def referee(request: Request, campo: str | None = None, db: sqlite3.Connection =
     current = [m for m in views if m.id in now_ids]
     pending = [m for m in views if not m.done and m.id not in now_ids]
     pending = sorted(pending, key=lambda m: (m.time or "", m.field or 0))  # each table runs its own queue
-    scoring = {m.id: tracking.referee_view(db, m.id) for m in current if m.started_at is not None}
     return page(
-        request, db, "arbitro.html", current=current, pending=pending, scoring=scoring,
-        official_counts={k: tracking.official_count(v) for k, v in scoring.items()},
-        flipped=set(request.session.get("flip", [])), players=service.teams(db),
-        played=[m for m in views if m.done][::-1], field_no=field_no, now_ts=time.time(),
-        # A started match only changes when the referee taps: refreshing under their finger could lose a tap.
-        live=not scoring,
+        request, db, "arbitro.html", current=current, pending=pending,
+        played=[m for m in views if m.done][::-1], field_no=field_no, live=True,
     )
 
 
@@ -955,11 +950,32 @@ def match_undo_start(request: Request, match_id: int, db: sqlite3.Connection = D
     if not can_referee(request, m, db):
         return redirect("/login")
     service.undo_start(db, match_id)
-    return redirect(_referee_back(request, m))
+    return redirect(_table_page(request, m))
 
 
 def _referee_back(request: Request, m: service.MatchView) -> str:
+    """Scoring actions land back on the scoring screen of the match; once it is over, on the table."""
+    return f"/segna/{m.id}"
+
+
+def _table_page(request: Request, m: service.MatchView) -> str:
     return f"/arbitro?campo={m.field}" if is_admin(request) else "/arbitro"
+
+
+@router.get("/segna/{match_id}")
+def scoring(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """The referee's scoring screen for one match, on its own: nothing but the table and the shots."""
+    m = _refereed(request, db, match_id)
+    if m is None:
+        return redirect("/login")
+    if m.done:
+        return redirect(_table_page(request, m))
+    scoring = {m.id: tracking.referee_view(db, m.id)} if m.started_at is not None else {}
+    return page(
+        request, db, "segna.html", m=m, scoring=scoring, players=service.teams(db),
+        flipped=set(request.session.get("flip", [])), now_ts=time.time(),
+        official_counts={k: tracking.official_count(v) for k, v in scoring.items()},
+    )
 
 
 @router.get("/partita/{match_id}")
@@ -998,7 +1014,7 @@ def match_save(
     if m.stage == "group" and get_setting(db, "phase") == "knockout":
         msg += ". Gironi conclusi: tabellone generato!"
     flash(request, msg)
-    return redirect("/arbitro")
+    return redirect(_table_page(request, m))
 
 
 # --- Admin -----------------------------------------------------------------
