@@ -389,15 +389,33 @@ def _next_minute(dt: datetime) -> datetime:
     return floor if floor == dt else floor + timedelta(minutes=1)
 
 
-def draw_groups(team_ids: list[int], seed: int, fields: int = 1) -> list[list[int]]:
-    """Same teams + same seed = same groups, so a previewed draw can be started as-is."""
+def draw_groups(
+    team_ids: list[int], seed: int, fields: int = 1, organizers: frozenset[int] = frozenset()
+) -> list[list[int]]:
+    """Same teams + same seed = same groups, so a previewed draw can be started as-is.
+
+    Organizers' couples go to groups spread evenly over the list, so no two share a group and, as long as
+    there are enough tables, they sit at different tables (groups are assigned to tables in contiguous blocks).
+    """
+    rng = random.Random(seed)
     ids = sorted(team_ids)
-    random.Random(seed).shuffle(ids)
-    groups, pos = [], 0
-    for size in planning.group_sizes(len(ids), fields):
-        groups.append(ids[pos : pos + size])
-        pos += size
+    rng.shuffle(ids)
+    orgs = [t for t in ids if t in organizers]
+    rest = [t for t in ids if t not in organizers]
+    sizes = planning.group_sizes(len(ids), fields)
+    groups: list[list[int]] = [[] for _ in sizes]
+    if orgs:
+        offset = rng.randrange(len(sizes))
+        for i, t in enumerate(orgs):
+            groups[(offset + i * len(sizes) // len(orgs)) % len(sizes)].append(t)
+    for g, size in zip(groups, sizes):
+        while len(g) < size:
+            g.append(rest.pop(0))
     return groups
+
+
+def _organizers(db: sqlite3.Connection) -> frozenset[int]:
+    return frozenset(r["id"] for r in db.execute("SELECT id FROM teams WHERE organizer = 1"))
 
 
 @dataclass
@@ -428,7 +446,7 @@ def preview_draw(db: sqlite3.Connection, present_only: bool, seed: int) -> DrawP
     ids = [t["id"] for t in rows.values() if t["checked_in"] or (not present_only and t["p1"] and t["p2"])]
     if len(ids) < MIN_TEAMS:
         raise TournamentError(f"Servono almeno {MIN_TEAMS} coppie {'presenti' if present_only else 'complete'}.")
-    groups = draw_groups(ids, seed, cfg.fields)
+    groups = draw_groups(ids, seed, cfg.fields, _organizers(db))
     schedule = _group_schedule(groups, cfg.fields)
     size, qualifiers = planning.bracket_plan(len(groups))
     ko_slots, remaining = 0, size
@@ -455,7 +473,9 @@ def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = N
     if len(ids) < MIN_TEAMS:
         raise TournamentError(f"Servono almeno {MIN_TEAMS} coppie presenti.")
     # Default to the board's draw, so the groups people saw on the poster are the ones played.
-    groups = draw_groups(ids, int(get_setting(db, "board_seed")) if seed is None else seed, cfg.fields)
+    groups = draw_groups(
+        ids, int(get_setting(db, "board_seed")) if seed is None else seed, cfg.fields, _organizers(db)
+    )
     base = _next_minute(now)
     step = timedelta(minutes=cfg.group_min + cfg.buffer_min)
 
@@ -1654,7 +1674,9 @@ def board_groups(db: sqlite3.Connection) -> tuple[list[BoardGroup], bool]:
     if get_setting(db, "phase") == "setup":
         if len(rows) < MIN_TEAMS:
             return [], True
-        groups = draw_groups(list(rows), int(get_setting(db, "board_seed")), int(get_setting(db, "fields")))
+        groups = draw_groups(
+            list(rows), int(get_setting(db, "board_seed")), int(get_setting(db, "fields")), _organizers(db)
+        )
         return [BoardGroup(chr(65 + i), [rows[t] for t in g], None) for i, g in enumerate(groups)], True
     tables = group_tables(db)
     return [BoardGroup(chr(65 + t.grp), [rows[r.team] for r in t.rows], t) for t in tables], False

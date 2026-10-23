@@ -72,3 +72,16 @@ def test_pack_slots(fields: int) -> None:
             for t in {x for f in a for x in (f.team1, f.team2)} & {x for f in b for x in (f.team1, f.team2)}
         )
         assert back_to_back == 0
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_organizers_never_share_a_group_or_table(seed: int) -> None:
+    from app.service import draw_groups
+
+    orgs = frozenset({3, 17, 29})
+    groups = draw_groups(list(range(1, 34)), seed, fields=4, organizers=orgs)
+    assert sorted(t for g in groups for t in g) == list(range(1, 34))
+    per_group = [len(orgs & set(g)) for g in groups]
+    assert max(per_group) == 1 and sum(per_group) == 3
+    tables = [planning.table_for_group(i, len(groups), 4) for i, g in enumerate(groups) if orgs & set(g)]
+    assert len(set(tables)) == 3
