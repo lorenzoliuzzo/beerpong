@@ -264,26 +264,16 @@
     {% endfor %}
   </div>
 
-  {% if profile.team_shots > 0 %}
-    <details class="section" style="margin-top:14px">
-      <summary>🔺 Mappa dei bicchieri colpiti da {{ t.name }} ({{ profile.team_hits }} colpi tracciati)</summary>
-      <div class="body">
-        {% set max_h = (profile.team_heatmap.values()|max) or 1 %}
-        <div class="heatmap" style="margin:8px auto">
-          {% for row in [[1,2,3,4], [5,6,7], [8,9], [10]] %}
-            <div class="heat-row">
-              {% for c in row %}
-                {% set h = profile.team_heatmap[c] %}
-                <div class="heat-cup" style="--heat: {{ (h / max_h)|round(2) }}">
-                  <span>{{ c }}</span>
-                  <small>{{ h }}</small>
-                </div>
-              {% endfor %}
-            </div>
-          {% endfor %}
+  {% if profile.team_hits > 0 %}
+    <div class="section-head" style="margin-top:20px"><h2>🎯 Dove centrano</h2></div>
+    <div class="card">
+      {{ ui.heat_rack(profile.team_heatmap, t.name) }}
+      {% if profile.players|length == 2 %}
+        <div class="heat-players">
+          {% for p in profile.players %}{{ ui.heat_rack(p.heatmap, p.name, compact=True) }}{% endfor %}
         </div>
-      </div>
-    </details>
+      {% endif %}
+    </div>
   {% endif %}
 {% elif profile %}
   <p class="muted small" style="margin-top:18px">Statistiche di coppia e dei giocatori compariranno dopo la prima partita.</p>

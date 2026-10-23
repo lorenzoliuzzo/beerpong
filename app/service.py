@@ -1221,6 +1221,7 @@ class PlayerProfile:
     finishers: int
     fav_cup: int | None
     fav_cup_hits: int
+    heatmap: dict[int, int] = field(default_factory=dict)  # cup -> hits by this player
 
 
 @dataclass
@@ -1376,6 +1377,7 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
                 finishers=p_finishers[idx],
                 fav_cup=best_cup[0],
                 fav_cup_hits=best_cup[1],
+                heatmap=p_heat,
             )
         )
 

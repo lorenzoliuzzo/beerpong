@@ -1429,3 +1429,40 @@ a.ref-overview.running { border-color: var(--accent); }
 a.ref-overview .ref-go { display: flex; align-items: center; justify-content: center; min-height: 64px; border-radius: 16px; font-size: 1.25rem; font-weight: 900; background: var(--ok); color: #fff; }
 a.ref-overview.running .ref-go { background: var(--accent); }
 .ref-top a { font-weight: 800; text-decoration: none; }
+
+/* Heatmap of cups hit: one sequential blue ramp (light = few, dark = many), reversed in dark mode so the
+   low end recedes into the surface; ink switches where the ramp gets dark enough. */
+:root { --h1: #cde2fb; --h2: #9ec5f4; --h3: #6da7ec; --h4: #3987e5; --h5: #256abf; --h6: #184f95; --h7: #0d366b;
+        --h-ink-low: #102a4c; --h-ink-high: #ffffff; --h-zero: #f0efec; }
+@media (prefers-color-scheme: dark) {
+  :root { --h1: #184f95; --h2: #1c5cab; --h3: #256abf; --h4: #3987e5; --h5: #6da7ec; --h6: #9ec5f4; --h7: #cde2fb;
+          --h-ink-low: #ffffff; --h-ink-high: #0d1b2e; --h-zero: #383835; }
+}
+.heatmap-fig { margin: 0; display: grid; gap: 8px; justify-items: center; }
+.heat-title { font-weight: 800; }
+.heat-headline { margin: 0; text-align: center; }
+.heat-rack { display: grid; gap: 6px; justify-items: center; }
+.heat-row { display: flex; gap: 6px; }
+.heat-cup { position: relative; width: 58px; height: 58px; border-radius: 50%; display: grid; place-content: center; text-align: center; line-height: 1.05; border: 2px solid var(--surface); }
+.heatmap-fig.compact .heat-cup { width: 38px; height: 38px; }
+.heat-cup b { font-size: 1.05rem; }
+.heatmap-fig.compact .heat-cup b { font-size: .85rem; }
+.heat-cup small { font-size: .62rem; font-weight: 700; }
+.heat-cup i { position: absolute; top: -6px; right: -4px; font-style: normal; font-size: .6rem; font-weight: 800; color: var(--muted); background: var(--surface); border-radius: 999px; padding: 0 4px; }
+.heat-cup.h0 { background: var(--h-zero); color: var(--muted); border-style: dashed; border-color: var(--line); }
+.heat-cup.h1 { background: var(--h1); color: var(--h-ink-low); } .heat-cup.h2 { background: var(--h2); color: var(--h-ink-low); }
+.heat-cup.h3 { background: var(--h3); color: var(--h-ink-low); } .heat-cup.h4 { background: var(--h4); color: var(--h-ink-low); }
+.heat-cup.h5 { background: var(--h5); color: var(--h-ink-high); } .heat-cup.h6 { background: var(--h6); color: var(--h-ink-high); }
+.heat-cup.h7 { background: var(--h7); color: var(--h-ink-high); }
+@media (prefers-color-scheme: dark) {
+  .heat-cup.h4, .heat-cup.h5, .heat-cup.h6, .heat-cup.h7 { color: var(--h-ink-high); }
+  .heat-cup.h1, .heat-cup.h2, .heat-cup.h3 { color: var(--h-ink-low); }
+}
+.heat-cup:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.heat-legend { display: flex; align-items: center; gap: 8px; font-size: .75rem; color: var(--muted); }
+.heat-scale { width: 140px; height: 10px; border-radius: 999px; background: linear-gradient(90deg, var(--h1), var(--h4), var(--h7)); }
+.heat-note { margin: 0; }
+.heat-table { width: 100%; }
+.heat-table summary { text-align: center; font-size: .85rem; color: var(--accent); cursor: pointer; }
+.heat-table table { margin: 8px auto 0; }
+.heat-players { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }

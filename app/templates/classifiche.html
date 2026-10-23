@@ -120,7 +120,7 @@
 
 {% elif view == "tiri" %}
   {% if shots.total_shots %}
-    <p class="muted small">Statistiche balistiche dal pubblico live ({{ shots.total_shots }} tiri registrati). Precisione minima {{ 8 }} tiri.</p>
+    <p class="muted small">Dai tiri segnati dagli arbitri e dal pubblico ({{ shots.total_shots }} tiri). Precisione minima {{ 8 }} tiri.</p>
     <div class="awards">
       {% for icon, title, p in shots.awards %}
         <div class="card award">
@@ -134,15 +134,7 @@
     </div>
 
     <h2>Mappa dei bicchieri colpiti</h2>
-    {% set top = shots.heatmap.values()|max %}
-    <div class="rack heat">
-      {% for row in [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] %}
-        <div class="rrow">{% for c in row %}{% set n = shots.heatmap[c] %}
-          <span class="cup up" style="opacity:{{ 0.25 + 0.75 * (n / top if top else 0) }}" title="bicchiere {{ c }}">{{ n }}</span>
-        {% endfor %}</div>
-      {% endfor %}
-    </div>
-    <p class="muted small" style="text-align:center">Il bicchiere in basso (1) è quello più vicino a chi tira.</p>
+    <div class="card">{{ ui.heat_rack(shots.heatmap) }}</div>
 
     <h2>Classifica Precisione</h2>
     <div class="table-wrap">

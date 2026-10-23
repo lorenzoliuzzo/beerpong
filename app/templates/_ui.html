@@ -130,3 +130,45 @@
   <span class="r {{ 'win' if m.winner == m.t2 }}">{{ m.n2 }}</span>
 </a>
 {% endmacro %}
+
+{# Heatmap of cups hit, laid out as the rack (apex towards the shooter): a sequential one-hue scale,
+   counts and shares written on each cup, the top cup named, a legend and a table for who cannot tell
+   shades apart. `heat` maps cup number -> hits. #}
+{% macro heat_rack(heat, title="", compact=False) %}
+{% set total = heat.values()|sum %}
+{% set top = heat.values()|max if heat else 0 %}
+{% set final_cups = heat.get(7, 0) + heat.get(8, 0) + heat.get(9, 0) + heat.get(10, 0) %}
+{% set rows = [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] if final_cups else [[4, 5, 6], [2, 3], [1]] %}
+{# The scale runs from the least to the most hit cup on show, so even an even spread shows where they aim. #}
+{% set shown = [] %}{% for row in rows %}{% for c in row %}{% set _ = shown.append(heat.get(c, 0)) %}{% endfor %}{% endfor %}
+{% set lo, hi = shown|min, shown|max %}
+<figure class="heatmap-fig {{ 'compact' if compact }}">
+  {% if title %}<figcaption class="heat-title">{{ title }}</figcaption>{% endif %}
+  {% if total %}
+    {% set best = heat|dictsort(by="value", reverse=true)|first %}
+    {% if not compact %}<p class="heat-headline">Bicchiere più colpito: <strong>{{ best[0] }}</strong> · {{ best[1] }} colpi ({{ (100 * best[1] / total)|round|int }}%)</p>{% endif %}
+    <div class="heat-rack" role="img" aria-label="Mappa dei bicchieri colpiti, {{ total }} colpi">
+      {% for row in rows %}<div class="heat-row">
+        {% for c in row %}{% set n = heat.get(c, 0) %}
+          {% set level = 0 if not n else (4 if hi == lo else [7, 1 + (6 * (n - lo) / (hi - lo))|int]|min) %}
+          <span class="heat-cup h{{ level }}" tabindex="0" title="Bicchiere {{ c }}: {{ n }} colp{{ 'o' if n == 1 else 'i' }}{% if total %} ({{ (100 * n / total)|round|int }}%){% endif %}">
+            <b>{{ n }}</b>{% if not compact %}<small>{{ (100 * n / total)|round|int }}%</small>{% endif %}<i>#{{ c }}</i>
+          </span>
+        {% endfor %}
+      </div>{% endfor %}
+    </div>
+    {% if not compact %}
+      <div class="heat-legend" aria-hidden="true"><span>{{ lo }} colpi</span><span class="heat-scale"></span><span>{{ hi }} colpi</span></div>
+      <p class="muted small heat-note">La punta (bicchiere 1) è il più vicino a chi tira.</p>
+      <details class="heat-table">
+        <summary>Vedi come tabella</summary>
+        <table><tr><th>Bicchiere</th><th>Colpi</th><th>%</th></tr>
+          {% for c, n in heat|dictsort(by="value", reverse=true) if n %}<tr><td>{{ c }}</td><td>{{ n }}</td><td>{{ (100 * n / total)|round|int }}%</td></tr>{% endfor %}
+        </table>
+      </details>
+    {% endif %}
+  {% else %}
+    <p class="muted small">Ancora nessun bicchiere colpito.</p>
+  {% endif %}
+</figure>
+{% endmacro %}

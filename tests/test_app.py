@@ -1226,3 +1226,17 @@ def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient)
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})
     assert db_call(lambda db: service.team_profile(db, m.t2)).blows == 1
     assert "Tiro non valido" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": "x", "n": 1}).text
+
+
+def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    db_call(lambda db: service.start_match(db, m.id, time.time() - 60, 1))
+    for n, (pl, cup) in enumerate([(1, 4), (2, 5), (1, 0), (2, 0), (1, 6), (2, 0)]):
+        db_call(lambda db: tracking.referee_shot(db, m.id, pl, cup, time.time() - 50 + n, n))
+    client.post(f"/partita/{m.id}", data={"s1": 3, "s2": 0})  # the profile's statistics start after a match
+    shots = client.get("/classifiche?vista=tiri").text
+    assert "Bicchiere più colpito" in shots and "heat-cup h7" in shots and "Vedi come tabella" in shots
+    profile = client.get(f"/squadra/{m.t1}").text
+    assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
+    assert 'title="Bicchiere 4: 1 colpo' in profile
