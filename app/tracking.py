@@ -115,12 +115,29 @@ def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
     return RefereeView(st, side, in_turn, nxt, official[-1] if official else None)
 
 
-def referee_shot(db: sqlite3.Connection, match_id: int, player: int, cup: int, now: float) -> None:
-    """The referee records a shot of the couple whose turn it is: a cup of the opponents' rack, or 0 for a miss."""
+def official_count(view: RefereeView) -> int:
+    return sum(1 for s in view.state.shots if live.REFEREE in s.devices)
+
+
+def referee_shot(
+    db: sqlite3.Connection, match_id: int, player: int, cup: int, now: float, number: int | None = None
+) -> bool:
+    """The referee records a shot of the couple whose turn it is: a cup of the opponents' rack, or 0 for a miss.
+
+    `number` is the shot the screen was showing (0 = first). A double tap or a retry after a lost answer
+    sends the same number again: it is ignored instead of recording the shot twice. Returns whether it
+    was recorded."""
     m = service.match(db, match_id)
     if m is None or m.started_at is None:
         raise TournamentError("Avvia prima la partita.")
     view = referee_view(db, match_id)
+    if number is not None:
+        recorded = official_count(view)
+        last = view.last_shot
+        if number == recorded - 1 and last and (last.player, last.cup) == (player, cup):
+            return False  # this very shot is already in
+        if number != recorded:
+            raise TournamentError("La schermata non era aggiornata: controlla l'ultimo tiro e riprova.")
     if view.state.winner_side:
         raise TournamentError("I bicchieri sono finiti: conferma il risultato.")
     if player not in (1, 2):
@@ -128,6 +145,7 @@ def referee_shot(db: sqlite3.Connection, match_id: int, player: int, cup: int, n
     if cup and cup not in view.state.racks[3 - view.turn_side].cups:
         raise TournamentError("Quel bicchiere non c'è più.")
     add_report(db, match_id, live.REFEREE, "shot", view.turn_side, player, cup, now)
+    return True
 
 
 def referee_undo(db: sqlite3.Connection, match_id: int) -> None:

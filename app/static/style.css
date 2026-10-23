@@ -81,6 +81,9 @@ a.ref-end { background: var(--accent); color: var(--accent-ink); }
 .ref-clock-time { display: block; font: 900 3.4rem/1 ui-monospace, Menlo, monospace; }
 .ref-clock-label { color: var(--muted); font-size: .85rem; font-weight: 700; }
 .ref-clock.over .ref-clock-time { color: var(--err); }
+.ref-top strong { font-size: 1.05rem; }
+main.ref-busy { opacity: .6; pointer-events: none; }
+.toast.err { background: var(--err); color: #fff; }
 .ref-q { text-align: center; margin: 4px 0; font-size: 1.05rem; }
 .ref-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ref-pick input { position: absolute; opacity: 0; pointer-events: none; }

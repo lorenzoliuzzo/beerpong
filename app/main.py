@@ -752,8 +752,11 @@ def referee(request: Request, campo: str | None = None, db: sqlite3.Connection =
     scoring = {m.id: tracking.referee_view(db, m.id) for m in current if m.started_at is not None}
     return page(
         request, db, "arbitro.html", current=current, pending=pending, scoring=scoring,
+        official_counts={k: tracking.official_count(v) for k, v in scoring.items()},
         flipped=set(request.session.get("flip", [])), players=service.teams(db),
-        played=[m for m in views if m.done][::-1], field_no=field_no, live=True, now_ts=time.time(),
+        played=[m for m in views if m.done][::-1], field_no=field_no, now_ts=time.time(),
+        # A started match only changes when the referee taps: refreshing under their finger could lose a tap.
+        live=not scoring,
     )
 
 
@@ -781,13 +784,13 @@ def match_start(
 @router.post("/partita/{match_id}/tiro")
 def match_shot(
     request: Request, match_id: int, giocatore: int = Form(...), bicchiere: int = Form(...),
-    db: sqlite3.Connection = Depends(get_db),
+    n: int | None = Form(None), db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     m = _refereed(request, db, match_id)
     if m is None:
         return redirect("/login")
     try:
-        tracking.referee_shot(db, match_id, giocatore, bicchiere, time.time())
+        tracking.referee_shot(db, match_id, giocatore, bicchiere, time.time(), n)
     except TournamentError as e:
         flash(request, str(e), "err")
     return redirect(_referee_back(request, m))

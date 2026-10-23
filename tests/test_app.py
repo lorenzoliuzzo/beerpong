@@ -1,5 +1,6 @@
 import random
 import threading
+import time
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -1062,3 +1063,35 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     p1 = db_call(service.team, m.t1)["p1"]
     assert stats[(m.t1, p1)].hits == 10  # the referee's shots are the players' statistics
     assert "I tiri di questa partita li segna l" in client.get(f"/live/{m.id}").text
+
+
+def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    login(client, db_call(service.referee_pin, 1))
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
+    page = client.get("/arbitro").text
+    assert 'name="n" value="0"' in page and "data-live" not in page.split("<body", 1)[1].split(">", 1)[0]
+    assert 'class="tabbar"' not in page and "🏓 Tavolo 1 · Arbitro" in page
+
+    def tap(n: int, player: int, cup: int) -> str:
+        return client.post(f"/partita/{m.id}/tiro", data={"giocatore": player, "bicchiere": cup, "n": n}).text
+
+    tap(0, 1, 4)
+    tap(0, 1, 4)  # a double tap or a retry after a lost answer: still one shot
+    count = lambda: db_call(lambda db: tracking.official_count(tracking.referee_view(db, m.id)))
+    assert count() == 1
+    assert "La schermata non era aggiornata" in tap(0, 2, 5)  # a stale screen does not guess
+    assert count() == 1
+    tap(1, 2, 0)
+    assert count() == 2 and 'name="n" value="2"' in client.get("/arbitro").text
+
+
+def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    login(client, db_call(service.referee_pin, 1))
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    db_call(lambda db: service.start_match(db, m.id, time.time() - 6 * 60, 1))
+    db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
+    page = client.get("/arbitro").text
+    assert 'class="ref-win ref-timeout" hidden' in page and "✓ Conferma 1–0" in page  # shown by the clock

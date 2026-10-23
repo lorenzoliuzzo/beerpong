@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
+{% block title %}{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }} · Arbitro{% endblock %}
+{% block header %}
+  {% if role == "referee" %}
+    <header class="top ref-top">
+      <strong>🏓 Tavolo {{ field_no }} · Arbitro</strong>
+      <form method="post" action="/logout" onsubmit="return confirm('Uscire dall\'area arbitro?')"><button class="link" type="submit">Esci</button></form>
+    </header>
+  {% else %}{{ super() }}{% endif %}
+{% endblock %}
+{% block tabbar %}{% if role != "referee" %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-<h1>{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }}</h1>
+{% if role != "referee" %}<h1>{{ "Tavolo " ~ field_no if field_no else "Tutti i tavoli" }}</h1>{% endif %}
 {% if role == "admin" %}
   <nav class="segmented">
     <a href="/arbitro" class="{{ 'on' if not field_no }}">Tutti</a>
@@ -42,6 +52,17 @@
           </div>
         {% endfor %}
       </div>
+      {% if m.duration and not st.winner_side %}
+        <form method="post" action="/partita/{{ m.id }}" class="ref-win ref-timeout" hidden>
+          <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
+          {% if m.stage == "ko" and st.side_hits(1) == st.side_hits(2) %}
+            <p class="ref-q">⏱ Tempo scaduto in parità: overtime, continuate a segnare i tiri.</p>
+          {% else %}
+            <p class="ref-q">⏱ Tempo scaduto</p>
+            <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+          {% endif %}
+        </form>
+      {% endif %}
       {% if st.winner_side %}
         {% set w = st.winner_side %}
         <form method="post" action="/partita/{{ m.id }}" class="ref-win">
@@ -52,6 +73,7 @@
         </form>
       {% else %}
         <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-shot">
+          <input type="hidden" name="n" value="{{ official_counts[m.id] }}">
           <p class="ref-q">Tira <strong>{{ team[rv.turn_side].name }}</strong> · chi?</p>
           <div class="ref-picks">
             {% for pl in ([2, 1] if flip else [1, 2]) %}
@@ -92,7 +114,7 @@
 {% endif %}
 
 {% if pending %}
-  <h2>A seguire</h2>
+  <h2>{{ "Prossime al tuo tavolo" if field_no else "A seguire" }}</h2>
   <div class="list queue">
     {% for m in pending %}
       <a class="row" href="{{ '/partita/' ~ m.id if can_referee(m) else '/live/' ~ m.id }}" style="color:inherit;text-decoration:none">
@@ -110,9 +132,6 @@
     <div class="body">{% for m in played %}{{ ui.match(m) }}{% endfor %}</div>
   </details>
 {% endif %}
-{% if role == "referee" %}
-<div class="foot"><form method="post" action="/logout"><button class="link" type="submit">Esci dall'area arbitro</button></form></div>
-{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -128,30 +147,52 @@
       el.querySelector(".ref-clock-time").textContent =
         (total && left < 0 ? "+" : "") + String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
       el.classList.toggle("over", Boolean(total) && left < 0);
+      const timeout = el.closest(".ref-card") && el.closest(".ref-card").querySelector(".ref-timeout");
+      if (timeout) timeout.hidden = !(total && left < 0);
     });
     tick(); setInterval(tick, 500);
 
     // Scoring taps post in the background and swap the page in place: no reload between shots.
+    // While one is on its way every button is locked, so a nervous double tap cannot send two.
+    const warn = (msg) => {
+      let t = document.getElementById("ref-toast");
+      if (!t) { t = document.createElement("div"); t.id = "ref-toast"; t.className = "toast err"; document.body.appendChild(t); }
+      t.textContent = msg; t.hidden = false;
+      clearTimeout(warn.timer); warn.timer = setTimeout(() => (t.hidden = true), 6000);
+    };
+    let busy = false;
     document.addEventListener("submit", async (e) => {
       const form = e.target.closest("form[data-ajax]");
       if (!form) return;
       e.preventDefault();
+      if (busy) return;
+      busy = true;
       const body = new FormData(form, e.submitter);
+      document.querySelector("main").classList.add("ref-busy");
       try {
         const r = await fetch(form.action, { method: "POST", body, credentials: "same-origin" });
         if (!r.ok || new URL(r.url).pathname === "/login") throw new Error(r.status);
         const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
         document.querySelector("main").replaceWith(fresh);
+        if (navigator.vibrate) navigator.vibrate(25);
         tick();
       } catch (_) {
-        if (e.submitter && e.submitter.name) {
-          const keep = document.createElement("input");
-          keep.type = "hidden"; keep.name = e.submitter.name; keep.value = e.submitter.value;
-          form.appendChild(keep);
-        }
-        form.submit();
+        document.querySelector("main").classList.remove("ref-busy");
+        warn("⚠️ Tiro NON salvato: connessione assente. Riprova.");
+      } finally {
+        busy = false;
       }
     });
+
+    // Keep the screen on while a match is being scored.
+    let lock = null;
+    const keepAwake = async () => {
+      if (!("wakeLock" in navigator) || !document.querySelector(".ref-card.running") || document.hidden) return;
+      try { lock = await navigator.wakeLock.request("screen"); } catch (_) { lock = null; }
+    };
+    document.addEventListener("visibilitychange", keepAwake);
+    document.addEventListener("click", () => { if (!lock) keepAwake(); });
+    keepAwake();
   })();
 </script>
 {% endblock %}
