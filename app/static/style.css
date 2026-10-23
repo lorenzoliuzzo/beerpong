@@ -371,6 +371,50 @@ body.board .step .dot { background: var(--surface); }
 body.board .step.done .dot { background: var(--accent); }
 .board-h { font-size: clamp(1.1rem, 1.8vw, 1.6rem); font-weight: 900; margin: 28px 0 12px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
 .board-h .hint { font-size: .8em; font-weight: 600; color: var(--muted); }
+.board-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+.tcolumn { display: grid; gap: 10px; }
+.thead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px 14px; border-radius: 14px; background: var(--beer); color: #1c1915; }
+.thead .tnum { font-size: clamp(1.2rem, 1.7vw, 1.8rem); font-weight: 900; }
+.thead .tgroups { font-weight: 800; font-size: clamp(.9rem, 1vw, 1.1rem); }
+.tnow, .tnext { border-radius: 12px; padding: 8px 12px; font-size: clamp(1rem, 1.15vw, 1.3rem); line-height: 1.25; }
+.tnow { background: var(--accent); color: #fff; }
+.tnext { background: var(--surface); border: 1px solid var(--line); }
+.tnow .lbl, .tnext .lbl { display: block; font-size: .7em; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; opacity: .8; }
+.tnow .versus, .tnext .versus { opacity: .7; font-weight: 400; }
+.tnow .pair, .tnext .pair { display: block; }
+.table-tabs { display: none; }
+@media (max-width: 899px) {
+  .table-tabs { display: flex; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 8px 0; margin-bottom: 4px; background: #14110e; overflow-x: auto; scrollbar-width: none; }
+  .table-tabs button { flex: 1 1 0; min-width: 0; display: grid; gap: 0; min-height: 48px; padding: 6px 4px; border-radius: 12px; background: var(--surface); color: #f6efe4; border: 1px solid var(--line); font-weight: 900; }
+  .tcolumn .thead { display: none; }
+  .table-tabs button small { font-size: .7rem; font-weight: 700; opacity: .75; }
+  body.board[data-table="1"] .tcolumn:not([data-table="1"]) { display: none; }
+  body.board[data-table="1"] .table-tabs [data-table="1"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="2"] .tcolumn:not([data-table="2"]) { display: none; }
+  body.board[data-table="2"] .table-tabs [data-table="2"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="3"] .tcolumn:not([data-table="3"]) { display: none; }
+  body.board[data-table="3"] .table-tabs [data-table="3"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="4"] .tcolumn:not([data-table="4"]) { display: none; }
+  body.board[data-table="4"] .table-tabs [data-table="4"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="5"] .tcolumn:not([data-table="5"]) { display: none; }
+  body.board[data-table="5"] .table-tabs [data-table="5"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="6"] .tcolumn:not([data-table="6"]) { display: none; }
+  body.board[data-table="6"] .table-tabs [data-table="6"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="7"] .tcolumn:not([data-table="7"]) { display: none; }
+  body.board[data-table="7"] .table-tabs [data-table="7"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board[data-table="8"] .tcolumn:not([data-table="8"]) { display: none; }
+  body.board[data-table="8"] .table-tabs [data-table="8"] { background: var(--beer); color: #1c1915; border-color: var(--beer); }
+  body.board main { padding: 12px 16px 32px; }
+  .board-qr { display: none; }
+  .board-top { grid-template-columns: 1fr; }
+  .board-steps .steps { margin: 10px -16px 4px; }
+  .board-h { margin: 16px 0 8px; }
+}
+.board-format { margin-top: 20px; color: var(--muted); font-size: clamp(1rem, 1.3vw, 1.4rem); font-weight: 700; }
+body.board .gcard .grow .n { color: #fff; }
+body.board .gcard .grow.plain { padding: 7px 4px; }
+body.board .gcard .grow.plain .n { font-size: clamp(1.05rem, 1.25vw, 1.45rem); }
+body.board .gcard .grow.plain .pl { font-size: clamp(.8rem, .85vw, 1rem); color: var(--muted); }
 .board-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; }
 .gcard { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; }
 .ghead { display: flex; align-items: center; gap: 10px; font-size: clamp(1.05rem, 1.5vw, 1.35rem); font-weight: 900; margin-bottom: 8px; }

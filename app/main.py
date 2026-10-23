@@ -253,8 +253,22 @@ def board(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Respons
     views = service.matches(db)
     now, upcoming = service.live(views)
     ko = service.knockout_rounds(db)
+    fields = service.load_config(db).fields
+    # Two or more groups per table: show the board as one column per table, with what is playing there.
+    tables = None
+    if groups and fields > 1 and len(groups) % fields == 0:
+        live_tables = {} if provisional else {tv.field: tv for tv in service.table_views(db)}
+        tables = [
+            (
+                f,
+                [g for g in groups if planning.table_for_group(ord(g.letter) - 65, len(groups), fields) == f],
+                live_tables.get(f),
+            )
+            for f in range(1, fields + 1)
+        ]
     return page(
         request, db, "cartellone.html", groups=groups, provisional=provisional, now=now, upcoming=upcoming,
+        tables=tables,
         rounds=service.board_bracket(db, len(groups)), progress=service.tournament_progress(db),
         thirds=planning.bracket_plan(len(groups))[1] - 2 * len(groups) if groups else 0,
         final=ko[-1][1][0] if ko else None, site=public_site_url(request, db), live=True,

@@ -30,7 +30,7 @@
   </div>
 {% endif %}
 
-{% if now and not provisional %}
+{% if now and not provisional and not (tables and not ko_started) %}
   <section class="board-now">
     <div class="board-h">In campo ora</div>
     <div class="board-now-list">
@@ -74,12 +74,7 @@
 
 {% if ko_started %}{{ bracket_tree() }}{% endif %}
 
-{% if groups %}
-  <section>
-    <div class="board-h">{{ "Gironi provvisori" if provisional else ("Gironi" if not ko_started else "Classifiche finali dei gironi") }}
-      <span class="hint">passano le prime 2{% if thirds %} + le {{ thirds }} migliori terze{% endif %}</span></div>
-    <div class="board-groups">
-      {% for g in groups %}
+{% macro group_card(g) %}
         <div class="gcard">
           <div class="ghead"><span class="gletter">{{ g.letter }}</span><span>Girone {{ g.letter }}</span>
             {% if g.table %}<span class="gcount">{{ g.table.matches|selectattr("done")|list|length }}/{{ g.table.matches|length }}</span>{% endif %}</div>
@@ -98,14 +93,43 @@
             {% endfor %}
           {% endif %}
         </div>
-      {% endfor %}
-    </div>
+{% endmacro %}
+
+{% if groups %}
+  <section>
+    <div class="board-h">{{ "Gironi provvisori" if provisional else ("Gironi" if not ko_started else "Classifiche finali dei gironi") }}
+      <span class="hint">passano le prime 2{% if thirds %} + le {{ thirds }} migliori terze{% endif %}</span></div>
+    {% if tables and not ko_started %}
+      <nav class="table-tabs" aria-label="Tavoli">
+        {% for f, gs, tv in tables %}<button type="button" data-table="{{ f }}">Tav. {{ f }}<small>{{ gs|map(attribute="letter")|join(" · ") }}</small></button>{% endfor %}
+      </nav>
+      <div class="board-tables">
+        {% for f, gs, tv in tables %}
+          <div class="tcolumn" data-table="{{ f }}">
+            <div class="thead"><span class="tnum">Tavolo {{ f }}</span><span class="tgroups">Gironi {{ gs|map(attribute="letter")|join(" · ") }}</span></div>
+            {% if tv and tv.current %}
+              <div class="tnow"><span class="lbl">Ora</span><span class="pair"><b>{{ tv.current.n1 }}</b> <span class="versus">vs</span> <b>{{ tv.current.n2 }}</b></span></div>
+              {% if tv.next_match %}<div class="tnext"><span class="lbl">Poi</span><span class="pair">{{ tv.next_match.n1 }} <span class="versus">vs</span> {{ tv.next_match.n2 }}</span></div>{% endif %}
+            {% endif %}
+            {% for g in gs %}{{ group_card(g) }}{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="board-groups">
+        {% for g in groups %}{{ group_card(g) }}{% endfor %}
+      </div>
+    {% endif %}
   </section>
 {% else %}
   <p class="board-sub">Servono almeno 4 coppie iscritte per mostrare i gironi.</p>
 {% endif %}
 
-{% if not ko_started and rounds %}{{ bracket_tree() }}{% endif %}
+{% if provisional and rounds %}
+  <div class="board-format">Poi eliminazione diretta: {{ rounds|map(attribute="name")|map("replace", " di finale", "")|join(" → ") }} → 🏆</div>
+{% endif %}
+
+{% if not ko_started and rounds and not provisional %}{{ bracket_tree() }}{% endif %}
 
 {% endblock %}
 
@@ -118,6 +142,17 @@
       if (el) el.textContent = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
     };
     tick(); setInterval(tick, 10000);
+
+    // On a phone the board shows one table at a time. The choice lives on <body>, which the live refresh
+    // does not replace, so it survives every update.
+    const pick = (f) => { document.body.dataset.table = f; try { localStorage.setItem("board-table", f); } catch (_) {} };
+    let saved = null;
+    try { saved = localStorage.getItem("board-table"); } catch (_) {}
+    pick(saved || "1");
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".table-tabs [data-table]");
+      if (b) pick(b.dataset.table);
+    });
   })();
 </script>
 {% endblock %}

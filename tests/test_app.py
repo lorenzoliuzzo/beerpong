@@ -673,7 +673,8 @@ def test_board_shows_provisional_groups_then_live_then_bracket(client: TestClien
     assert sorted(map(sorted, started.values())) == sorted(map(sorted, after))
 
     page = client.get("/cartellone").text
-    assert "Fase a gironi" in page and "In campo ora" in page and "anteprima" in page
+    assert "Fase a gironi" in page and "anteprima" in page
+    assert "<span class=\"tnum\">Tavolo 1</span>" in page and "<span class=\"lbl\">Ora</span>" in page
     play_all(client, "group", random.Random(9))
     page = client.get("/cartellone").text
     assert "Eliminazione diretta" in page and "Classifiche finali dei gironi" in page
