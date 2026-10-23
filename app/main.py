@@ -561,17 +561,41 @@ def demo_as_couple(request: Request, db: sqlite3.Connection = Depends(get_db)) -
     if not pool:
         raise HTTPException(404)
     team_id = secrets.choice(pool)
+    request.session.pop("role", None)
+    request.session.pop("field", None)
     request.session["team"] = team_id
     flash(request, f"Siete «{service.team(db, team_id)['name']}»: attivate le notifiche, tra poco tocca a voi!")
     return redirect("/io")
+
+
+@router.post("/demo/arbitro")
+def demo_as_referee(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """The table nobody has refereed for the longest: the simulator leaves it to this visitor."""
+    if not is_demo(db):
+        raise HTTPException(404)
+    fields = range(1, service.load_config(db).fields + 1)
+    field_no = min(fields, key=lambda f: float(get_setting(db, f"demo_ref_{f}") or 0))
+    _claim_demo_table(db, field_no)
+    request.session.pop("team", None)
+    request.session.update({"role": "referee", "field": field_no})
+    flash(request, f"Sei l'arbitro del Tavolo {field_no}: qui segni tu, il simulatore si ferma su questo tavolo.")
+    return redirect("/arbitro")
 
 
 @router.post("/demo/admin")
 def demo_as_admin(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
     if not is_demo(db):
         raise HTTPException(404)
+    request.session.pop("team", None)
     request.session.update({"role": "admin", "field": None})
     return redirect("/admin")
+
+
+def _claim_demo_table(db: sqlite3.Connection, field_no: int | None) -> None:
+    """In the demo a person refereeing a table keeps the simulator off it (tools/demo_sim.py)."""
+    if field_no is not None and is_demo(db):
+        with db:
+            set_setting(db, f"demo_ref_{field_no}", str(time.time()))
 
 
 @router.get("/checkin/nuova")
@@ -764,7 +788,10 @@ def _refereed(request: Request, db: sqlite3.Connection, match_id: int) -> servic
     m = service.match(db, match_id)
     if m is None:
         raise HTTPException(404)
-    return m if can_referee(request, m) else None
+    if not can_referee(request, m):
+        return None
+    _claim_demo_table(db, m.field)
+    return m
 
 
 @router.post("/partita/{match_id}/inizia")

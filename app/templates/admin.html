@@ -131,7 +131,7 @@
                   <div class="muted small">{{ m.label }} · dalle {{ m.time }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</div>
                 {% else %}<span class="muted small">{{ "Finito" if tv.total_count and tv.done_count == tv.total_count else "In attesa" }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</span>{% endif %}
               </div>
-              {% if m and m.t1 and m.t2 %}<a class="btn small" href="/partita/{{ m.id }}">Risultato</a>{% endif %}
+              <a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
             </div>
           {% endfor %}
         </div>

@@ -17,9 +17,10 @@
 <body {% if live %}data-live{% endif %} class="{% block body_class %}{% endblock %}">
 {% if demo %}
 <div class="demo-bar">
-  <span><strong>DEMO</strong><span class="long"> · squadre inventate, le partite si giocano da sole</span></span>
-  <form method="post" action="/demo/coppia"><button class="small" type="submit">Entra come coppia</button></form>
-  <form method="post" action="/demo/admin"><button class="small ghost" type="submit">Admin</button></form>
+  <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">squadre inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
+  <form method="post" action="/demo/coppia"><button class="small {{ 'ghost' if me and not role }}" type="submit">Coppia</button></form>
+  <form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>
+  <form method="post" action="/demo/admin"><button class="small {{ 'ghost' if role == 'admin' }}" type="submit">Admin</button></form>
 </div>
 {% endif %}
 {% block header %}

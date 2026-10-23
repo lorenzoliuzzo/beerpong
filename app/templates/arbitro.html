@@ -116,6 +116,9 @@
   <p class="muted">Nessuna partita in attesa{{ " su questo tavolo" if field_no }}.</p>
 {% endif %}
 
+{% if field_no and played %}
+  <p class="muted small">Un risultato sbagliato? Aprilo in «Risultati del tuo tavolo» e tocca «Correggi».</p>
+{% endif %}
 {% if pending %}
   <h2>{{ "Prossime al tuo tavolo" if field_no else "A seguire" }}</h2>
   <div class="list queue">
@@ -131,7 +134,7 @@
 {% endif %}
 {% if played %}
   <details class="section">
-    <summary>Giocate ({{ played|length }})</summary>
+    <summary>{{ "Risultati del tuo tavolo" if field_no else "Giocate" }} ({{ played|length }})</summary>
     <div class="body">{% for m in played %}{{ ui.match(m) }}{% endfor %}</div>
   </details>
 {% endif %}

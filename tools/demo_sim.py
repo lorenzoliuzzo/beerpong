@@ -23,6 +23,7 @@ from app import db, push, service, tracking
 from tools.populate_demo import setup_demo
 
 HIT_RATE = 0.38
+HUMAN_IDLE_S = 300  # a table a visitor referees stays theirs until they leave it alone this long
 
 log = logging.getLogger("beerpong.demo")
 
@@ -41,6 +42,8 @@ def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:
     for m in now_ms:
         if m.done or m.t1 is None or m.t2 is None:
             continue
+        if now - float(db.get_setting(conn, f"demo_ref_{m.field}") or 0) < HUMAN_IDLE_S:
+            continue  # someone is refereeing this table in the demo
         if m.started_at is None:  # the couples were called: the referee picks who shoots first and starts
             service.start_match(conn, m.id, now, rng.choice([1, 2]))
             continue
