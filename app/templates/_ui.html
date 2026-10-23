@@ -59,6 +59,23 @@
 </div>
 {% endmacro %}
 
+{# Hidden until base.html knows whether this browser can receive notifications. #}
+{% macro push_box() %}
+<div class="card push-box" data-push hidden>
+  <div data-push-state="off"><strong>🔔 Avvisi sul telefono</strong>
+    <p class="muted small">Vi avvisiamo quando tocca a voi e quando siete i prossimi, anche col telefono in tasca.</p>
+    <button class="wide" type="button" data-push-on>Attiva le notifiche</button></div>
+  <div data-push-state="on" hidden><strong>🔔 Notifiche attive</strong>
+    <p class="muted small">Vi avvisiamo quando tocca a voi.</p>
+    <button class="link" type="button" data-push-off>Disattiva</button></div>
+  <div data-push-state="ios" hidden><strong>🔔 Avvisi su iPhone</strong>
+    <p class="small">Tocca <strong>Condividi</strong> ⬆️ → <strong>Aggiungi alla schermata Home</strong>, poi apri il sito dall'icona: lì potrai attivare le notifiche.</p></div>
+  <div data-push-state="denied" hidden><strong>🔕 Notifiche bloccate</strong>
+    <p class="muted small">Riattivale dalle impostazioni del browser per questo sito.</p></div>
+  <div data-push-state="unsupported" hidden><p class="muted small">Questo browser non riceve notifiche: tenete aperta questa pagina, si aggiorna da sola.</p></div>
+</div>
+{% endmacro %}
+
 {# Tap toggles for the admin checklist; base.html flips them in place without reloading. #}
 {% macro checks(t, back) %}
 <div class="checks">

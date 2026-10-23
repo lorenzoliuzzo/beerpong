@@ -6,7 +6,7 @@
 <h1>Organizzazione</h1>
 <nav class="subnav" aria-label="Sezioni">
   <a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
-  <a href="#solo-serata">Solo serata</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
+  <a href="#solo-serata">Solo serata</a><a href="#notifiche">Notifiche</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
 </nav>
 
 {% set n = chk.players|length %}
@@ -162,6 +162,20 @@
       {% endfor %}
     </div>
     </details>
+  </div>
+</details>
+
+<details class="section" id="notifiche">
+  <summary>Notifiche <span class="pill">{{ push_subs[0] }} telefoni</span></summary>
+  <div class="body">
+    <p class="muted small">{{ push_subs[0] }} telefoni iscritti, di {{ push_subs[1] }} coppie. Gli avvisi «tocca a voi» e «preparatevi» partono da soli; qui mandi un annuncio a tutti.</p>
+    <form method="post" action="/admin/notifica">
+      <label for="notifica-titolo">Titolo (facoltativo)</label>
+      <input id="notifica-titolo" name="titolo" maxlength="60" placeholder="{{ cfg.title }}">
+      <label for="notifica-testo">Messaggio</label>
+      <textarea id="notifica-testo" name="testo" required maxlength="200" style="min-height:80px" placeholder="Es. si parte tra 10 minuti!"></textarea>
+      <button class="wide" type="submit" onclick="return confirm('Mandare la notifica a tutti i telefoni iscritti?')">📣 Manda a tutti</button>
+    </form>
   </div>
 </details>
 

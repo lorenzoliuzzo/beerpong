@@ -11,6 +11,8 @@
   <meta name="format-detection" content="telephone=no">
   <title>{% block title %}{{ cfg.title }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
 <body {% if live %}data-live{% endif %} class="{% block body_class %}{% endblock %}">
 {% block header %}
@@ -73,7 +75,10 @@
         if (!r.ok || r.redirected) return;
         const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
         const current = document.querySelector("main");
-        if (fresh && fresh.innerHTML !== current.innerHTML) current.replaceWith(fresh);
+        if (fresh && fresh.innerHTML !== current.innerHTML) {
+          current.replaceWith(fresh);
+          document.dispatchEvent(new Event("bp:refresh"));
+        }
       } catch (_) { /* offline for a moment: the next tick retries */ }
     };
     setInterval(refresh, 20000);
@@ -115,6 +120,49 @@
   window.addEventListener("hashchange", openTarget);
   document.addEventListener("click", (e) => { if (e.target.closest('a[href^="#"]')) setTimeout(openTarget); });
   openTarget();
+
+  // Web Push: <div data-push> boxes get a button to turn notifications on, or a hint when that is not possible.
+  (() => {
+    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    const ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+    const standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+    const reg = supported ? navigator.serviceWorker.register("/sw.js") : null;
+    const toKey = (b64) => {
+      const s = atob((b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from(s, (c) => c.charCodeAt(0));
+    };
+    const post = (url, body) => fetch(url, {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const show = (state) => document.querySelectorAll("[data-push]").forEach((box) => {
+      box.hidden = false;
+      box.querySelectorAll("[data-push-state]").forEach((el) => { el.hidden = el.dataset.pushState !== state; });
+    });
+    const render = async () => {
+      if (!document.querySelector("[data-push]")) return;
+      if (!supported) return show(ios && !standalone ? "ios" : "unsupported");
+      if (Notification.permission === "denied") return show("denied");
+      const sub = await (await reg).pushManager.getSubscription();
+      if (sub) { post("/push/iscrivi", sub.toJSON()); return show("on"); }  // re-links it to the couple of this session
+      show("off");
+    };
+    document.addEventListener("click", async (e) => {
+      if (!e.target.closest("[data-push-on]")) return;
+      if (await Notification.requestPermission() !== "granted") return render();
+      const { key } = await (await fetch("/push/chiave")).json();
+      const sub = await (await reg).pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(key) });
+      await post("/push/iscrivi", sub.toJSON());
+      render();
+    });
+    document.addEventListener("click", async (e) => {
+      if (!e.target.closest("[data-push-off]")) return;
+      const sub = await (await reg).pushManager.getSubscription();
+      if (sub) { await post("/push/disiscrivi", { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+      render();
+    });
+    document.addEventListener("bp:refresh", render);
+    render();
+  })();
 
   // Client-side filter for long lists: <input data-filter="#list"> hides rows whose text does not match.
   document.addEventListener("input", (e) => {

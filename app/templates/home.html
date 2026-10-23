@@ -31,6 +31,7 @@
         <span class="sub">al fischio d'inizio</span>
       </div>
     </div>
+    {{ ui.push_box() }}
     {% if spot %}
       <div class="card">
         <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
@@ -75,6 +76,7 @@
       </div>
     {% endif %}
 
+    {{ ui.push_box() }}
     {% if my_table and cfg.phase == "groups" and (my_table.current or my_table.next_match) %}
       <h2>Al vostro tavolo · 🏓 Tavolo {{ my_table.field }}</h2>
       <div class="list table-queue">

@@ -817,9 +817,8 @@ def test_home_shows_the_queue_at_my_table(client: TestClient) -> None:
     import_teams(client, 16)
     client.post("/admin/impostazioni", data={"title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1})
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    for t in db_call(service.teams).values():
+    for t in sorted(db_call(service.teams).values(), key=lambda t: t["id"] == 1):  # couple 1 last: its session stays
         client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
-    client.post("/checkin/1", data=checkin_form(db_call(service.team, 1), phone1="+39 333 000 0001"))
     client.post("/admin/avvia")
     home = client.get("/").text
     field = next(m.field for m in db_call(service.matches) if m.side(1))

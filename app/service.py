@@ -507,6 +507,7 @@ def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = N
 def reset_tournament(db: sqlite3.Connection) -> None:
     with db:
         db.execute("DELETE FROM matches")
+        db.execute("DELETE FROM push_sent")
         db.execute("UPDATE teams SET grp = NULL")
         set_setting(db, "phase", "setup")
 

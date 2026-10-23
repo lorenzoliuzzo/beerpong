@@ -14,14 +14,14 @@ from urllib.parse import urlencode
 
 import qrcode
 import qrcode.image.svg
-from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import planning, service, tracking
+from . import planning, push, service, tracking
 from .db import connect, get_setting, init_db, set_setting
 from .service import TournamentError
 
@@ -276,6 +276,65 @@ def board(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Respons
         thirds=planning.bracket_plan(len(groups))[1] - 2 * len(groups) if groups else 0,
         final=ko[-1][1][0] if ko else None, site=public_site_url(request, db), live=True,
     )
+
+
+SERVICE_WORKER = """
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("push", (e) => {
+  const d = e.data ? e.data.json() : {};
+  e.waitUntil(self.registration.showNotification(d.title || "Beer Pong", {
+    body: d.body || "", icon: "/static/icon-192.png", badge: "/static/icon-192.png",
+    data: { url: d.url || "/" }, tag: d.url || "bp", renotify: true, vibrate: [200, 100, 200],
+  }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = e.notification.data.url;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    for (const w of wins) if ("focus" in w) { w.navigate(url); return w.focus(); }
+    return self.clients.openWindow(url);
+  }));
+});
+"""
+
+
+@router.get("/sw.js")
+def service_worker() -> Response:
+    # Served from the root so it controls the whole site; no-cache so a new version is picked up at once.
+    return Response(SERVICE_WORKER, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/manifest.webmanifest")
+def manifest(db: sqlite3.Connection = Depends(get_db)) -> Response:
+    return JSONResponse({
+        "name": get_setting(db, "title"), "short_name": "Beer Pong", "start_url": "/", "display": "standalone",
+        "background_color": "#12100d", "theme_color": "#d9480f",
+        "icons": [{"src": f"/static/icon-{s}.png", "sizes": f"{s}x{s}", "type": "image/png"} for s in (192, 512)],
+    }, media_type="application/manifest+json")
+
+
+@router.get("/push/chiave")
+def push_key(db: sqlite3.Connection = Depends(get_db)) -> Response:
+    return JSONResponse({"key": push.public_key(db)})
+
+
+@router.post("/push/iscrivi")
+def push_subscribe(request: Request, subscription: dict = Body(...), db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if _throttled(request):
+        return JSONResponse({"ok": False}, status_code=429)
+    try:
+        push.subscribe(db, subscription, my_team_id(request))
+    except TournamentError as e:
+        _record_failure(request)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/push/disiscrivi")
+def push_unsubscribe(endpoint: str = Body(..., embed=True), db: sqlite3.Connection = Depends(get_db)) -> Response:
+    push.unsubscribe(db, endpoint)
+    return JSONResponse({"ok": True})
 
 
 @router.get("/qr-sito.svg")
@@ -594,6 +653,7 @@ def match_form(request: Request, match_id: int, db: sqlite3.Connection = Depends
 def match_save(
     request: Request,
     match_id: int,
+    background: BackgroundTasks,
     s1: int = Form(...),
     s2: int = Form(...),
     vincitore: str | None = Form(None),
@@ -610,6 +670,7 @@ def match_save(
         flash(request, str(e), "err")
         return redirect(f"/partita/{match_id}")
     tracking.apply_live_splits(db, match_id)
+    background.add_task(push.send, push.due(db))
     msg = f"Confermato: {m.n1} {s1}–{s2} {m.n2}"
     if m.stage == "group" and get_setting(db, "phase") == "knockout":
         msg += ". Gironi conclusi: tabellone generato!"
@@ -631,6 +692,7 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
     missing_splits = sum(1 for m in service.matches(db) for s in (1, 2) if m.split_missing(s))
     return page(
         request, db, "admin.html", overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
+        push_subs=push.subscriber_count(db),
         solo=service.unassigned_guests(db), pins=pins,
         admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
         checkin_url=checkin_url(request, db),
@@ -929,11 +991,32 @@ def admin_board_reshuffle(request: Request, db: sqlite3.Connection = Depends(get
 
 
 @admin.post("/avvia")
-def admin_start(request: Request, seed: str | None = Form(None), db: sqlite3.Connection = Depends(get_db)) -> Response:
-    return _admin_action(
-        request, lambda: service.start_tournament(db, datetime.now(), _int(seed)),
-        "Si parte! Gironi sorteggiati e programma generato.",
-    )
+def admin_start(
+    request: Request, background: BackgroundTasks, seed: str | None = Form(None),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    def start() -> None:
+        service.start_tournament(db, datetime.now(), _int(seed))
+        background.add_task(push.send, push.first_matches(db))
+
+    return _admin_action(request, start, "Si parte! Gironi sorteggiati e programma generato.")
+
+
+@admin.post("/notifica")
+def admin_notify(
+    request: Request, background: BackgroundTasks, titolo: str = Form(""), testo: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    def notify() -> None:
+        deliveries = push.broadcast(db, titolo, testo)
+        background.add_task(push.send, deliveries)
+        flash(request, f"Notifica inviata a {len(deliveries)} telefoni.")
+
+    try:
+        notify()
+    except TournamentError as e:
+        flash(request, str(e), "err")
+    return redirect("/admin#notifiche")
 
 
 @admin.post("/riapri")

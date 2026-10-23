@@ -35,6 +35,20 @@ CREATE TABLE IF NOT EXISTS guests (
     registered_at TEXT,
     team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL
 );
+-- Web Push subscriptions: one per browser, linked to the couple of that session when known.
+CREATE TABLE IF NOT EXISTS push_subs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL
+);
+-- Match notices already sent ("now" / "next"), so each goes out once.
+CREATE TABLE IF NOT EXISTS push_sent (
+    match_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    PRIMARY KEY (match_id, kind)
+);
 -- Live tracking: every tap from any phone; the consensus is computed when reading (see app/live.py).
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
