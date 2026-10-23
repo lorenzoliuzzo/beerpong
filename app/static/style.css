@@ -82,6 +82,9 @@ a.ref-end { background: var(--accent); color: var(--accent-ink); }
 .ref-clock-label { color: var(--muted); font-size: .85rem; font-weight: 700; }
 .ref-clock.over .ref-clock-time { color: var(--err); }
 .ref-top strong { font-size: 1.05rem; }
+.cd { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.cd-under { display: block; font-size: .7rem; font-weight: 600; }
+.cd-under .cd { color: var(--muted); }
 main.ref-busy { opacity: .6; pointer-events: none; }
 .toast.err { background: var(--err); color: #fff; }
 .ref-q { text-align: center; margin: 4px 0; font-size: 1.05rem; }
@@ -1400,5 +1403,8 @@ input[type="range"] { -webkit-appearance: auto; appearance: auto; border: 0; pad
 .cheer-team { width: 100%; text-align: center; font-size: .78rem; font-weight: 800; color: var(--muted); overflow-wrap: anywhere; }
 button.cheer { min-height: 44px; flex: 1 1 0; min-width: 0; padding: 4px 2px; justify-content: center; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px; font-size: 1.3rem; display: flex; gap: 4px; align-items: center; }
 button.cheer small { font-size: .78rem; font-weight: 800; color: var(--muted); }
+button.cheer.on { background: var(--accent-soft); border-color: var(--accent); }
+button.cheer.on small { color: var(--accent); }
+button.cheer:disabled { opacity: .45; }
 button.cheer.pop { animation: cheer-pop .35s ease-out; }
 @keyframes cheer-pop { 50% { transform: scale(1.25); } }

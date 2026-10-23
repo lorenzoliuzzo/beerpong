@@ -14,7 +14,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
-<body {% if live %}data-live{% endif %} class="{% block body_class %}{% endblock %}">
+<body {% if live %}data-live{% endif %} data-server-ts="{{ server_ts }}" class="{% block body_class %}{% endblock %}">
 {% if demo %}
 <div class="demo-bar">
   <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">squadre inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
@@ -167,6 +167,18 @@
     });
     document.addEventListener("bp:refresh", render);
     render();
+  })();
+
+  // Countdowns to scheduled matches, on the server's clock (phones' clocks drift).
+  (() => {
+    const offset = Number(document.body.dataset.serverTs || Date.now()) - Date.now();
+    const tick = () => document.querySelectorAll("[data-countdown]").forEach((el) => {
+      const min = Math.round((new Date(el.dataset.countdown).getTime() - (Date.now() + offset)) / 60000);
+      el.textContent = min <= 0 ? " · adesso" : min < 60 ? ` · tra ${min} min`
+        : ` · tra ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+    });
+    tick(); setInterval(tick, 20000);
+    document.addEventListener("bp:refresh", tick);
   })();
 
   // Client-side filter for long lists: <input data-filter="#list"> hides rows whose text does not match.

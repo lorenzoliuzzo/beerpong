@@ -13,9 +13,9 @@
     {% if cfg.phase == "setup" %}Check-in fatto ✓ Girone, tavolo e prima partita sono nel profilo.
     {% elif dash.champion %}<div class="headline">🏆 Campioni!</div>
     {% elif dash.status == "now" %}<div class="headline">🔥 Tocca a voi · Tavolo {{ nm.field }}</div>
-    {% elif dash.status == "next" %}<div class="headline">📣 Preparatevi · Tavolo {{ nm.field }}</div>
+    {% elif dash.status == "next" %}<div class="headline">📣 Preparatevi · Tavolo {{ nm.field }}</div>{{ ui.countdown(nm) }}
     {% elif dash.eliminated %}Il vostro torneo è finito: grazie per aver giocato! 🍻
-    {% elif nm %}Prossima partita verso le {{ nm.time }}{% if nm.field %} · Tavolo {{ nm.field }}{% endif %}
+    {% elif nm %}Prossima partita verso le {{ nm.time }}{{ ui.countdown(nm) }}{% if nm.field %} · Tavolo {{ nm.field }}{% endif %}
     {% endif %}
   </a>
   {% if dash.to_split %}

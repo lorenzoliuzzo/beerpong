@@ -1,9 +1,12 @@
+{# "· tra 12 min" after a time: base.html counts down with the server clock; nothing once a match is on. #}
+{% macro countdown(m) %}{% if m.start_iso and not m.done and not m.started_at and not m.bye %}<span class="cd" data-countdown="{{ m.start_iso }}"></span>{% endif %}{% endmacro %}
+
 {% macro match(m, show_label=True, mine=None, actions=True, labels=None) %}
 <div class="match {{ 'mine' if mine and m.side(mine) }}">
   <div class="meta">
     <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
-    <span>{{ m.time }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
-      {%- if m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Cronaca" if m.done else "● LIVE" }}</a>
+    <span>{{ m.time }}{{ countdown(m) }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
+      {%- if m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Dettagli" if m.done else "● LIVE" }}</a>
       {%- elif m.t1 and m.t2 and m.playing %}<a class="live-pill past" href="/live/{{ m.id }}">📣 in chiamata</a>{% endif %}</span>
   </div>
   <div class="teams">
@@ -123,7 +126,7 @@
   <span class="{{ 'win' if m.winner == m.t1 }}">{{ m.n1 }}</span>
   {% if m.done %}<strong>{{ m.s1 }}–{{ m.s2 }}</strong>
   {% elif m.live_score %}<strong style="color:#e03131">● {{ m.live_score[0] }}–{{ m.live_score[1] }}</strong>
-  {% else %}<span class="muted small">{{ m.time }}{% if m.field %} · T{{ m.field }}{% endif %}</span>{% endif %}
+  {% else %}<span class="muted small">{{ m.time }}{{ countdown(m) }}{% if m.field %} · T{{ m.field }}{% endif %}</span>{% endif %}
   <span class="r {{ 'win' if m.winner == m.t2 }}">{{ m.n2 }}</span>
 </a>
 {% endmacro %}

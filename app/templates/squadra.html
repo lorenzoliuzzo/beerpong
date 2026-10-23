@@ -41,7 +41,7 @@
     </div>
   {% elif dash.status == "next" and dash.next_match %}
     <div class="banner next" style="margin-top:12px;margin-bottom:0">
-      <div class="label">📣 Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }})</div>
+      <div class="label">📣 Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }}{{ ui.countdown(dash.next_match) }})</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
     </div>
   {% endif %}

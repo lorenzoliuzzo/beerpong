@@ -33,7 +33,7 @@
         <div class="ref-clock" data-started="{{ m.started_at }}" data-duration="{{ (m.duration or 0) * 60 }}" data-now="{{ now_ts }}"><span class="ref-clock-time">--:--</span></div>
         <div class="ref-score-big">{{ rv.state.side_hits(order[0]) }}<span>–</span>{{ rv.state.side_hits(order[1]) }}</div>
       {% else %}
-        <div class="ref-meta">{{ m.label }}{% if m.time %} · ore {{ m.time }}{% endif %}</div>
+        <div class="ref-meta">{{ m.label }}{% if m.time %} · ore {{ m.time }}{{ ui.countdown(m) }}{% endif %}</div>
       {% endif %}
       <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="ref-swap" type="submit" aria-label="Scambia i lati">⇄</button></form>
     </div>
@@ -144,7 +144,7 @@
   <div class="list queue" style="margin:0 12px 12px">
     {% for m in pending %}
       <a class="row" href="{{ '/partita/' ~ m.id if can_referee(m) else '/live/' ~ m.id }}" style="color:inherit;text-decoration:none">
-        <span class="when">{{ m.time }}</span>
+        <span class="when">{{ m.time }}<small class="cd-under">{{ ui.countdown(m) }}</small></span>
         <div class="grow"><div class="title">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</div>
           <span class="muted small">{{ m.label }}{% if m.field and not field_no %} · Tavolo {{ m.field }}{% endif %}</span></div>
         <span class="chev">›</span>

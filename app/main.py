@@ -476,10 +476,36 @@ def live_page(request: Request, match_id: int, db: sqlite3.Connection = Depends(
     return page(request, db, "live.html", m=m)
 
 
+def cheer_account(request: Request) -> str:
+    """Who is cheering: the couple when logged in (all its phones count once), else this browser."""
+    team_id = my_team_id(request)
+    return f"team:{team_id}" if team_id is not None else f"device:{device_id(request)}"
+
+
+def playing_now(request: Request, db: sqlite3.Connection) -> bool:
+    """A couple at the table, its match started: it is playing, not following matches on the phone."""
+    team_id = my_team_id(request)
+    if team_id is None:
+        return False
+    return db.execute(
+        "SELECT 1 FROM matches WHERE done = 0 AND started_at IS NOT NULL AND ? IN (team1, team2)", (team_id,)
+    ).fetchone() is not None
+
+
+PLAYING_MSG = "State giocando: occhi sul tavolo! 🏓 Il live lo seguite dopo."
+
+
+def _live_json(request: Request, db: sqlite3.Connection, match_id: int, device: str | None) -> JSONResponse:
+    data = tracking.live_view(db, match_id, server_now(), device)
+    data["my_cheers"] = tracking.my_cheers(db, match_id, cheer_account(request) if device else None)
+    data["you_play"] = playing_now(request, db)
+    return JSONResponse(data)
+
+
 @router.get("/api/live/{match_id}")
 def live_state(request: Request, match_id: int, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
     try:
-        return JSONResponse(tracking.live_view(db, match_id, server_now(), request.session.get("device")))
+        return _live_json(request, db, match_id, request.session.get("device"))
     except TournamentError as e:
         return JSONResponse({"error": str(e)}, status_code=404)
 
@@ -489,11 +515,13 @@ def live_report(
     request: Request, match_id: int, body: ReportIn, db: sqlite3.Connection = Depends(get_db)
 ) -> JSONResponse:
     device = device_id(request)
+    if playing_now(request, db):
+        return JSONResponse({"error": PLAYING_MSG}, status_code=403)
     if not _report_allowed(request, device):
         return JSONResponse({"error": "Piano! Troppe segnalazioni ravvicinate."}, status_code=429)
     try:
         tracking.add_report(db, match_id, device, body.kind, body.side, body.player, body.cup, server_now())
-        return JSONResponse(tracking.live_view(db, match_id, server_now(), device))
+        return _live_json(request, db, match_id, device)
     except TournamentError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -506,11 +534,13 @@ class CheerIn(BaseModel):
 @router.post("/api/live/{match_id}/tifo")
 def live_cheer(request: Request, match_id: int, body: CheerIn, db: sqlite3.Connection = Depends(get_db)) -> JSONResponse:
     device = device_id(request)
+    if playing_now(request, db):
+        return JSONResponse({"error": PLAYING_MSG}, status_code=403)
     if not _report_allowed(request, device):
         return JSONResponse({"error": "Piano! 🍻"}, status_code=429)
     try:
-        tracking.cheer(db, match_id, body.side, body.emoji, device, server_now())
-        return JSONResponse(tracking.live_view(db, match_id, server_now(), device))
+        tracking.cheer(db, match_id, body.side, body.emoji, cheer_account(request), server_now())
+        return _live_json(request, db, match_id, device)
     except TournamentError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -520,7 +550,7 @@ def live_undo(request: Request, match_id: int, body: UndoIn, db: sqlite3.Connect
     device = device_id(request)
     try:
         tracking.undo_report(db, match_id, device, body.id, server_now())
-        return JSONResponse(tracking.live_view(db, match_id, server_now(), device))
+        return _live_json(request, db, match_id, device)
     except TournamentError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 

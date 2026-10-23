@@ -200,12 +200,41 @@ def test_live_view_has_trend_streak_cheers_and_other_tables(client: TestClient, 
     assert 'id="trend"' in page and 'id="cheer1"' in page and 'id="others"' in page
 
 
-def test_cheers_are_capped_per_phone(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    setup_tournament(client, 8, fields=2)
-    m = next(x for x in db_call(service.matches) if x.playing)
+def test_one_cheer_of_each_kind_per_account_and_none_while_playing(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
-    monkeypatch.setattr("app.main.REPORT_MAX_PER_MINUTE", 1000)
-    for _ in range(tracking.CHEERS_PER_DEVICE):
-        assert client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🍺"}).status_code == 200
-    r = client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🍺"})
-    assert r.status_code == 400 and "abbastanza" in r.json()["error"]
+    client.post("/login", data={"pin": ADMIN_PIN})
+    client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(8))})
+    client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 7, "buffer_min": 1})
+    for t in db_call(service.teams).values():
+        client.post(f"/admin/squadre/{t['id']}/presente", data={"presente": 1})
+    client.post("/admin/avvia")
+    client.post("/logout")
+    m = next(x for x in db_call(service.matches) if x.playing)
+
+    def tifo(c: TestClient, side: int = 1, emo: str = "🍺"):
+        return c.post(f"/api/live/{m.id}/tifo", json={"side": side, "emoji": emo})
+
+    r = tifo(client)
+    assert r.json()["cheers"][0]["🍺"] == 1 and r.json()["my_cheers"] == [[1, "🍺"]]
+    assert tifo(client, 1, "🔥").json()["cheers"][0]["🔥"] == 1  # another kind counts on its own
+    r = tifo(client)  # the same one again takes it back
+    assert r.json()["cheers"][0]["🍺"] == 0 and r.json()["my_cheers"] == [[1, "🔥"]]
+
+    # a couple cheers once whatever the number of its phones
+    waiting = next(t for t in db_call(service.teams).values() if t["id"] not in (m.t1, m.t2))
+    phones = [TestClient(client.app) for _ in range(2)]
+    for ph in phones:
+        assert "Bentornati" in ph.post("/checkin/accedi", data={"phone": waiting["phone1"]}).text
+    assert tifo(phones[0], 2, "👏").json()["cheers"][1]["👏"] == 1
+    assert tifo(phones[1], 2, "👏").json()["cheers"][1]["👏"] == 0  # same couple: the second tap took it back
+
+    # a couple whose match is on can neither cheer nor report shots, and the page knows it
+    db_call(lambda db: service.start_match(db, m.id, 1000.0, 1))
+    with TestClient(client.app) as at_table:
+        at_table.post("/checkin/accedi", data={"phone": db_call(service.team, m.t1)["phone1"]})
+        r = tifo(at_table)
+        assert r.status_code == 403 and "occhi sul tavolo" in r.json()["error"]
+        r = at_table.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 1})
+        assert r.status_code == 403
+        assert at_table.get(f"/api/live/{m.id}").json()["you_play"] is True
+    assert client.get(f"/api/live/{m.id}").json()["you_play"] is False

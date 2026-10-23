@@ -76,13 +76,12 @@
   </div>
   <div class="toast" id="toast" hidden></div>
 
+  <p id="you-play" class="banner warm" hidden>🏓 State giocando: tifo e segnalazioni tornano quando finisce la vostra partita.</p>
   <section class="cheers" aria-label="Tifo">
     <div class="cheer-col" id="cheer1"></div>
     <div class="cheer-col" id="cheer2"></div>
   </section>
 
-  <h2>Cronaca</h2>
-  <div class="feed" id="feed"><p class="muted">Ancora nessun tiro segnalato.</p></div>
   <p class="muted small" id="crowd-note">Tutti possono segnalare i tiri: vale ciò che segnala la maggioranza dei telefoni che seguono la partita. L'orologio è lo stesso per tutti.</p>
 </div>
 
@@ -151,11 +150,16 @@
       return `<div class="prow"><span>${esc(p || "Giocatore " + (j + 1))}</span><b>${st.hits}/${st.shots}</b><small>${pct}</small></div>`;
     }).join("")}</div>`).join("");
     const cheers = data.cheers || [{}, {}];
+    const mineCheers = new Set((data.my_cheers || []).map(([s, e]) => `${s}${e}`));
     for (const i of [1, 2]) {
       $(`#cheer${i}`).innerHTML = `<div class="cheer-team">${esc(data.teams[i - 1].name)}</div>` +
-        Object.entries(cheers[i - 1]).map(([emo, n]) =>
-          `<button class="cheer" data-cheer="${i}" data-emoji="${emo}" aria-label="Tifa ${esc(data.teams[i - 1].name)} ${emo}">${emo}<small>${n}</small></button>`).join("");
+        Object.entries(cheers[i - 1]).map(([emo, n]) => {
+          const on = mineCheers.has(`${i}${emo}`);
+          return `<button class="cheer ${on ? "on" : ""}" data-cheer="${i}" data-emoji="${emo}" aria-pressed="${on}" ${data.you_play ? "disabled" : ""}
+            aria-label="Tifa ${esc(data.teams[i - 1].name)} ${emo}">${emo}<small>${n}</small></button>`;
+        }).join("");
     }
+    $("#you-play").hidden = !data.you_play;
     const others = data.others || [];
     $("#others").hidden = !others.length;
     $("#others").innerHTML = others.map((o) => `<a href="/live/${o.id}"><span class="tno">T${o.field}</span>
@@ -169,7 +173,7 @@
 
     const over = data.done || data.winner_side;
     $("#start").hidden = over || data.started_at != null || data.official;
-    $("#shooters").hidden = over || data.started_at == null || data.official;
+    $("#shooters").hidden = over || data.started_at == null || data.official || data.you_play;
     $("#official").hidden = over || !data.official;
     $("#crowd-note").hidden = data.official;
     const res = $("#result");
@@ -183,16 +187,6 @@
       res.hidden = true;
     }
 
-    const feed = data.shots.map((s) => {
-      const t = data.teams[s.side - 1];
-      const who = esc(t.players[s.player - 1] || "Giocatore " + s.player);
-      const when = data.started_at ? mmss(Math.max(0, s.at - data.started_at)) : "";
-      const what = s.removed != null ? `🎯 centra il bicchiere <b>${s.removed}</b>` : "❌ fuori";
-      return `<div class="fitem s${s.side}"><span class="ftime">${when}</span>
-        <span class="ftext"><b>${who}</b> <span class="muted">(${esc(t.name)})</span> ${what}</span>
-        ${data.official ? "" : `<span class="fvotes" title="segnalazioni">👥${s.votes}</span>`}</div>`;
-    }).join("");
-    $("#feed").innerHTML = feed || '<p class="muted">Ancora nessun tiro segnalato.</p>';
   }
 
   function tick() {

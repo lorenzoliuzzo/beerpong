@@ -63,6 +63,7 @@ class MatchView:
     live_score: tuple[int, int] | None = None
     playing: bool = False  # its turn on a table right now (see live()): the couples are called
     started_at: float | None = None  # the referee started it
+    start_iso: str = ""  # scheduled start, local time, for the countdowns
 
     def side(self, team: int | None) -> int | None:
         return 1 if team is not None and team == self.t1 else 2 if team is not None and team == self.t2 else None
@@ -846,6 +847,7 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 pos=r["pos"],
                 live_score=ls,
                 started_at=r["started_at"],
+                start_iso=r["start"] or "",
             )
         )
     for m in live(views)[0]:
@@ -1814,7 +1816,7 @@ class PlannedMatch:
 @dataclass
 class PlannedSchedule:
     start: str
-    slots: list[tuple[str, list[PlannedMatch]]]
+    slots: list[tuple[str, list[PlannedMatch], str]]  # (HH:MM, matches, ISO start for the countdown)
     groups_end: str
     final: str
 
@@ -1837,7 +1839,10 @@ def planned_schedule(db: sqlite3.Connection, now: datetime) -> PlannedSchedule |
     )
     return PlannedSchedule(
         start=base.strftime("%H:%M"),
-        slots=[((base + si * step).strftime("%H:%M"), sorted(ms, key=lambda m: m.field)) for si, ms in sorted(by_slot.items())],
+        slots=[
+            ((base + si * step).strftime("%H:%M"), sorted(ms, key=lambda m: m.field), _fmt(base + si * step))
+            for si, ms in sorted(by_slot.items())
+        ],
         groups_end=groups_end.strftime("%H:%M"),
         final=ko_end.strftime("%H:%M"),
     )
@@ -1881,7 +1886,7 @@ def provisional_spot(db: sqlite3.Connection, team_id: int, now: datetime) -> Pro
     table = next((f for f, gs in board_tables(db, groups) or [] if group in gs), None)
     plan = planned_schedule(db, now)
     first = next(
-        ((time, m) for time, ms in (plan.slots if plan else []) for m in ms if team_id in (m.team1["id"], m.team2["id"])),
+        ((time, m) for time, ms, _ in (plan.slots if plan else []) for m in ms if team_id in (m.team1["id"], m.team2["id"])),
         None,
     )
     rival = (first[1].team2 if first[1].team1["id"] == team_id else first[1].team1) if first else None

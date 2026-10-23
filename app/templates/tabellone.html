@@ -37,7 +37,7 @@
             {% endif %}
             {% if tv.next_match %}
               <div class="muted small" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">
-                📣 <strong>Prossima chiamata (~{{ tv.next_match.time }}):</strong> {{ tv.next_match.n1 }} vs {{ tv.next_match.n2 }}
+                📣 <strong>Prossima chiamata (~{{ tv.next_match.time }}{{ ui.countdown(tv.next_match) }}):</strong> {{ tv.next_match.n1 }} vs {{ tv.next_match.n2 }}
               </div>
             {% endif %}
           </div>

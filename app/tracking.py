@@ -197,20 +197,28 @@ def referee_undo(db: sqlite3.Connection, match_id: int) -> None:
 
 
 CHEERS = ("🍺", "🔥", "👏")
-CHEERS_PER_DEVICE = 60  # per match: enough to cheer, not to flood
 
 
-def cheer(db: sqlite3.Connection, match_id: int, side: int, emoji: str, device: str, now: float) -> None:
+def cheer(db: sqlite3.Connection, match_id: int, side: int, emoji: str, account: str, now: float) -> bool:
+    """One emoji of each kind per account and couple: a second tap takes it back. Returns whether it is on."""
     m = service.match(db, match_id)
     if m is None or m.bye or m.t1 is None or m.t2 is None:
         raise TournamentError("Partita non disponibile.")
     if side not in (1, 2) or emoji not in CHEERS:
         raise TournamentError("Tifo non valido.")
-    used = db.execute("SELECT COUNT(*) FROM cheers WHERE match_id = ? AND device = ?", (match_id, device)).fetchone()[0]
-    if used >= CHEERS_PER_DEVICE:
-        raise TournamentError("Hai tifato abbastanza per questa partita! 🍻")
     with db:
-        db.execute("INSERT INTO cheers(match_id, side, emoji, device, at) VALUES (?, ?, ?, ?, ?)", (match_id, side, emoji, device, now))
+        gone = db.execute(
+            "DELETE FROM cheers WHERE match_id = ? AND side = ? AND emoji = ? AND device = ?", (match_id, side, emoji, account)
+        ).rowcount
+        if not gone:
+            db.execute("INSERT INTO cheers(match_id, side, emoji, device, at) VALUES (?, ?, ?, ?, ?)", (match_id, side, emoji, account, now))
+    return not gone
+
+
+def my_cheers(db: sqlite3.Connection, match_id: int, account: str | None) -> list[list]:
+    if not account:
+        return []
+    return [[r["side"], r["emoji"]] for r in db.execute("SELECT side, emoji FROM cheers WHERE match_id = ? AND device = ?", (match_id, account))]
 
 
 def _cheers(db: sqlite3.Connection, match_id: int) -> dict[int, dict[str, int]]:

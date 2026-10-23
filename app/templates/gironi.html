@@ -82,7 +82,7 @@
             <div class="regia-next {{ 'mine-next' if me and me.id in (tv.next_match.t1, tv.next_match.t2) }}">
               <div class="rn-top">
                 <span class="next-badge-call">📣 PROSSIMA CHIAMATA</span>
-                <span class="time-est">{{ tv.next_match.label }} · ~{{ tv.next_match.time }}</span>
+                <span class="time-est">{{ tv.next_match.label }} · ~{{ tv.next_match.time }}{{ ui.countdown(tv.next_match) }}</span>
               </div>
               <div class="rn-teams">
                 <a href="/squadra/{{ tv.next_match.t1 }}"><strong>{{ tv.next_match.n1 }}</strong></a>
@@ -118,7 +118,7 @@
                     <div class="qi-meta">
                       <span class="qi-order">#{{ loop.index }}</span>
                       <span>{{ m.label }}</span>
-                      <span class="qi-time">~{{ m.time }}</span>
+                      <span class="qi-time">~{{ m.time }}{{ ui.countdown(m) }}</span>
                     </div>
                     {{ ui.mini(m, mine=me.id if me) }}
                   </div>
