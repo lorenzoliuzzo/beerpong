@@ -56,7 +56,26 @@
   {% endif %}
 </div>
 
-{% if profile %}
+{% if me and me.id == t.id %}{{ ui.push_box() }}{% endif %}
+
+<!-- SEZIONE 4: CLASSIFICA DEL GIRONE -->
+{% if dash.table %}
+  <div class="section-head" style="margin-top:22px">
+    <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
+    <a href="/gironi?g={{ t.grp }}" class="small">Vai al girone ›</a>
+  </div>
+  {{ ui.table(dash.table.rows, T, thirds, mine=t.id) }}
+{% endif %}
+
+<!-- SEZIONE 5: PARTITE DELLA SQUADRA -->
+{% if dash.matches %}
+  <h2 style="margin-top:22px">📅 Partite di {{ t.name }}</h2>
+  {% for m in dash.matches %}{{ ui.match(m, mine=t.id) }}{% endfor %}
+{% elif cfg.phase == "setup" %}
+  <p class="muted" style="margin-top:18px">Il calendario comparirà all'inizio del torneo.</p>
+{% endif %}
+
+{% if profile and profile.played %}
   <!-- SEZIONE 1: TUTTI I RANKING DELLA SQUADRA -->
   <div class="section-head" style="margin-top:18px">
     <h2>🏅 Posizionamento nei Ranking</h2>
@@ -214,23 +233,8 @@
       </div>
     </details>
   {% endif %}
-{% endif %}
-
-<!-- SEZIONE 4: CLASSIFICA DEL GIRONE -->
-{% if dash.table %}
-  <div class="section-head" style="margin-top:22px">
-    <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
-    <a href="/gironi?g={{ t.grp }}" class="small">Vai al girone ›</a>
-  </div>
-  {{ ui.table(dash.table.rows, T, thirds, mine=t.id) }}
-{% endif %}
-
-<!-- SEZIONE 5: PARTITE DELLA SQUADRA -->
-{% if dash.matches %}
-  <h2 style="margin-top:22px">📅 Partite di {{ t.name }}</h2>
-  {% for m in dash.matches %}{{ ui.match(m, mine=t.id) }}{% endfor %}
-{% elif cfg.phase == "setup" %}
-  <p class="muted" style="margin-top:18px">Il calendario comparirà all'inizio del torneo.</p>
+{% elif profile %}
+  <p class="muted small" style="margin-top:18px">Statistiche di coppia e dei giocatori compariranno dopo la prima partita.</p>
 {% endif %}
 
 <!-- SEZIONE 6: SCONTRI DIRETTI (H2H) -->

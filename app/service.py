@@ -59,6 +59,7 @@ class MatchView:
     round: int
     pos: int
     live_score: tuple[int, int] | None = None
+    playing: bool = False  # on a table right now (see live())
 
     def side(self, team: int | None) -> int | None:
         return 1 if team is not None and team == self.t1 else 2 if team is not None and team == self.t2 else None
@@ -745,6 +746,8 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 live_score=ls,
             )
         )
+    for m in live(views)[0]:
+        m.playing = True
     return views
 
 

@@ -148,12 +148,12 @@ def test_phase_transition_and_team_profile(client: TestClient) -> None:
     setup_tournament(client, 8, fields=2)
     r_profile = client.get("/squadra/1")
     assert r_profile.status_code == 200
-    assert "Posizionamento nei Ranking" in r_profile.text
-    assert "Statistiche di Coppia" in r_profile.text
-    assert "Statistiche Personali Giocatori" in r_profile.text
+    assert "compariranno dopo la prima partita" in r_profile.text and "Posizionamento nei Ranking" not in r_profile.text
 
     # Finish all group matches -> /gironi automatically redirects to /tabellone
     play_all(client, "group", rng)
+    r_profile = client.get("/squadra/1").text
+    assert "Posizionamento nei Ranking" in r_profile and "Statistiche Personali Giocatori" in r_profile
     r_gironi = client.get("/gironi", follow_redirects=False)
     assert r_gironi.status_code == 303 and r_gironi.headers["location"] == "/tabellone"
     # Archived groups still accessible via ?archivio=1
@@ -823,3 +823,18 @@ def test_home_shows_the_queue_at_my_table(client: TestClient) -> None:
     home = client.get("/").text
     field = next(m.field for m in db_call(service.matches) if m.side(1))
     assert f"Al vostro tavolo · 🏓 Tavolo {field}" in home and '<span class="when">Ora</span>' in home
+
+
+def test_rankings_default_to_groups_with_my_position(client: TestClient) -> None:
+    import_teams(client, 8)
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    for t in sorted(db_call(service.teams).values(), key=lambda t: t["id"] == 1):
+        client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
+    client.post("/admin/avvia")
+    page = client.get("/classifiche").text
+    assert 'href="/classifiche?vista=gironi" class="on">Gironi' in page
+    assert "La vostra posizione · Squadra 0" in page and '<span class="pill accent">il vostro</span>' in page
+    mine = next(m for m in db_call(service.matches) if m.side(1))
+    later = [m for m in db_call(service.matches) if m.side(1) and not m.playing]
+    assert later and f'href="/live/{later[0].id}"' not in client.get("/squadra/1").text  # no LIVE pill for later matches
+    assert "Attiva le notifiche" in client.get("/squadra/1").text and mine

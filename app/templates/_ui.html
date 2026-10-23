@@ -3,7 +3,7 @@
   <div class="meta">
     <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
     <span>{{ m.time }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
-      {%- if m.t1 and m.t2 and not m.bye %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Cronaca" if m.done else "● LIVE" }}</a>{% endif %}</span>
+      {%- if m.t1 and m.t2 and not m.bye and (m.done or m.playing) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Cronaca" if m.done else "● LIVE" }}</a>{% endif %}</span>
   </div>
   <div class="teams">
     {% if m.t1 %}<a class="t {{ 'win' if m.winner == m.t1 }}" href="/squadra/{{ m.t1 }}">{{ m.n1 }}{% if labels and m.t1 in labels %}<small class="origin">{{ labels[m.t1] }}</small>{% endif %}</a>{% else %}<span class="t muted">{{ m.n1 }}</span>{% endif %}

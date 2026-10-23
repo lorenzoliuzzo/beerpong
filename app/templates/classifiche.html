@@ -7,10 +7,22 @@
 </div>
 
 <nav class="segmented" style="margin-bottom:12px">
+  {% if tables %}<a href="/classifiche?vista=gironi" class="{{ 'on' if view == 'gironi' }}">Gironi</a>{% endif %}
   <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Squadre</a>
   <a href="/classifiche?vista=giocatori" class="{{ 'on' if view == 'giocatori' }}">Marcatori</a>
-  <a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri &amp; Precisione</a>
+  <a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri</a>
 </nav>
+
+{% if mine and (mine.group_pos or mine.cups_pos or mine.players) %}
+  <a class="card my-rank" href="/squadra/{{ me.id }}">
+    <div class="label muted small">La vostra posizione · {{ me.name }}</div>
+    <div class="my-rank-row">
+      {% if mine.group_pos %}<div><div class="big">{{ mine.group_pos }}°</div><span class="muted small">nel {{ mine.group.name }}</span></div>{% endif %}
+      {% if mine.cups_pos %}<div><div class="big">#{{ mine.cups_pos }}</div><span class="muted small">per bicchieri</span></div>{% endif %}
+      {% for pos, s in mine.players %}<div><div class="big">#{{ pos }}</div><span class="muted small">{{ s.player }} · {{ s.cups }} 🥤</span></div>{% endfor %}
+    </div>
+  </a>
+{% endif %}
 
 {% if view == "coppie" %}
   <!-- Filter chips by Girone -->
@@ -23,17 +35,16 @@
   </div>
   {% endif %}
 
+  <p class="muted small">Ordinate per bicchieri fatti: chi ha giocato di più è avvantaggiato. Per chi passa il turno guarda <a href="/classifiche?vista=gironi">Gironi</a>.</p>
   <div class="table-wrap">
-  <table>
+  <table class="compact">
     <thead>
       <tr>
         <th>#</th>
         <th class="name">Squadra</th>
-        <th>Girone</th>
         <th>Bic.</th>
         <th>V/G</th>
-        <th>Diff</th>
-        <th>Media</th>
+        <th>DB</th>
       </tr>
     </thead>
     <tbody id="teams-stats-body">
@@ -48,15 +59,14 @@
         </td>
         <td class="name">
           <a href="/squadra/{{ s.team }}"><strong>{{ s.name }}</strong></a>
+          <div class="muted small">{{ s.grp_name or "—" }}{% if s.played %} · {{ "%.1f"|format(s.average) }}/partita{% endif %}</div>
         </td>
-        <td><span class="pill" style="font-size:0.75rem;padding:2px 7px">{{ s.grp_name or "—" }}</span></td>
         <td><strong>{{ s.cups_for }}</strong></td>
         <td>{{ s.won }}/{{ s.played }}</td>
         <td>{{ "%+d"|format(s.diff) }}</td>
-        <td>{{ "%.1f"|format(s.average) }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="name muted">Nessuna statistica ancora registrata.</td></tr>
+      <tr><td colspan="5" class="name muted">Nessuna statistica ancora registrata.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -75,15 +85,13 @@
   {% endif %}
 
   <div class="table-wrap">
-  <table>
+  <table class="compact">
     <thead>
       <tr>
         <th>#</th>
         <th class="name">Giocatore</th>
-        <th>Girone</th>
         <th>Bic.</th>
-        <th>Partite</th>
-        <th>Media</th>
+        <th>Part.</th>
       </tr>
     </thead>
     <tbody id="scorers-stats-body">
@@ -98,15 +106,13 @@
         </td>
         <td class="name">
           <strong>{{ s.player }}</strong><br>
-          <a class="muted small" href="/squadra/{{ s.team_id }}">{{ s.team }}</a>
+          <a class="muted small" href="/squadra/{{ s.team_id }}">{{ s.team }}</a><span class="muted small"> · {{ s.grp_name or "—" }}</span>
         </td>
-        <td><span class="pill" style="font-size:0.75rem;padding:2px 7px">{{ s.grp_name or "—" }}</span></td>
         <td><strong>{{ s.cups }}</strong></td>
         <td>{{ s.played }}</td>
-        <td>{{ "%.1f"|format(s.average) }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="name muted">Ancora nessun canestro registrato per i giocatori.</td></tr>
+      <tr><td colspan="4" class="name muted">Ancora nessun canestro registrato per i giocatori.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -176,11 +182,11 @@
       <section class="group anchor" id="g{{ g.grp }}">
         <div class="group-head">
           <span class="badge">{{ g.name|replace("Girone ", "") }}</span>
-          <h2>{{ g.name }}</h2>
+          <h2>{{ g.name }}{% if mine and mine.group is sameas g %} <span class="pill accent">il vostro</span>{% endif %}</h2>
           <span class="muted small">{{ played }}/{{ g.matches|length }} partite</span>
         </div>
         {{ ui.table(g.rows, T, thirds, mine=me.id if me) }}
-        <details class="results">
+        <details class="results" {{ 'open' if mine and mine.group is sameas g }}>
           <summary>Risultati e prossime partite</summary>
           {% for m in g.matches|sort(attribute="done", reverse=True) %}{{ ui.mini(m, mine=me.id if me) }}{% endfor %}
         </details>

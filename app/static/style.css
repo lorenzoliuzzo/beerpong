@@ -238,6 +238,11 @@ button.small, .btn.small { min-height: 38px; padding: 6px 12px; font-size: .88re
 .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .total { font-size: 2rem; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
 
+.my-rank { display: block; text-decoration: none; color: var(--text); background: var(--accent-soft); border-color: var(--accent); }
+.my-rank .label { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.my-rank-row { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; }
+.my-rank-row .big { font-size: 1.5rem; font-weight: 900; }
+table.compact td.name { white-space: normal; }
 .presence-head { display: flex; gap: 14px; align-items: center; }
 .presence-head .big { font-size: 2rem; font-weight: 900; }
 .presence-group { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
