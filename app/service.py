@@ -768,8 +768,10 @@ def tables_independent(pending: list[tuple[int | None, int | None, int | None]])
     so each table can move through its own queue without waiting for the others."""
     fields_of: dict[int, set[int]] = defaultdict(set)
     for f, *pair in pending:
+        if None in pair:
+            return False  # a knockout match still waiting for winners of matches on other tables
         for t in pair:
-            if t is not None and f is not None:
+            if f is not None:
                 fields_of[t].add(f)
     return all(len(fs) == 1 for fs in fields_of.values())
 
@@ -1639,7 +1641,7 @@ class ChatListResult:
 
 
 # A run of digits that may be broken by spaces, dots or dashes, as WhatsApp shows "+39 333 123 4567".
-PHONE_IN_TEXT = re.compile(r"\+?\d[\d\s.\-/()]{6,}\d")
+PHONE_IN_TEXT = re.compile(r"\+?\d[\d \t.\-/()]{6,}\d")
 
 
 def mark_chat_from_list(db: sqlite3.Connection, text: str) -> ChatListResult:

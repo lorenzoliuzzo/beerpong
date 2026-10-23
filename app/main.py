@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import io
-import re
 import logging
+import re
 import secrets
 import sqlite3
 import time
@@ -14,11 +14,20 @@ from urllib.parse import urlencode
 
 import qrcode
 import qrcode.image.svg
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, FastAPI, Form, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    Depends,
+    FastAPI,
+    Form,
+    HTTPException,
+    Request,
+)
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import planning, push, service, tracking
@@ -183,7 +192,7 @@ def groups_page(
     if me_team and me_team["grp"] is not None and tables:
         my_table = planning.table_for_group(me_team["grp"], len(tables), cfg.fields)
 
-    if tavolo.isdigit() and 1 <= int(tavolo) <= cfg.fields:
+    if tavolo.isdecimal() and 1 <= int(tavolo) <= cfg.fields:
         active_tavolo = int(tavolo)
     elif my_table:
         active_tavolo = my_table
@@ -192,7 +201,7 @@ def groups_page(
 
     if g == "all":
         active_grp = "all"
-    elif g.isdigit() and any(t.grp == int(g) for t in tables):
+    elif g.isdecimal() and any(t.grp == int(g) for t in tables):
         active_grp = f"g{int(g)}"
     elif me_team and me_team["grp"] is not None:
         active_grp = f"g{me_team['grp']}"
@@ -213,7 +222,7 @@ def groups_page(
         board, _ = service.board_groups(db)
         setup_tables = service.board_tables(db, board) or ([(0, board)] if board else None)
         spot = service.provisional_spot(db, team_id, datetime.now()) if team_id else None
-        if not tavolo.isdigit() and spot and spot.table:
+        if not tavolo.isdecimal() and spot and spot.table:
             active_tavolo = spot.table
     return page(
         request, db, "gironi.html", tables=tables, table_views=t_views, T=service.teams(db), setup_tables=setup_tables,
@@ -331,14 +340,21 @@ def push_key(db: sqlite3.Connection = Depends(get_db)) -> Response:
     return JSONResponse({"key": push.public_key(db)})
 
 
+class PushKeys(BaseModel):
+    p256dh: str = Field(min_length=16, max_length=200)
+    auth: str = Field(min_length=8, max_length=100)
+
+
+class PushSubscription(BaseModel):
+    endpoint: str = Field(max_length=1000)
+    keys: PushKeys
+
+
 @router.post("/push/iscrivi")
-def push_subscribe(request: Request, subscription: dict = Body(...), db: sqlite3.Connection = Depends(get_db)) -> Response:
-    if _throttled(request):
-        return JSONResponse({"ok": False}, status_code=429)
+def push_subscribe(request: Request, sub: PushSubscription, db: sqlite3.Connection = Depends(get_db)) -> Response:
     try:
-        push.subscribe(db, subscription, my_team_id(request))
+        push.subscribe(db, sub.endpoint, sub.keys.p256dh, sub.keys.auth, my_team_id(request))
     except TournamentError as e:
-        _record_failure(request)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return JSONResponse({"ok": True})
 
@@ -859,12 +875,12 @@ async def admin_missing_apply(request: Request, db: sqlite3.Connection = Depends
     renames = {
         int(k.removeprefix("rinomina_")): str(v)
         for k, v in form.items()
-        if k.startswith("rinomina_") and k.removeprefix("rinomina_").isdigit() and v
+        if k.startswith("rinomina_") and k.removeprefix("rinomina_").isdecimal() and v
     }
     flag = {
         int(team_id): "Non presente nell'elenco ufficiale: da verificare"
         for team_id in form.getlist("fuori_elenco")
-        if str(team_id).isdigit() and int(team_id) not in renames
+        if str(team_id).isdecimal() and int(team_id) not in renames
     }
     try:
         added, renamed = service.apply_reconciliation(db, add, renames, flag)
@@ -1082,7 +1098,7 @@ def admin_rotate_key(request: Request, db: sqlite3.Connection = Depends(get_db))
 @admin.post("/pin")
 def admin_pin(request: Request, pin: str = Form(...), db: sqlite3.Connection = Depends(get_db)) -> Response:
     pin = pin.strip()
-    if len(pin) < 6 or not pin.isdigit():
+    if len(pin) < 6 or not pin.isdecimal():
         flash(request, "Il PIN admin deve avere almeno 6 cifre.", "err")
         return redirect("/admin#pin")
     with db:

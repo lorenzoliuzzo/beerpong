@@ -279,7 +279,7 @@
 {% if own %}
   <div class="own-actions">
     <a class="btn ghost wide" href="/checkin/{{ t.id }}">Modifica i vostri dati</a>
-    <form method="post" action="/esci-squadra" onsubmit="return confirm('Uscire dal profilo di {{ t.name }} su questo telefono?')">
+    <form method="post" action="/esci-squadra" onsubmit='return confirm({{ ("Uscire dal profilo di " ~ t.name ~ " su questo telefono?")|tojson }})'>
       <button class="link" type="submit">Non siete voi? Esci</button>
     </form>
   </div>

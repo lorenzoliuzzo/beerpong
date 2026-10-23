@@ -11,7 +11,9 @@ import json
 import logging
 import sqlite3
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
+import requests
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
 from pywebpush import WebPushException, webpush
@@ -20,6 +22,12 @@ from . import service
 from .db import connect, get_setting, set_setting
 
 log = logging.getLogger("beerpong.push")
+
+
+# Only the browsers' push services: a subscription can never make the Pi post to an arbitrary address.
+PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com", ".push.apple.com", ".notify.windows.com")
+MAX_SUBSCRIPTIONS = 1000
+SEND_TIMEOUT_S = 10
 
 
 @dataclass
@@ -44,24 +52,39 @@ def public_key(db: sqlite3.Connection) -> str:
     vapid = Vapid()
     vapid.generate_keys()
     raw = vapid.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
-    key = base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
     with db:
-        set_setting(db, "vapid_private", vapid.private_pem().decode())
-        set_setting(db, "vapid_public", key)
-    return key
+        # OR IGNORE: if another request created the pair meanwhile, keep that one and return it below.
+        db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('vapid_private', ?)", (vapid.private_pem().decode(),))
+        if db.execute("SELECT changes()").fetchone()[0]:
+            set_setting(db, "vapid_public", base64.urlsafe_b64encode(raw).rstrip(b"=").decode())
+    return get_setting(db, "vapid_public")
 
 
-def subscribe(db: sqlite3.Connection, subscription: dict, team_id: int | None) -> None:
-    endpoint = subscription.get("endpoint", "")
-    keys = subscription.get("keys") or {}
-    if not endpoint.startswith("https://") or not keys.get("p256dh") or not keys.get("auth"):
+def _key_length(b64: str) -> int:
+    try:
+        return len(base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)))
+    except ValueError:
+        return 0
+
+
+def subscribe(db: sqlite3.Connection, endpoint: str, p256dh: str, auth: str, team_id: int | None) -> None:
+    url = urlparse(endpoint)
+    host = url.hostname or ""
+    if url.scheme != "https" or not any(host == h or (h.startswith(".") and host.endswith(h)) for h in PUSH_HOSTS):
         raise service.TournamentError("Iscrizione alle notifiche non valida.")
+    # A browser's keys: an uncompressed P-256 point and a 16-byte secret.
+    if _key_length(p256dh) != 65 or _key_length(auth) != 16:
+        raise service.TournamentError("Iscrizione alle notifiche non valida.")
+    known = db.execute("SELECT 1 FROM push_subs WHERE endpoint = ?", (endpoint,)).fetchone()
+    if not known and db.execute("SELECT COUNT(*) FROM push_subs").fetchone()[0] >= MAX_SUBSCRIPTIONS:
+        raise service.TournamentError("Troppe iscrizioni alle notifiche.")
     with db:
+        # The couple follows the session: a phone that left its couple stops getting that couple's notices.
         db.execute(
             "INSERT INTO push_subs(endpoint, p256dh, auth, team_id) VALUES (?, ?, ?, ?)"
             " ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth,"
-            " team_id = COALESCE(excluded.team_id, push_subs.team_id)",
-            (endpoint, keys["p256dh"], keys["auth"], team_id),
+            " team_id = excluded.team_id",
+            (endpoint, p256dh, auth, team_id),
         )
 
 
@@ -140,24 +163,39 @@ def first_matches(db: sqlite3.Connection) -> list[Delivery]:
     return out
 
 
+def _contact(public_url: str) -> str:
+    """The VAPID "sub" claim must be a bare https origin (no port, path or trailing slash) or a mailto."""
+    host = urlparse(public_url).hostname or ""
+    return f"https://{host}" if "." in host and not host.replace(".", "").isdecimal() else "https://localhost"
+
+
 def send(deliveries: list[Delivery]) -> None:
     """Runs after the response: its own connection, and subscriptions the push service dropped are removed."""
     if not deliveries:
         return
     db = connect()
     try:
-        private = get_setting(db, "vapid_private")
-        claims = {"sub": get_setting(db, "public_url") or "https://localhost"}
+        public_key(db)  # makes sure the pair exists before signing
+        vapid = Vapid.from_pem(get_setting(db, "vapid_private").encode())
+        claims = {"sub": _contact(get_setting(db, "public_url"))}
         gone = []
         for d in deliveries:
             payload = json.dumps({"title": d.message.title, "body": d.message.body, "url": d.message.url})
             try:
-                webpush(d.subscription, payload, vapid_private_key=private, vapid_claims=dict(claims), ttl=600)
+                webpush(
+                    d.subscription, payload, vapid_private_key=vapid, vapid_claims=dict(claims), ttl=600,
+                    timeout=SEND_TIMEOUT_S,
+                )
             except WebPushException as e:
                 if e.response is not None and e.response.status_code in (404, 410):
                     gone.append(d.sub_id)
                 else:
                     log.warning("push failed: %s", e)
+            except requests.RequestException as e:  # one unreachable push service must not stop the others
+                log.warning("push failed: %s", e)
+            except ValueError as e:  # keys the encryption cannot use: this subscription can never work
+                log.warning("push dropped, unusable keys: %s", e)
+                gone.append(d.sub_id)
         if gone:
             with db:
                 db.executemany("DELETE FROM push_subs WHERE id = ?", [(i,) for i in gone])

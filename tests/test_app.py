@@ -853,3 +853,34 @@ def test_profile_page_logged_out_and_own_team_redirect(client: TestClient) -> No
     assert client.get("/squadra/2").status_code == 200 and "★ VOI" not in client.get("/squadra/2").text
     client.post("/esci-squadra")
     assert "Entrate nel profilo" in client.get("/io").text
+
+
+def test_knockout_waits_for_the_other_tables(client: TestClient) -> None:
+    setup_tournament(client, 16, fields=4)
+    play_all(client, "group", random.Random(3))
+    ko = [m for m in db_call(service.matches) if m.stage == "ko"]
+    before = {m.id: m.time for m in ko}
+    first = next(m for m in ko if m.t1 and m.t2 and not m.done)
+    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 2})
+    after = {m.id: m.time for m in db_call(service.matches) if m.stage == "ko"}
+    assert {k: v for k, v in after.items() if k != first.id} == {k: v for k, v in before.items() if k != first.id}
+    now, upcoming = db_call(lambda db: service.live(service.matches(db)))
+    assert all(m.t1 and m.t2 for m in now)
+
+
+def test_pasted_numbers_on_separate_lines_stay_separate(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/importa", data={"testo": "A; a1; a2; 3331234567\nB; b1; b2; 3331110001"})
+    r = client.post("/admin/gruppo/elenco", data={"elenco": "333 123 4567\n333 111 0001"})
+    assert "2 coppie segnate nel gruppo" in r.text
+
+
+def test_odd_query_values_and_quotes_in_names(client: TestClient) -> None:
+    import_teams(client, 4)
+    assert client.get("/gironi?tavolo=%C2%B2&g=%C2%B2").status_code == 200
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 1)
+    client.post("/checkin/1", data=checkin_form(t, name="L'Orso"))
+    page = client.get("/io").text
+    assert "confirm(\"Uscire dal profilo di L\\u0027Orso" in page and "di L'Orso su" not in page
