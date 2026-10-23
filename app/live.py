@@ -87,7 +87,8 @@ def accepted_shots(reports: list[Report]) -> list[Shot]:
 
 
 # Rows as the shooter sees them, the far row first and the apex closest.
-RACK_ROWS = {6: [[4, 5, 6], [2, 3], [1]], 10: [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]]}
+RACK_ROWS = {3: [[2, 3], [1]], 6: [[4, 5, 6], [2, 3], [1]], 10: [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]]}
+OVERTIME_CUPS = 3
 
 
 @dataclass
@@ -102,7 +103,13 @@ class LiveState:
     racks: dict[int, Rack]  # side -> its own cups still standing
     hits: dict[tuple[int, int], int]  # (side, player) -> hits
     attempts: dict[tuple[int, int], int]
-    winner_side: int | None  # a rack was cleared
+    winner_side: int | None  # a rack was cleared (and, in the knockout, the tiro della salvezza missed)
+    # Only for matches the referee scores, who follows the turns:
+    phase: str = "play"  # "play" | "salvezza" | "overtime" | "over"
+    phase_start: int = 0  # index in shots where the racks on the table were set up
+    turn_side: int | None = None
+    in_turn: frozenset[int] = frozenset()  # players of turn_side who already shot this turn
+    rack_cups: int = CUPS
 
     def side_hits(self, side: int) -> int:
         return sum(v for (s, _), v in self.hits.items() if s == side)
@@ -111,13 +118,72 @@ class LiveState:
         return sum(v for (s, _), v in self.attempts.items() if s == side)
 
 
-def replay(reports: list[Report], cups: int = CUPS) -> LiveState:
+def _referee_replay(shots_in: list[Shot], started: float | None, cups: int, first_side: int, salvezza: bool) -> LiveState:
+    """The referee's shots, turn by turn: two shots per couple (one per player), the couples alternating.
+
+    Clearing a rack ends the match, except in the knockout: there the other couple gets the tiro della
+    salvezza, one shot per player; one hit sends the match to overtime with OVERTIME_CUPS each."""
+    def fresh(n: int) -> dict[int, Rack]:
+        return {1: Rack(set(range(1, n + 1))), 2: Rack(set(range(1, n + 1)))}
+
+    racks, rack_cups = fresh(cups), cups
+    hits: Counter[tuple[int, int]] = Counter()
+    attempts: Counter[tuple[int, int]] = Counter()
+    shots: list[Shot] = []
+    phase, phase_start, winner = "play", 0, None
+    side, in_turn, taken = first_side, [], 0  # taken: shots of the current turn
+    pending, saving_hits = None, 0
+    for shot in shots_in:
+        if winner is not None:
+            break
+        target = racks[3 - shot.side]
+        attempts[(shot.side, shot.player)] += 1
+        hit = False
+        if shot.cup:
+            removed = shot.cup if shot.cup in target.cups else min(target.cups, default=None)
+            if removed is not None:
+                target.cups.discard(removed)
+                hits[(shot.side, shot.player)] += 1
+                shot.removed = removed
+                hit = True
+        shots.append(shot)
+        taken += 1
+        in_turn.append(shot.player)
+        if phase == "salvezza":
+            saving_hits += hit
+            if taken < 2:
+                continue
+            if not saving_hits:
+                winner, phase = pending, "over"
+            else:  # saved: overtime, the couple that had cleared the rack shoots first
+                racks, rack_cups, phase, phase_start = fresh(OVERTIME_CUPS), OVERTIME_CUPS, "overtime", len(shots)
+                side, in_turn, taken = pending, [], 0
+            continue
+        if not target.cups:
+            if salvezza:
+                phase, pending, saving_hits = "salvezza", shot.side, 0
+                side, in_turn, taken = 3 - shot.side, [], 0
+            else:
+                winner, phase = shot.side, "over"
+            continue
+        if taken >= 2:
+            side, in_turn, taken = 3 - side, [], 0
+    return LiveState(
+        started, shots, racks, dict(hits), dict(attempts), winner,
+        phase, phase_start, side, frozenset(in_turn), rack_cups,
+    )
+
+
+def replay(reports: list[Report], cups: int = CUPS, first_side: int = 1, salvezza: bool = False) -> LiveState:
+    accepted = accepted_shots(reports)
+    if accepted and REFEREE in accepted[0].devices:
+        return _referee_replay(accepted, start_time(reports), cups, first_side, salvezza)
     racks = {1: Rack(set(range(1, cups + 1))), 2: Rack(set(range(1, cups + 1)))}
     hits: Counter[tuple[int, int]] = Counter()
     attempts: Counter[tuple[int, int]] = Counter()
     shots: list[Shot] = []
     winner = None
-    for shot in accepted_shots(reports):
+    for shot in accepted:
         if winner is not None:
             break
         target = racks[3 - shot.side]
@@ -132,7 +198,7 @@ def replay(reports: list[Report], cups: int = CUPS) -> LiveState:
             if not target.cups:
                 winner = shot.side
         shots.append(shot)
-    return LiveState(start_time(reports), shots, racks, dict(hits), dict(attempts), winner)
+    return LiveState(start_time(reports), shots, racks, dict(hits), dict(attempts), winner, rack_cups=cups)
 
 
 def hit_rate(hits: int, shots: int) -> float:

@@ -49,7 +49,8 @@ def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:
             continue
         rv = tracking.referee_view(conn, m.id)
         st = rv.state
-        out_of_time = m.duration is not None and now - st.started_at >= m.duration * 60
+        # Time only runs out in normal play: salvezza and overtime are played to the end.
+        out_of_time = m.duration is not None and st.phase == "play" and now - st.started_at >= m.duration * 60
         if st.winner_side or out_of_time:
             _finish(conn, m, st, rng)
             finished += 1

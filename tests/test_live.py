@@ -127,3 +127,40 @@ def test_report_rate_limit(client: TestClient) -> None:
     client.get(f"/live/{m.id}")
     assert client.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 1}).status_code == 200
     assert client.post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 1, "cup": 2}).status_code == 429
+
+
+def _ref(cups_seq: list[tuple[int, int, int]]) -> list[live.Report]:
+    """(side, player, cup) referee taps, one second apart."""
+    return [live.Report(i, live.REFEREE, "shot", s, p, c, 100.0 + i) for i, (s, p, c) in enumerate(cups_seq)]
+
+
+def test_group_match_ends_when_a_rack_is_cleared() -> None:
+    seq = []
+    for k in range(3):  # couple 1 hits both shots of each turn, couple 2 misses
+        seq += [(1, 1, 2 * k + 1), (1, 2, 2 * k + 2), (2, 1, 0), (2, 2, 0)]
+    st = live.replay(_ref(seq[:-2]), 6, 1, salvezza=False)
+    assert st.winner_side == 1 and st.phase == "over"
+
+
+def test_salvezza_missed_ends_the_knockout_match() -> None:
+    seq = []
+    for k in range(3):
+        seq += [(1, 1, 2 * k + 1), (1, 2, 2 * k + 2)] + ([(2, 1, 0), (2, 2, 0)] if k < 2 else [])
+    st = live.replay(_ref(seq), 6, 1, salvezza=True)
+    assert st.winner_side is None and st.phase == "salvezza" and st.turn_side == 2 and not st.in_turn
+    st = live.replay(_ref(seq + [(2, 1, 0), (2, 2, 0)]), 6, 1, salvezza=True)
+    assert st.winner_side == 1 and st.phase == "over"
+
+
+def test_salvezza_hit_goes_to_overtime_with_three_cups() -> None:
+    seq = []
+    for k in range(3):
+        seq += [(1, 1, 2 * k + 1), (1, 2, 2 * k + 2)] + ([(2, 1, 0), (2, 2, 0)] if k < 2 else [])
+    seq += [(2, 1, 4), (2, 2, 0)]  # saved with one hit
+    st = live.replay(_ref(seq), 6, 1, salvezza=True)
+    assert st.phase == "overtime" and st.rack_cups == 3 and st.turn_side == 1 and st.winner_side is None
+    assert st.racks[1].cups == {1, 2, 3} and st.racks[2].cups == {1, 2, 3} and st.phase_start == len(seq)
+    # the rack is cleared at the first shot of a turn: the salvezza starts at once, the turn is over
+    st = live.replay(_ref(seq + [(1, 1, 1), (1, 2, 2), (2, 1, 0), (2, 2, 0), (1, 1, 3)]), 6, 1, salvezza=True)
+    assert st.phase == "salvezza" and st.turn_side == 2
+    assert st.side_hits(1) == 9 and st.side_hits(2) == 1  # the final score counts every cup

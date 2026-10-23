@@ -26,14 +26,17 @@ def reports(db: sqlite3.Connection, match_id: int) -> list[live.Report]:
 def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
     """Replayed live state, cached until a report of this match is added or removed."""
     key = tuple(db.execute(
-        "SELECT COUNT(*), COALESCE(MAX(id), 0), (SELECT started_at FROM matches WHERE id = ?) FROM reports WHERE match_id = ?",
-        (match_id, match_id),
+        "SELECT COUNT(r.id), COALESCE(MAX(r.id), 0), m.started_at, m.first_side, m.stage"
+        " FROM matches m LEFT JOIN reports r ON r.match_id = m.id WHERE m.id = ?",
+        (match_id,),
     ).fetchone()) + (service.cups_in_play(db, match_id),)
     cached = _state_cache.get(match_id)
     if cached is None or cached[0] != key:
-        st = live.replay(reports(db, match_id), key[3])
-        if key[2] is not None:  # the referee's start is the clock; the crowd's "start" taps only stand in for it
-            st.started_at = key[2]
+        _, _, started, first, stage, cups = key
+        # The tiro della salvezza is a knockout rule (the final included).
+        st = live.replay(reports(db, match_id), cups, first or 1, salvezza=stage == "ko")
+        if started is not None:  # the referee's start is the clock; the crowd's "start" taps only stand in for it
+            st.started_at = started
         cached = (key, st)
         _state_cache[match_id] = cached
     return cached[1]
@@ -107,16 +110,14 @@ class RefereeView:
 
 def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
     st = state(db, match_id)
-    first = db.execute("SELECT first_side FROM matches WHERE id = ?", (match_id,)).fetchone()[0] or 1
     official = [s for s in st.shots if live.REFEREE in s.devices]
-    # Two balls per turn, one per player; the couples alternate.
-    turn = len(official) // 2
-    side = first if turn % 2 == 0 else 3 - first
-    in_turn = {s.player for s in official[2 * turn:]}
+    first = db.execute("SELECT first_side FROM matches WHERE id = ?", (match_id,)).fetchone()[0] or 1
+    side = st.turn_side if official else first  # the replay follows the turns (salvezza and overtime included)
+    in_turn = set(st.in_turn) if official else set()
     nxt = next((p for p in (1, 2) if p not in in_turn), 1)
-    rows = live.RACK_ROWS[service.cups_in_play(db, match_id)]
+    rows = live.RACK_ROWS[st.rack_cups]
     hit_by: dict[int, dict[int, int]] = {1: {}, 2: {}}
-    for s in st.shots:
+    for s in st.shots[st.phase_start:]:  # only the racks on the table now
         if s.removed is not None:
             hit_by[3 - s.side][s.removed] = s.player
     return RefereeView(st, side, in_turn, nxt, official[-1] if official else None, rows, hit_by)
@@ -231,7 +232,8 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
         "now": now,
         # The referee scores this match: the crowd watches, its taps would not count.
         "official": m.started_at is not None or any(live.REFEREE in s.devices for s in st.shots),
-        "rows": live.RACK_ROWS[service.cups_in_play(db, match_id)],
+        "rows": live.RACK_ROWS[st.rack_cups],
+        "phase": st.phase,
         "started_at": st.started_at,
         "duration": duration,
         "done": m.done,

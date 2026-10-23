@@ -1365,5 +1365,8 @@ button.ref-swap { min-width: 56px; min-height: 48px; font-size: 1.5rem; backgrou
 .ref-rack.big .cup { width: 36px; height: 36px; font-size: .9rem; }
 .ref-rack .cup.down small { font-size: .6rem; font-weight: 800; color: var(--accent); }
 .ref-undo button { width: 100%; min-height: 48px; }
+.ref-phase { border-radius: 14px; padding: 10px 12px; text-align: center; font-size: 1.05rem; }
+.ref-phase.salvezza { background: var(--warn-soft); border: 2px solid var(--gold); }
+.ref-phase.overtime { background: var(--accent); color: var(--accent-ink); }
 .ref-more summary { text-align: center; color: var(--muted); font-weight: 700; cursor: pointer; padding: 6px; }
 .ref-more { display: grid; gap: 8px; justify-items: center; }
