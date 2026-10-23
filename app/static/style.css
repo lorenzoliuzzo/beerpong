@@ -97,7 +97,9 @@ main.ref-busy { opacity: .6; pointer-events: none; }
 .ref-player { font-size: .82rem; color: var(--muted); }
 .ref-player b { color: var(--text); }
 .ref-shot .rack.big { margin: 8px 0; }
-.ref-shot .rack.big .cup { width: 60px; height: 60px; font-size: 1.2rem; }
+.ref-shot .rack.big .cup { width: 60px; height: 60px; font-size: 1.2rem; flex-direction: column; line-height: 1; }
+.ref-shot .cup.down small { font-size: .65rem; font-weight: 800; color: var(--accent); }
+.ref-rack-title { text-align: center; margin: 10px 0 0; }
 button.ref-miss { width: 100%; min-height: 60px; font-size: 1.2rem; background: var(--err); color: #fff; }
 .ref-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
 .ref-clock .ref-clock-time { font-size: 2.4rem; }

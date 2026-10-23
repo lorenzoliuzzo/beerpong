@@ -15,6 +15,8 @@ from .db import get_setting, random_key, random_pin, set_setting
 from .standings import Result, Row, compute_table
 
 MAX_TEAM_CUPS = 30
+CUPS = 6  # per couple, as in the rules
+FINAL_CUPS = 10  # the final is played with 10 cups and no time limit
 FINAL_SLOT_MIN = 10
 MIN_TEAMS = 4
 
@@ -569,6 +571,14 @@ def recalc_table_schedule(
     with db:
         for idx, r in enumerate(pending):
             db.execute("UPDATE matches SET start = ? WHERE id = ?", (_fmt(base + idx * step), r["id"]))
+
+
+def cups_in_play(db: sqlite3.Connection, match_id: int) -> int:
+    m = db.execute("SELECT stage, round FROM matches WHERE id = ?", (match_id,)).fetchone()
+    if m is None or m["stage"] != "ko":
+        return CUPS
+    last = db.execute("SELECT MAX(round) FROM matches WHERE stage = 'ko'").fetchone()[0]
+    return FINAL_CUPS if m["round"] == last else CUPS
 
 
 def start_match(db: sqlite3.Connection, match_id: int, now: float, first_side: int = 1) -> None:

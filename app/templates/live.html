@@ -75,7 +75,7 @@
 (() => {
   const root = document.getElementById("live");
   const id = root.dataset.match;
-  const ROWS = [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]];  // far row first, apex closest to the shooter
+  let ROWS = [[4, 5, 6], [2, 3], [1]];  // far row first, apex closest to the shooter; the final has 10 cups
   let data = null, offset = 0, shooter = null, busy = false;
 
   const $ = (sel) => document.querySelector(sel);
@@ -103,6 +103,7 @@
 
   function render() {
     if (!data) return;
+    ROWS = data.rows || ROWS;
     const [t1, t2] = data.teams;
     for (const [i, t] of [[1, t1], [2, t2]]) {
       document.querySelectorAll(`[data-f="name${i}"], [data-f="name${i}b"]`).forEach((el) => (el.textContent = t.name));

@@ -28,10 +28,10 @@ def state(db: sqlite3.Connection, match_id: int) -> live.LiveState:
     key = tuple(db.execute(
         "SELECT COUNT(*), COALESCE(MAX(id), 0), (SELECT started_at FROM matches WHERE id = ?) FROM reports WHERE match_id = ?",
         (match_id, match_id),
-    ).fetchone())
+    ).fetchone()) + (service.cups_in_play(db, match_id),)
     cached = _state_cache.get(match_id)
     if cached is None or cached[0] != key:
-        st = live.replay(reports(db, match_id))
+        st = live.replay(reports(db, match_id), key[3])
         if key[2] is not None:  # the referee's start is the clock; the crowd's "start" taps only stand in for it
             st.started_at = key[2]
         cached = (key, st)
@@ -101,6 +101,8 @@ class RefereeView:
     shot_in_turn: set[int]
     next_player: int
     last_shot: live.Shot | None
+    rows: list[list[int]]
+    hit_by: dict[int, dict[int, int]]  # rack side -> cup taken -> player of the other couple who hit it
 
 
 def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
@@ -112,7 +114,12 @@ def referee_view(db: sqlite3.Connection, match_id: int) -> RefereeView:
     side = first if turn % 2 == 0 else 3 - first
     in_turn = {s.player for s in official[2 * turn:]}
     nxt = next((p for p in (1, 2) if p not in in_turn), 1)
-    return RefereeView(st, side, in_turn, nxt, official[-1] if official else None)
+    rows = live.RACK_ROWS[service.cups_in_play(db, match_id)]
+    hit_by: dict[int, dict[int, int]] = {1: {}, 2: {}}
+    for s in st.shots:
+        if s.removed is not None:
+            hit_by[3 - s.side][s.removed] = s.player
+    return RefereeView(st, side, in_turn, nxt, official[-1] if official else None, rows, hit_by)
 
 
 def official_count(view: RefereeView) -> int:
@@ -224,6 +231,7 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float, device: str | N
         "now": now,
         # The referee scores this match: the crowd watches, its taps would not count.
         "official": m.started_at is not None or any(live.REFEREE in s.devices for s in st.shots),
+        "rows": live.RACK_ROWS[service.cups_in_play(db, match_id)],
         "started_at": st.started_at,
         "duration": duration,
         "done": m.done,

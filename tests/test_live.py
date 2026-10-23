@@ -96,7 +96,7 @@ def test_live_flow_with_several_phones(client: TestClient, monkeypatch: pytest.M
     state = phones[2].post(f"/api/live/{m.id}/segnala", json={"kind": "shot", "side": 1, "player": 2, "cup": 7}).json()
     assert state["started_at"] == 1001.0  # median of the three taps
     assert state["shots"][0]["removed"] == 4 and state["shots"][0]["votes"] == 3
-    assert 4 not in state["teams"][1]["rack"] and len(state["teams"][1]["rack"]) == 9
+    assert 4 not in state["teams"][1]["rack"] and len(state["teams"][1]["rack"]) == 5  # 6 cups, one taken
     assert state["prob"][0] > 0.5
     assert state["duration"] == 300
 

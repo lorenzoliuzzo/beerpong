@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS matches (
 DEFAULTS = {
     "fields": "2",
     "group_min": "5",
-    "ko_min": "6",
+    "ko_min": "7",
     "buffer_min": "1",
     "public_url": "",
     "title": "Torneo di Beer Pong",

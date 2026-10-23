@@ -56,7 +56,7 @@ def _tally(team_ids: list[int], results: list[Result]) -> dict[int, Row]:
 
 
 def compute_table(team_ids: list[int], results: list[Result]) -> list[Row]:
-    """Order: points, then head-to-head among tied teams, then cup difference, then cups scored."""
+    """Order, as in the rules: points, then head-to-head among tied teams, then cups scored, then cups conceded."""
     rows = _tally(team_ids, results)
     by_points: dict[int, list[int]] = defaultdict(list)
     for t, row in rows.items():
@@ -65,6 +65,6 @@ def compute_table(team_ids: list[int], results: list[Result]) -> list[Row]:
     for pts in sorted(by_points, reverse=True):
         tied = by_points[pts]
         mini = _tally(tied, results)
-        tied.sort(key=lambda t: (-mini[t].points, -mini[t].diff, -rows[t].diff, -rows[t].cups_for, t))
+        tied.sort(key=lambda t: (-mini[t].points, -mini[t].diff, -rows[t].cups_for, rows[t].cups_against, t))
         ordered += tied
     return [rows[t] for t in ordered]

@@ -71,13 +71,13 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
     for field_no, queue in sorted(by_table.items()):
         n_done = completed_per_table.get(field_no, 2)
         for idx, m in enumerate(queue[:n_done]):
-            s1 = rng.choice([10, rng.randint(5, 9)])
-            s2 = 10 if s1 < 10 else rng.randint(3, 9)
+            s1 = rng.choice([service.CUPS, rng.randint(2, service.CUPS - 1)])
+            s2 = service.CUPS if s1 < service.CUPS else rng.randint(1, service.CUPS - 1)
             base_t = now_ts + idx * 300
 
             tracking.add_report(db_conn, m.id, f"ref-{field_no}", "start", None, None, None, base_t)
             for side, score in [(1, s1), (2, s2)]:
-                cups = rng.sample(range(1, 11), min(10, score))
+                cups = rng.sample(range(1, service.CUPS + 1), min(service.CUPS, score))
                 for shot_i, cup in enumerate(cups):
                     player = 1 if shot_i % 2 == 0 else 2
                     tracking.add_report(
@@ -100,7 +100,7 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
     # Add live shots in progress to the current match ("In campo ora") on each of the 4 tables!
     now_matches, _ = service.live(service.matches(db_conn))
     live_now_ts = time.time()
-    target_scores = [(7, 5), (6, 8), (4, 4), (3, 1)]
+    target_scores = [(4, 3), (2, 5), (3, 3), (1, 0)]  # below the 6 cups: these matches are still on
     for idx, m in enumerate(now_matches):
         targets = target_scores[idx % len(target_scores)]
         started = live_now_ts - 240
@@ -109,6 +109,8 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
         at = started + 5
         while at < live_now_ts:
             rv = tracking.referee_view(db_conn, m.id)
+            if rv.state.winner_side:
+                break
             side = rv.turn_side
             behind = rv.state.side_hits(side) < targets[side - 1]
             standing = sorted(rv.state.racks[3 - side].cups)

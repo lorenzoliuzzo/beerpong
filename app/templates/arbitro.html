@@ -74,19 +74,22 @@
       {% else %}
         <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-shot">
           <input type="hidden" name="n" value="{{ official_counts[m.id] }}">
-          <p class="ref-q">Tira <strong>{{ team[rv.turn_side].name }}</strong> · chi?</p>
+          {% set shooting, target = team[rv.turn_side], team[3 - rv.turn_side] %}
+          <p class="ref-q">Tira <strong>{{ shooting.name }}</strong>: chi sta tirando?</p>
           <div class="ref-picks">
             {% for pl in ([2, 1] if flip else [1, 2]) %}
-              <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>{{ team[rv.turn_side]["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
+              <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>🎯 {{ shooting["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
             {% endfor %}
           </div>
-          <p class="muted small" style="text-align:center;margin:4px 0 0">Tocca il bicchiere centrato di {{ team[3 - rv.turn_side].name }}</p>
+          {% set standing = st.racks[3 - rv.turn_side].cups %}
+          <p class="ref-rack-title">Bicchieri di <strong>{{ target.name }}</strong> in gioco: {{ standing|length }}<br><span class="muted small">tocca quello centrato</span></p>
           <div class="rack big">
-            {% for row in [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]] %}<div class="rrow">
-              {% for c in row %}{% if c in st.racks[3 - rv.turn_side].cups %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}<span class="cup down">{{ c }}</span>{% endif %}{% endfor %}
+            {% for row in rv.rows %}<div class="rrow">
+              {% for c in row %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere {{ c }}">{{ c }}</button>{% else %}{% set who = shooting["p" ~ rv.hit_by[3 - rv.turn_side].get(c, 0)] if rv.hit_by[3 - rv.turn_side].get(c) else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{{ c }}{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
             </div>{% endfor %}
           </div>
           <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
+          <p class="muted small" style="text-align:center;margin:6px 0 0">Palla in un bicchiere già tolto? Non segnare niente: chi ha tirato ritira (regola 6).</p>
         </form>
         {% if rv.last_shot %}
           {% set ls = rv.last_shot %}

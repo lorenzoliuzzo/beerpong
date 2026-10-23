@@ -11,7 +11,7 @@ import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 
-CUPS = 10
+CUPS = 10  # the highest cup number: the final's rack; other matches use the first 6 (see service.cups_in_play)
 SHOT_WINDOW_S = 6.0  # reports of the same player this close together describe one shot
 ACTIVE_WINDOW_S = 60.0  # a device "is watching" a shot if it reported anything this close to it
 DEFAULT_SECONDS_PER_SHOT = 12.0  # per team, until the match itself gives a better estimate
@@ -86,6 +86,10 @@ def accepted_shots(reports: list[Report]) -> list[Shot]:
     return accepted
 
 
+# Rows as the shooter sees them, the far row first and the apex closest.
+RACK_ROWS = {6: [[4, 5, 6], [2, 3], [1]], 10: [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]]}
+
+
 @dataclass
 class Rack:
     cups: set[int] = field(default_factory=lambda: set(range(1, CUPS + 1)))
@@ -107,8 +111,8 @@ class LiveState:
         return sum(v for (s, _), v in self.attempts.items() if s == side)
 
 
-def replay(reports: list[Report]) -> LiveState:
-    racks = {1: Rack(), 2: Rack()}
+def replay(reports: list[Report], cups: int = CUPS) -> LiveState:
+    racks = {1: Rack(set(range(1, cups + 1))), 2: Rack(set(range(1, cups + 1)))}
     hits: Counter[tuple[int, int]] = Counter()
     attempts: Counter[tuple[int, int]] = Counter()
     shots: list[Shot] = []

@@ -175,7 +175,7 @@
   {{ ui.progress(progress) }}
   {% if tables %}
     <nav class="jump">{% for g in tables %}<a href="#g{{ g.grp }}">{{ g.name|replace("Girone ", "") }}</a>{% endfor %}</nav>
-    <p class="muted small">Vittoria 3, pareggio 1. Pari punti: scontro diretto, poi differenza bicchieri (DB).
+    <p class="muted small">Vittoria 3, pareggio 1, sconfitta 0. A pari punti: scontri diretti, poi canestri fatti, poi canestri subiti.
       <span class="pill ok">verde</span> passano{% if thirds %} · <span class="pill warn">giallo</span> passano le {{ thirds }} migliori terze{% endif %}.</p>
     {% for g in tables %}
       {% set played = g.matches|selectattr("done")|list|length %}
