@@ -10,7 +10,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable, Iterator
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -565,8 +565,6 @@ def _team_page(request: Request, db: sqlite3.Connection, team_id: int, vs: str |
         request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db), own=own, spot=spot,
         thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
         me_player=my_player(request) if own else None, checkin_ok=request.session.get("checkin_ok", False),
-        now_iso=datetime.now().isoformat(timespec="seconds"),
-        beer_until=lambda at: (datetime.fromisoformat(at) + timedelta(seconds=service.BEER_SHOWN_S)).isoformat(),
         devices=service.team_devices(db, team_id) if own else None,
         invite=invite_url(request, db) if own else None,
     )

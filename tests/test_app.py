@@ -1347,7 +1347,7 @@ def test_everyone_sees_who_has_arrived(client: TestClient) -> None:
     assert db_call(service.team, 2)["checked_in_at"]
 
 
-def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient) -> None:
     import_teams(client, 4)
     client.post("/admin/squadre/1/pagato", data={"pagato": 1})
     client.post("/logout")
@@ -1367,12 +1367,12 @@ def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient, 
         assert "è al completo" in second.post("/checkin/accedi", data={"phone": "347 000 0002"}).text
         assert db_call(service.team, 1)["checked_in"] == 1
 
-        page = second.post("/io/birra", data={"giocatore": 2}).text
-        assert "PRIMA BIRRA" in page and "data-until=" in page
-        assert "già stata ritirata" in second.post("/io/birra", data={"giocatore": 2}).text
-        monkeypatch.setattr(service, "BEER_SHOWN_S", -1)  # a minute later the voucher is gone for good
         page = second.get("/io").text
-        assert "PRIMA BIRRA" not in page and f"Prima birra di {t['p2']} ritirata alle" in page
+        assert "PRIMA BIRRA" in page and "Ritirata · lo tocca il bancone" in page  # shown as often as needed
+        assert "PRIMA BIRRA" in second.get("/io").text and not db_call(service.team, 1)["beer2_at"]
+        page = second.post("/io/birra", data={"giocatore": 2}).text  # the bar marks it collected
+        assert 'id="birra2"' not in page and f"Prima birra di {t['p2']} ritirata alle" in page
+        assert "già stata ritirata" in second.post("/io/birra", data={"giocatore": 2}).text
         assert f"La prima birra di {t['p1']}" in page  # the partner's is still to collect
 
 

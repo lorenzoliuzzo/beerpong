@@ -440,11 +440,8 @@ def players_arrive(db: sqlite3.Connection, team_id: int, players: set[int]) -> b
     return bool(team(db, team_id)["checked_in"])
 
 
-BEER_SHOWN_S = 60
-
-
 def take_beer(db: sqlite3.Connection, team_id: int, player: int) -> None:
-    """The first beer: the voucher is used the moment it is shown, and shows for a minute only."""
+    """The bar marks a player's free first beer as collected (the voucher itself can be shown any number of times)."""
     t = team(db, team_id)
     if t is None or player not in (1, 2) or not t[f"arrived{player}_at"]:
         raise TournamentError("La prima birra si ritira all'arrivo alla serata.")

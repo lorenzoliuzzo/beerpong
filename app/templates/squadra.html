@@ -91,23 +91,23 @@
     </div>
   {% endif %}
 
-  {# The free first beer: each player who has arrived shows the voucher once; it lasts a minute on screen. #}
+  {# The free first beer: the voucher opens and closes as often as needed; the bar marks it collected. #}
   {% for i in (1, 2) if t["arrived" ~ i ~ "_at"] and cfg.phase == "setup" %}
     {% set taken = t["beer" ~ i ~ "_at"] %}
     {% if not taken %}
-      <form class="card beer" method="post" action="/io/birra" onsubmit="return confirm('Mostra il buono al bancone: dura un minuto e poi sparisce. Lo apro?')">
-        <input type="hidden" name="giocatore" value="{{ i }}">
-        <div class="beer-row"><span class="beer-icon">🍺</span>
-          <div class="grow"><strong>La prima birra di {{ t["p" ~ i] }}</strong><div class="muted small">Toccala davanti al bancone: si mostra per un minuto e poi si cancella.</div></div></div>
-        <button class="wide" type="submit">Mostra il buono</button>
-      </form>
-    {% elif (now_iso < beer_until(taken)) %}
-      <div class="card beer voucher" data-until="{{ beer_until(taken) }}">
-        <div class="beer-icon big">🍺</div>
-        <div class="voucher-title">PRIMA BIRRA</div>
-        <div class="voucher-name">{{ t["p" ~ i] }} · {{ t.name }}</div>
-        <div class="voucher-left"><span data-left>60</span> s</div>
-      </div>
+      <details class="card beer" id="birra{{ i }}">
+        <summary class="beer-row"><span class="beer-icon">🍺</span>
+          <span class="grow"><strong>La prima birra di {{ t["p" ~ i] }}</strong><span class="muted small">Tocca qui al bancone per mostrare il buono.</span></span></summary>
+        <div class="voucher">
+          <div class="beer-icon big">🍺</div>
+          <div class="voucher-title">PRIMA BIRRA</div>
+          <div class="voucher-name">{{ t["p" ~ i] }} · {{ t.name }}</div>
+        </div>
+        <form method="post" action="/io/birra" onsubmit='return confirm({{ ("Segnare come ritirata la birra di " ~ t["p" ~ i] ~ "?")|tojson }})'>
+          <input type="hidden" name="giocatore" value="{{ i }}">
+          <button class="wide" type="submit">✓ Ritirata · lo tocca il bancone</button>
+        </form>
+      </details>
     {% else %}
       <p class="muted small" style="text-align:center">🍺 Prima birra di {{ t["p" ~ i] }} ritirata alle {{ taken[11:16] }}</p>
     {% endif %}

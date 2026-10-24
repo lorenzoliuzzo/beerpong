@@ -1496,8 +1496,13 @@ a.ref-overview.running .ref-go { background: var(--accent); color: var(--accent-
 .voucher .beer-icon.big { font-size: 4.5rem; }
 .voucher-title { font-size: 2rem; font-weight: 900; letter-spacing: .08em; }
 .voucher-name { font-size: 1.1rem; font-weight: 700; }
-.voucher-left { margin-top: 6px; font-size: 1.4rem; font-weight: 800; }
 @keyframes voucher-pulse { from { transform: scale(1); } to { transform: scale(1.02); } }
+@media (prefers-reduced-motion: reduce) { .voucher { animation: none; } }
+details.beer > summary { list-style: none; cursor: pointer; margin-bottom: 0; }
+details.beer > summary::-webkit-details-marker { display: none; }
+details.beer > summary .grow { display: grid; }
+details.beer[open] > summary { margin-bottom: 10px; }
+details.beer .voucher { border-radius: var(--radius); padding: 16px; }
 
 .choices.stack { flex-direction: column; align-items: flex-start; }
 .tph-own { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
