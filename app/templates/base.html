@@ -90,16 +90,28 @@
   });
 
   // Live pages: swap <main> in place instead of reloading, so the scroll position stays put.
+  // Sections the reader opened or closed keep that state across the swap (some start open, like the invite).
   if (document.body.hasAttribute("data-live")) {
+    const detailsKeys = (main) => {
+      const seen = {};
+      return [...main.querySelectorAll("details")].map((d) => {
+        const base = d.id || d.className;
+        seen[base] = (seen[base] || 0) + 1;
+        return [base + ":" + seen[base], d];
+      });
+    };
     const refresh = async () => {
       const a = document.activeElement;
-      if (document.hidden || (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) || document.querySelector("main details[open]")) return;
+      if (document.hidden || (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName))) return;
       try {
         const r = await fetch(location.href, { cache: "no-store", credentials: "same-origin" });
         if (!r.ok || r.redirected) return;
         const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
         const current = document.querySelector("main");
-        if (fresh && fresh.innerHTML !== current.innerHTML) {
+        if (!fresh) return;
+        const open = new Map(detailsKeys(current).map(([k, d]) => [k, d.open]));
+        for (const [k, d] of detailsKeys(fresh)) if (open.has(k)) d.open = open.get(k);
+        if (fresh.innerHTML !== current.innerHTML) {
           current.replaceWith(fresh);
           document.dispatchEvent(new Event("bp:refresh"));
         }

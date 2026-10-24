@@ -1,4 +1,5 @@
 import random
+import re
 import sqlite3
 import threading
 import time
@@ -1676,3 +1677,12 @@ def test_one_match_can_be_scored_shot_by_shot(client: TestClient) -> None:
     hits = db_call(service.cup_hits, m.id)
     assert hits == {1: {1: 1, 2: 2}, 2: {5: 2}}  # from the referee's shots, with who sank each
     assert 'href="/classifiche?vista=tiri"' in client.get("/classifiche").text
+
+
+def test_every_css_variable_used_is_defined() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    sources = [app_dir / "static" / "style.css", *sorted((app_dir / "templates").glob("*.html"))]
+    text = "\n".join(p.read_text() for p in sources)
+    defined = set(re.findall(r"(--[\w-]+)\s*:", text))
+    used = set(re.findall(r"var\((--[\w-]+)", text))
+    assert used - defined == set()

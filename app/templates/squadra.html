@@ -37,7 +37,7 @@
   </div>
 
   {% if dash.status == "now" and dash.next_match %}
-    <div class="banner live" style="margin-top:12px;margin-bottom:0">
+    <div class="banner hot" style="margin-top:12px;margin-bottom:0">
       <div class="label">🔴 In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
       {% if dash.next_match.live_score %}
@@ -46,7 +46,7 @@
       {% if own and dash.next_match.mode == "coppie" %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
     </div>
   {% elif dash.status == "next" and dash.next_match %}
-    <div class="banner next" style="margin-top:12px;margin-bottom:0">
+    <div class="banner warm" style="margin-top:12px;margin-bottom:0">
       <div class="label">📣 Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }}{{ ui.countdown(dash.next_match) }})</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
     </div>
