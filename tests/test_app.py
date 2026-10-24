@@ -872,7 +872,9 @@ def test_player_journey_checkin_then_group_presence(client: TestClient) -> None:
     assert f"{STAR} Squadra 0 · il vostro profilo" in client.get("/").text
     home = client.get("/io").text
     spot = db_call(lambda db: service.provisional_spot(db, 1, datetime(2026, 10, 23, 18, 0)))
-    assert f"Girone {spot.group.letter} · {TABLE} Tavolo {spot.table}" in home
+    assert f"Il vostro girone (provvisorio) · Girone {spot.group.letter} · Tavolo {spot.table}" in home
+    assert "Siete pronti per il torneo!" in home and "Chi c'è già" in home and ">1/16</span>" in home
+    assert "Ne mancano 15" in home and '<span class="badge you">VOI</span>' in home and 'href="/arrivi"' in home
     assert f"contro <strong>{spot.first_rival['name']}</strong>" in home and f"{CHECK} arrivata" in home
 
     gironi = client.get("/gironi").text
