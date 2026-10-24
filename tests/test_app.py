@@ -142,8 +142,8 @@ def test_navigation_tabs_structure(client: TestClient) -> None:
     client.post("/logout")
     r = client.get("/")
     assert r.status_code == 200
-    # 3 tabs only: Squadra, Tavoli, Classifica; Live tab is removed; staff reach admin from the header
-    for tab in ('href="/io"', ">Squadra", ">Tavoli", ">Classifica"):
+    # 3 tabs only: Coppia, Tavoli, Classifica; Live tab is removed; staff reach admin from the header
+    for tab in ('href="/io"', ">Coppia", ">Tavoli", ">Classifica"):
         assert tab in r.text
     assert ">Live</a>" not in r.text
     assert 'class="staff" href="/login">Staff' in r.text and ">Admin\n" not in r.text
@@ -344,7 +344,7 @@ def test_team_splits_cups_for_player_ranking(client: TestClient) -> None:
 
     with TestClient(client.app) as phone:  # the partner, invited from the phone that checked in
         phone.get(f"/entra/{db_call(service.invite_token, m.t1, 2)}")
-        assert "Dividete i canestri" in phone.get("/").text
+        assert "Dividete i bicchieri" in phone.get("/").text
         phone.post(f"/canestri/{m.id}", data={"side": 2, "cup1": "1"})  # not their side
         assert db_call(service.match, m.id).split2 is None
         assert "Indica chi ha centrato" in phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1"}).text
@@ -419,7 +419,7 @@ def test_admin_adds_partial_couple_without_team_name(client: TestClient) -> None
     login(client, ADMIN_PIN)
     client.post("/admin/squadre/nuova", data={"name": "", "p1": "Elena", "p2": "", "phone1": ""})
     (t,) = db_call(service.teams).values()
-    assert (t["name"], t["p2"]) == ("Squadra di Elena", "")
+    assert (t["name"], t["p2"]) == ("Coppia di Elena", "")
 
 
 def test_guest_from_party_list_enters_as_couple(client: TestClient) -> None:

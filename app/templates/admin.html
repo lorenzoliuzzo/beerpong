@@ -40,7 +40,7 @@
 <div class="summary">
   <a href="#torneo" class="tile {{ 'ok' if played == total }}"><div class="big">{{ played }}/{{ total }}</div><span class="muted small">partite</span></a>
   <a href="#torneo" class="tile {{ 'ok' if not late }}"><div class="big">{{ late|length }}</div><span class="muted small">tavoli in ritardo</span></a>
-  <a href="#torneo" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">canestri da dividere</span></a>
+  <a href="#torneo" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">bicchieri da dividere</span></a>
   <a href="#notifiche" class="tile ok"><div class="big">{{ push_subs[0] }}</div><span class="muted small">telefoni avvisati</span></a>
 </div>
 {% endif %}
@@ -85,7 +85,7 @@
     <details>
       <summary><strong>Incolla un elenco di pagamenti</strong></summary>
       <form method="post" action="/admin/pagamenti/elenco">
-        <label for="elenco-pagati">Una squadra per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
+        <label for="elenco-pagati">Una coppia per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
         <textarea id="elenco-pagati" name="elenco" required></textarea>
         <button class="wide" type="submit">Segna pagati</button>
       </form>
@@ -102,8 +102,8 @@
       <details>
         <summary><strong>Importa un elenco</strong></summary>
         <form method="post" action="/admin/squadre/importa">
-          <label for="testo">Una riga per iscrizione: <code>Squadra; Giocatore 1; Giocatore 2; Telefono</code><br>
-            Senza giocatore 2 = coppia parziale. Senza nome squadra = iscritto solo serata (nome in «Giocatore 1»).</label>
+          <label for="testo">Una riga per iscrizione: <code>Coppia; Giocatore 1; Giocatore 2; Telefono</code><br>
+            Senza giocatore 2 = coppia parziale. Senza nome coppia = iscritto solo serata (nome in «Giocatore 1»).</label>
           <textarea id="testo" name="testo" required></textarea>
           <button class="wide" type="submit">Importa</button>
         </form>

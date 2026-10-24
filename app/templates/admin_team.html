@@ -18,8 +18,8 @@
 
 <form method="post" action="{{ '/admin/squadre/' ~ t.id if t else '/admin/squadre/nuova' }}">
   <div class="card">
-    <label for="name">Nome della squadra</label>
-    <input id="name" name="name" value="{{ t.name if t }}" maxlength="40" autocomplete="off" placeholder="Se vuoto: «Squadra di …»">
+    <label for="name">Nome della coppia</label>
+    <input id="name" name="name" value="{{ t.name if t }}" maxlength="40" autocomplete="off" placeholder="Se vuoto: «Coppia di …»">
     <label for="p1">Giocatore 1</label>
     <input id="p1" name="p1" value="{{ t.p1 if t }}" maxlength="40" autocomplete="off" placeholder="Se non lo sai, lascia vuoto">
     <label for="p2">Giocatore 2</label>

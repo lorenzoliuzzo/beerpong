@@ -36,9 +36,9 @@
         <span class="muted small">🧑‍⚖️ Il risultato lo segna l'arbitro</span>
       {% endif %}
       {% if sides and (m.split_missing(sides[0]) or (sides|length > 1 and m.split_missing(sides[1]))) %}
-        <a class="btn small" href="/canestri/{{ m.id }}">Dividi i canestri</a>
+        <a class="btn small" href="/canestri/{{ m.id }}">Dividi i bicchieri</a>
       {% elif sides %}
-        <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica canestri</a>
+        <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica bicchieri</a>
       {% endif %}
       {% if ref_ok and m.mode == "tiri" and not m.done %}
         <a class="btn small" href="/segna/{{ m.id }}">🧑‍⚖️ Segna i tiri</a>
@@ -55,7 +55,7 @@
 {% macro table(rows, T, thirds=0, mine=None) %}
 <div class="table-wrap">
 <table>
-  <tr><th>#</th><th class="name">Squadra</th><th>G</th><th>V</th><th>N</th><th>P</th><th>DB</th><th>Pt</th></tr>
+  <tr><th>#</th><th class="name">Coppia</th><th>G</th><th>V</th><th>N</th><th>P</th><th>DB</th><th>Pt</th></tr>
   {% for r in rows %}
   <tr class="{{ 'q' if loop.index <= 2 else ('q3' if loop.index == 3 and thirds > 0) }} {{ 'mine' if r.team == mine }}">
     <td>{{ loop.index }}</td>

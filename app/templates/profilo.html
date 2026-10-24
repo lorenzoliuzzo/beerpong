@@ -21,7 +21,7 @@
 
 <form class="card" method="post" action="/io/coppia" id="coppia">
   <h2 style="margin-top:0">👥 La coppia</h2>
-  <label for="name">Nome della squadra</label>
+  <label for="name">Nome della coppia</label>
   <input id="name" name="name" value="{{ t.name }}" maxlength="40" required autocomplete="off">
   {% for i in (1, 2) %}
     <label for="p{{ i }}">{{ "Tu" if me_player == i else "Il compagno" }}</label>

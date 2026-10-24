@@ -85,7 +85,7 @@
             {% if g.table %}<span class="gcount">{{ g.table.matches|selectattr("done")|list|length }}/{{ g.table.matches|length }}</span>
             {% else %}<span class="gcount">{{ g.teams|selectattr("checked_in")|list|length }}/{{ g.teams|length }} arrivate</span>{% endif %}</div>
           {% if g.table %}
-            <div class="grow head"><span>#</span><span>Squadra</span><span>G</span><span>DB</span><span>Pt</span></div>
+            <div class="grow head"><span>#</span><span>Coppia</span><span>G</span><span>DB</span><span>Pt</span></div>
             {% for r in g.table.rows %}
               <div class="grow {{ 'q' if loop.index <= 2 else ('q3' if loop.index == 3 and thirds) }}">
                 <span>{{ loop.index }}</span><span class="n">{{ g.teams[loop.index0].name }}</span>

@@ -26,7 +26,7 @@
   <summary>Confronta con l'elenco ufficiale</summary>
   <div class="body">
     <form method="post" action="/admin/mancanti/confronta">
-      <label for="elenco">Incolla i nomi delle squadre, separati da virgola o uno per riga</label>
+      <label for="elenco">Incolla i nomi delle coppie, separati da virgola o uno per riga</label>
       <textarea id="elenco" name="elenco" required>{{ elenco }}</textarea>
       <button class="wide ghost" type="submit">Confronta</button>
     </form>
@@ -152,7 +152,7 @@
           <button class="small" type="submit">Collega</button>
         </form>
         <form method="post" action="/admin/iscritti/{{ g.id }}/nuova-coppia" style="margin-top:8px">
-          <input name="name" placeholder="Nome nuova squadra" aria-label="Nome nuova squadra">
+          <input name="name" placeholder="Nome nuova coppia" aria-label="Nome nuova coppia">
           <div style="display:flex;gap:8px;margin-top:8px">
             <input name="compagno" placeholder="Compagno (se lo sai)" aria-label="Compagno">
             <button class="small" type="submit">Crea</button>

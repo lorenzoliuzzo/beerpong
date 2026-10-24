@@ -10,7 +10,7 @@
 <nav class="segmented" style="margin-bottom:12px">
   <a href="/classifiche?vista=gironi" class="{{ 'on' if view == 'gironi' }}">Gironi</a>
   <a href="/classifiche?vista=eliminazione" class="{{ 'on' if view == 'eliminazione' }}">Eliminazione</a>
-  <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Squadre</a>
+  <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Coppie</a>
   <a href="/classifiche?vista=giocatori" class="{{ 'on' if view == 'giocatori' }}">Marcatori</a>
   {% if has_shots %}<a href="/classifiche?vista=tiri" class="{{ 'on' if view == 'tiri' }}">Tiri</a>{% endif %}
 </nav>
@@ -123,7 +123,7 @@
     <thead>
       <tr>
         <th>#</th>
-        <th class="name">Squadra</th>
+        <th class="name">Coppia</th>
         <th>Bic.</th>
         <th>V/G</th>
         <th>DB</th>
@@ -157,7 +157,7 @@
   </div>
 
 {% elif view == "giocatori" %}
-  <p class="muted small">Scarpa d'Oro: classifica individuale dei canestri segnati da ogni singolo giocatore.</p>
+  <p class="muted small">Scarpa d'Oro: classifica individuale dei bicchieri segnati da ogni singolo giocatore.</p>
 
   {% if tables %}
   <div class="filter-chips" id="scorers-filter-chips">
@@ -198,7 +198,7 @@
         <td>{{ s.played }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="name muted">Ancora nessun canestro registrato per i giocatori.</td></tr>
+      <tr><td colspan="4" class="name muted">Ancora nessun bicchiere registrato per i giocatori.</td></tr>
       {% endfor %}
     </tbody>
   </table>

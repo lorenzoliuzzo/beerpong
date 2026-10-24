@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a href="/checkin">‹ Tutte le squadre</a></p>
+<p><a href="/checkin">‹ Tutte le coppie</a></p>
 <h1>Siete una coppia?</h1>
 {% if cfg.phase != "setup" %}
   <div class="card">Il torneo è già iniziato: parlate con l'organizzazione.</div>
@@ -14,7 +14,7 @@
       <input id="phone1" name="phone1" type="tel" inputmode="tel" autocomplete="tel" required>
     </div>
     <div class="card">
-      <label for="name">Nome della squadra</label>
+      <label for="name">Nome della coppia</label>
       <input id="name" name="name" maxlength="40" required autocomplete="off">
       <label for="p1">Il tuo nome</label>
       <input id="p1" name="p1" maxlength="40" required autocomplete="off">

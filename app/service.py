@@ -168,11 +168,11 @@ def _clean_names(name: str, p1: str, p2: str, partial: bool = False) -> tuple[st
     if partial and p2 and not p1:
         p1, p2 = p2, ""
     if partial and p1 and not name:
-        name = f"Squadra di {p1}"
+        name = f"Coppia di {p1}"
     if not name or (not partial and not (p1 and p2)):
         raise TournamentError(
-            "Serve almeno il nome della squadra o di un giocatore." if partial
-            else "Servono nome della squadra e due giocatori."
+            "Serve almeno il nome della coppia o di un giocatore." if partial
+            else "Servono nome della coppia e due giocatori."
         )
     if p2 and p1.casefold() == p2.casefold():
         raise TournamentError("I due giocatori devono avere nomi diversi.")
@@ -193,7 +193,7 @@ def add_team(
                 (name, p1, p2, normalize_phone(phone1), normalize_phone(phone2), note.strip()),
             )
     except sqlite3.IntegrityError:
-        raise TournamentError(f"Esiste già una squadra chiamata «{name}».") from None
+        raise TournamentError(f"Esiste già una coppia chiamata «{name}».") from None
     return cur.lastrowid
 
 
@@ -212,11 +212,11 @@ def import_teams(db: sqlite3.Connection, text: str) -> ImportResult:
         if not line.strip():
             continue
         parts = [p.strip() for p in line.replace("\t", ";").split(";")]
-        if n == 1 and parts[0].casefold() == "squadra":
+        if n == 1 and parts[0].casefold() in ("coppia", "squadra"):  # a header row, old or new
             continue
         # Columns: squadra; giocatore1; giocatore2; [telefono1]; [telefono2]; [note, ignored]; [iscritto il]
         if not 3 <= len(parts) <= 7:
-            raise TournamentError(f"Riga {n}: usa il formato «Squadra; Giocatore 1; Giocatore 2; Telefono».")
+            raise TournamentError(f"Riga {n}: usa il formato «Coppia; Giocatore 1; Giocatore 2; Telefono».")
         if not parts[0] and not parts[2] and len(parts) >= 4 and parts[3]:
             # No team name: a party-only guest (name in the first player column).
             result.guests += add_guest(db, parts[3], parts[1], parts[6] if len(parts) > 6 else "")
@@ -262,7 +262,7 @@ def register_guest_team(
         (g for g in db.execute("SELECT * FROM guests WHERE team_id IS NULL") if _same_phone(g["phone"], phone)), None
     )
     if guest is None:
-        raise TournamentError("Questo numero non risulta tra gli iscritti al form (o ha già creato una squadra).")
+        raise TournamentError("Questo numero non risulta tra gli iscritti al form (o ha già creato una coppia).")
     name, p1, p2 = _clean_names(name, p1, p2)
     phone2 = normalize_phone(phone2)
     if phone2 and len(phone2.lstrip("+")) < 8:
@@ -277,7 +277,7 @@ def register_guest_team(
             )
             db.execute("UPDATE guests SET team_id = ? WHERE id = ?", (cur.lastrowid, guest["id"]))
     except sqlite3.IntegrityError:
-        raise TournamentError(f"Esiste già una squadra chiamata «{name}».") from None
+        raise TournamentError(f"Esiste già una coppia chiamata «{name}».") from None
     return cur.lastrowid
 
 
@@ -305,7 +305,7 @@ def update_couple(
                 (name, p1, p2, phone1, phone2, team_id),
             )
     except sqlite3.IntegrityError:
-        raise TournamentError(f"Esiste già una squadra chiamata «{name}».") from None
+        raise TournamentError(f"Esiste già una coppia chiamata «{name}».") from None
 
 
 # The questionnaire: how often they play, and the hit rate that habit usually comes with.
@@ -401,7 +401,7 @@ def save_team(
             )
             return team_id
     except sqlite3.IntegrityError:
-        raise TournamentError(f"Esiste già una squadra chiamata «{name}».") from None
+        raise TournamentError(f"Esiste già una coppia chiamata «{name}».") from None
 
 
 def admin_check_in(db: sqlite3.Connection, team_id: int, present: bool) -> None:
@@ -704,7 +704,7 @@ def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winne
     if m is None or m["bye"]:
         raise TournamentError("Partita non trovata.")
     if m["team1"] is None or m["team2"] is None:
-        raise TournamentError("Le squadre di questa partita non sono ancora definite.")
+        raise TournamentError("Le coppie di questa partita non sono ancora definite.")
     if not (0 <= s1 <= MAX_TEAM_CUPS and 0 <= s2 <= MAX_TEAM_CUPS):
         raise TournamentError(f"Il punteggio deve essere tra 0 e {MAX_TEAM_CUPS}.")
 
@@ -778,7 +778,7 @@ def assign_cup_players(db: sqlite3.Connection, match_id: int, side: int, players
     """Each player of the couple claims the cups they sank: the split per player follows from it."""
     m = db.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
     if m is None or not m["done"] or m["bye"] or side not in (1, 2):
-        raise TournamentError("Puoi dividere i canestri solo dopo che è stato inserito il risultato.")
+        raise TournamentError("Puoi dividere i bicchieri solo dopo che è stato inserito il risultato.")
     hit = cup_hits(db, match_id)[side]
     if set(players) != set(hit) or any(p not in (1, 2) for p in players.values()):
         raise TournamentError("Indica chi ha centrato ogni bicchiere.")
@@ -1773,7 +1773,7 @@ def apply_reconciliation(
             with db:
                 db.execute("UPDATE teams SET name = ? WHERE id = ?", (new_name, team_id))
         except sqlite3.IntegrityError:
-            raise TournamentError(f"Esiste già una squadra chiamata «{new_name}».") from None
+            raise TournamentError(f"Esiste già una coppia chiamata «{new_name}».") from None
         renamed += 1
     with db:
         for team_id, note in (flag_extra or {}).items():

@@ -22,7 +22,7 @@
 {% endif %}
 
 {% if profile and profile.played %}
-  <!-- SEZIONE 1: TUTTI I RANKING DELLA SQUADRA -->
+  <!-- SEZIONE 1: TUTTI I RANKING DELLA COPPIA -->
   <div class="section-head" style="margin-top:18px">
     <h2>🏅 Posizionamento nei Ranking</h2>
     <a href="/classifiche" class="small">Vedi classifiche ›</a>
@@ -101,7 +101,7 @@
       <div class="couple-split-bar-wrap">
         <div class="csb-labels">
           <span>🎯 <strong>{{ p1.name }}</strong> ({{ p1.share_pct }}%)</span>
-          <span class="muted small">Contributo ai canestri</span>
+          <span class="muted small">Contributo ai bicchieri</span>
           <span>({{ p2.share_pct }}%) <strong>{{ p2.name }}</strong> 🎯</span>
         </div>
         <div class="csb-track">
@@ -138,7 +138,7 @@
         <div class="ppc-stats">
           <div class="ppc-stat">
             <span class="ppc-val">{{ p.official_cups }} 🥤</span>
-            <span class="ppc-lbl">Canestri Ufficiali</span>
+            <span class="ppc-lbl">Bicchieri Ufficiali</span>
           </div>
           <div class="ppc-stat">
             <span class="ppc-val">{{ "%.1f"|format(p.official_avg) }}</span>

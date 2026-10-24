@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
-{% block title %}{{ "Squadra" if own else dash.team.name ~ " · Squadra" }}{% endblock %}
+{% block title %}{{ "Coppia" if own else dash.team.name ~ " · Coppia" }}{% endblock %}
 {% block content %}
 {% set t = dash.team %}
 
@@ -54,9 +54,9 @@
 
   {% if dash.to_split and me and me.id == t.id %}
     <div class="banner warm" style="margin-top:10px;margin-bottom:0">
-      <div class="label">Canestri individuali da dividere</div>
+      <div class="label">Bicchieri individuali da dividere</div>
       {% for m in dash.to_split %}
-        <p style="margin:4px 0"><a class="btn small" href="/canestri/{{ m.id }}">Dividi canestri di {{ m.n1 }} – {{ m.n2 }} ({{ m.s1 }}–{{ m.s2 }})</a></p>
+        <p style="margin:4px 0"><a class="btn small" href="/canestri/{{ m.id }}">Dividi bicchieri di {{ m.n1 }} – {{ m.n2 }} ({{ m.s1 }}–{{ m.s2 }})</a></p>
       {% endfor %}
     </div>
   {% endif %}
@@ -182,7 +182,7 @@
   {{ ui.table(dash.table.rows, T, thirds, mine=t.id) }}
 {% endif %}
 
-<!-- PARTITE DELLA SQUADRA: ORGANIZZATE PER FASE + TUTTE LE PARTITE FATTE -->
+<!-- PARTITE DELLA COPPIA: ORGANIZZATE PER FASE + TUTTE LE PARTITE FATTE -->
 {% if dash.matches %}
   {% set group_matches = dash.matches|selectattr("stage", "equalto", "group")|list %}
   {% set ko_matches = dash.matches|selectattr("stage", "equalto", "ko")|list %}

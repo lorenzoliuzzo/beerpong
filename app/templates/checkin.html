@@ -18,7 +18,7 @@
   <div class="body">
     <p class="muted small">Cercate la vostra coppia e toccatela{% if setup and allowed %}: potete controllare e correggere i vostri dati{% endif %}. Altrimenti chiedete allo staff.</p>
     <div class="search" style="top:0">
-      <input type="search" placeholder="Cerca squadra o giocatore" data-filter="#teams" autocomplete="off" aria-label="Cerca">
+      <input type="search" placeholder="Cerca coppia o giocatore" data-filter="#teams" autocomplete="off" aria-label="Cerca">
     </div>
     <div class="list" id="teams">
       {% for t in teams.values() if setup or t.checked_in %}

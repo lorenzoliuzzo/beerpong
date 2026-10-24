@@ -994,7 +994,7 @@ def split_form(request: Request, match_id: int, db: sqlite3.Connection = Depends
         raise HTTPException(404)
     sides = split_sides(request, m)
     if not sides:
-        flash(request, "Puoi dividere i canestri solo per le partite della tua squadra, dopo il risultato.", "err")
+        flash(request, "Puoi dividere i bicchieri solo per le partite della tua coppia, dopo il risultato.", "err")
         return redirect("/")
     return page(request, db, "canestri.html", m=m, sides=sides, T=service.teams(db), hits=service.cup_hits(db, match_id))
 
@@ -1018,7 +1018,7 @@ async def split_save(request: Request, match_id: int, db: sqlite3.Connection = D
     except TournamentError as e:
         flash(request, str(e), "err")
         return redirect(f"/canestri/{match_id}")
-    flash(request, "Canestri assegnati.")
+    flash(request, "Bicchieri assegnati.")
     return redirect("/io" if my_team_id(request) else "/admin")
 
 
@@ -1418,7 +1418,7 @@ def admin_new_team(
     except TournamentError as e:
         flash(request, str(e), "err")
         return redirect("/admin/squadre/nuova")
-    flash(request, f"Coppia «{name.strip() or 'Squadra di ' + p1.strip()}» aggiunta.")
+    flash(request, f"Coppia «{name.strip() or 'Coppia di ' + p1.strip()}» aggiunta.")
     return redirect("/admin#coppie")
 
 
