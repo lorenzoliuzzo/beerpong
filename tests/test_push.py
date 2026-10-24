@@ -10,11 +10,10 @@ from fastapi.testclient import TestClient
 from pywebpush import WebPushException
 
 from app import push, service
-from app.db import get_setting
 from tests.test_app import (  # noqa: F401
     ADMIN_PIN,
     record,
-    checkin_form,
+    check_in,
     client,
     db_call,
     import_teams,
@@ -49,9 +48,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, dict]]]:
 
 
 def join_as(c: TestClient, team_id: int, sub: int) -> None:
-    c.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    t = db_call(service.team, team_id)
-    c.post(f"/checkin/{team_id}", data=checkin_form(t, phone1=f"+39 333 000 {team_id:04d}"))
+    check_in(c, team_id, phone1=f"+39 333 000 {team_id:04d}")
     assert c.post("/push/iscrivi", json=fake_sub(sub)).json() == {"ok": True}
 
 

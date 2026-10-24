@@ -311,23 +311,22 @@ def delete_team(db: sqlite3.Connection, team_id: int) -> None:
         db.execute("DELETE FROM teams WHERE id = ?", (team_id,))
 
 
-def check_in(
-    db: sqlite3.Connection, team_id: int, name: str, p1: str, p2: str, phone1: str, phone2: str, payment: str
+def update_couple(
+    db: sqlite3.Connection, team_id: int, name: str, p1: str, p2: str, phone1: str, phone2: str
 ) -> None:
-    _require_setup(db)
+    """A player fixes the couple's details from its profile: names, and the numbers each of them enters with."""
     name, p1, p2 = _clean_names(name, p1, p2)
     phone1, phone2 = normalize_phone(phone1), normalize_phone(phone2)
-    if len(phone1.lstrip("+")) < 8:
-        raise TournamentError("Serve almeno un numero di telefono valido.")
-    if phone2 and len(phone2.lstrip("+")) < 8:
-        raise TournamentError("Il secondo numero di telefono non è valido.")
-    if payment not in PAYMENTS:
-        raise TournamentError("Rispondi alla domanda sul ticket.")
+    for player, phone in ((1, phone1), (2, phone2)):
+        if phone and len(phone.lstrip("+")) < 8:
+            raise TournamentError(f"Il numero di {p1 if player == 1 else p2} non è valido.")
+    if not (phone1 or phone2):
+        raise TournamentError("Serve almeno un numero di telefono.")
     try:
         with db:
             db.execute(
-                "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ?, payment = ? WHERE id = ?",
-                (name, p1, p2, phone1, phone2, payment, team_id),
+                "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ? WHERE id = ?",
+                (name, p1, p2, phone1, phone2, team_id),
             )
     except sqlite3.IntegrityError:
         raise TournamentError(f"Esiste già una squadra chiamata «{name}».") from None
@@ -452,7 +451,7 @@ def players_arrive(db: sqlite3.Connection, team_id: int, players: set[int]) -> b
     if t is None or not players <= {1, 2}:
         raise TournamentError("Coppia non trovata.")
     if not (t["p1"] and t["p2"]):
-        raise TournamentError(f"«{t['name']}» non ha ancora entrambi i giocatori: completate la coppia allo staff.")
+        raise TournamentError(f"Manca il nome del compagno di «{t['name']}»: aggiungetelo in «Personalizza».")
     now = datetime.now().isoformat(timespec="minutes")
     with db:
         for player in players:
@@ -2405,22 +2404,24 @@ def _access(db: sqlite3.Connection) -> URLSafeSerializer:
     return URLSafeSerializer(get_setting(db, "secret"), salt="accesso-coppia")
 
 
-def access_token(db: sqlite3.Connection, team_id: int) -> str:
-    """The couple's personal link, sent once the payment is in: it stays valid for this tournament."""
-    return _access(db).dumps(team_id)
+def access_token(db: sqlite3.Connection, team_id: int, player: int) -> str:
+    """A player's personal link, sent to their own number once the payment is in: valid for this tournament."""
+    return _access(db).dumps([team_id, player])
 
 
-def read_access(db: sqlite3.Connection, token: str) -> sqlite3.Row:
+def read_access(db: sqlite3.Connection, token: str) -> tuple[sqlite3.Row, int]:
     try:
-        team_id = _access(db).loads(token)
-    except BadSignature:
-        raise TournamentError("Link di accesso non valido: entrate con il vostro numero.") from None
+        team_id, player = _access(db).loads(token)
+    except (BadSignature, TypeError, ValueError):
+        raise TournamentError("Link di accesso non valido: entra con il tuo numero.") from None
     t = team(db, team_id)
     if t is None:
         raise TournamentError("Questa coppia non è iscritta al torneo in corso.")
     if not may_enter_early(t):
         raise TournamentError("Il vostro posto si conferma con il pagamento: appena arriva vi scriviamo.")
-    return t
+    if player not in (1, 2):
+        raise TournamentError("Link di accesso non valido: entra con il tuo numero.")
+    return t, player
 
 
 def venue_code(db: sqlite3.Connection) -> str:
@@ -2434,12 +2435,12 @@ def venue_code_ok(db: sqlite3.Connection, code: str) -> bool:
     return secrets.compare_digest(code.strip(), venue_code(db))
 
 
-def access_message(info: TournamentInfo, t: sqlite3.Row, url: str) -> str:
+def access_message(info: TournamentInfo, t: sqlite3.Row, player: int, url: str) -> str:
     return "\n".join([
-        f"Pagamento ricevuto ✓ «{t['name']}» è iscritta al {info.title}!",
-        f"Questo è il vostro accesso personale: {url}",
-        "Da lì attivate le notifiche, rispondete a due domande e invitate il compagno. "
-        "Alla serata inquadrate il QR all'ingresso per segnarvi presenti.",
+        f"Ciao {t[f'p{player}']}! Pagamento ricevuto ✓ «{t['name']}» è iscritta al {info.title}.",
+        f"Questo è il tuo accesso personale: {url}",
+        "Da lì attivi le notifiche e personalizzate il profilo della coppia. "
+        "Alla serata inquadra il QR all'ingresso per segnarti arrivato/a.",
     ])
 
 

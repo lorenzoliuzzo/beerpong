@@ -143,8 +143,8 @@
           {% for t in to_welcome %}
             <div class="row">
               <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
-              {% if t.phone1 %}<a class="btn small" target="_blank" rel="noopener"
-                 href="https://wa.me/{{ wa_number(t.phone1) }}?text={{ access_message(info, t)|urlencode }}">💬 Manda accesso</a>{% endif %}
+              {% for i in (1, 2) if t["phone" ~ i] %}<a class="btn small" target="_blank" rel="noopener"
+                 href="https://wa.me/{{ wa_number(t['phone' ~ i]) }}?text={{ access_message(info, t, i)|urlencode }}">💬 {{ t["p" ~ i] or "Accesso" }}</a>{% endfor %}
             </div>
           {% endfor %}
         </div>

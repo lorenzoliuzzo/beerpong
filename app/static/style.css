@@ -269,6 +269,9 @@ input, select, textarea {
   border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 48px; -webkit-appearance: none; appearance: none;
 }
 textarea { min-height: 140px; }
+/* A lone checkbox ("the partner is here with me"): a real box next to its text, not a text field. */
+input[type=checkbox] { width: 22px; height: 22px; min-height: 0; padding: 0; flex: none; -webkit-appearance: checkbox; appearance: checkbox; accent-color: var(--accent); }
+label:has(> input[type=checkbox]) { display: flex; align-items: center; gap: 10px; color: var(--text); }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 button, .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -1516,3 +1519,4 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 @keyframes voucher-pulse { from { transform: scale(1); } to { transform: scale(1.02); } }
 
 .choices.stack { flex-direction: column; align-items: flex-start; }
+.tph-own { display: flex; align-items: center; gap: 8px; margin-top: 8px; }

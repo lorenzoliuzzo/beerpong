@@ -29,13 +29,11 @@
       <h1 style="margin:6px 0 2px">{{ t.name }}</h1>
       <p class="muted" style="margin:0;font-size:1rem">👥 {{ ui.players(t) }}</p>
       {% if t.motto %}<p class="tph-motto">«{{ t.motto }}»</p>{% endif %}
+      {% if own %}
+        <div class="tph-own"><span class="badge" title="Il vostro profilo">★ VOI</span>
+          <a class="btn small ghost" href="/io/profilo">✏️ Personalizza</a></div>
+      {% endif %}
     </div>
-    {% if own %}
-      <div style="text-align:right">
-        <span class="badge" title="Il vostro profilo">★ VOI</span>
-        <a class="btn small ghost" style="margin-top:6px" href="/io/profilo">✏️ Personalizza</a>
-      </div>
-    {% endif %}
   </div>
 
   {% if dash.status == "now" and dash.next_match %}
@@ -74,9 +72,7 @@
           <span class="pill {{ 'ok' if t['arrived' ~ i ~ '_at'] }}">{{ t["p" ~ i] }} · {{ ("✓ arrivato/a " ~ t['arrived' ~ i ~ '_at'][11:16]) if t['arrived' ~ i ~ '_at'] else "in arrivo" }}</span>
         {% endfor %}
       </div>
-      {% if not me_player %}
-        <p class="muted small">Dicci chi sei, qui sotto, e poi segna il tuo arrivo.</p>
-      {% elif not t["arrived" ~ me_player ~ "_at"] %}
+      {% if not t["arrived" ~ me_player ~ "_at"] %}
         <form method="post" action="/io/arrivo">
           {% if not checkin_ok %}
             <p class="muted small">Inquadra il QR all'ingresso, oppure scrivi il codice di 4 cifre che trovi sotto il QR e sulla TV.</p>
@@ -151,19 +147,7 @@
 
 {% if own %}
   <div class="card phones-card">
-    {% if me_player %}
-      <div class="section-head" style="margin:0 0 6px"><h2 style="margin:0">Ciao {{ t["p" ~ me_player] }}! 👋</h2>
-        <form method="post" action="/io/chi-sono"><input type="hidden" name="giocatore" value="{{ 3 - me_player }}">
-          <button class="link small" type="submit">Non sei {{ t["p" ~ me_player] }}?</button></form></div>
-    {% else %}
-      <h2 style="margin:0 0 6px">Chi sta usando questo telefono?</h2>
-      <div class="choices">
-        {% for i in (1, 2) %}
-          <form method="post" action="/io/chi-sono"><input type="hidden" name="giocatore" value="{{ i }}">
-            <button class="ghost" type="submit">Sono {{ t["p" ~ i] }}</button></form>
-        {% endfor %}
-      </div>
-    {% endif %}
+    <h2 style="margin:0 0 6px">Ciao {{ t["p" ~ me_player] }}! 👋</h2>
     <div class="phones">
       {% for i in (1, 2) %}
         <span class="pill {{ 'ok' if devices[i] }}">{{ t["p" ~ i] }} · {{ "📱 collegato" if devices[i] else "non ancora" }}</span>

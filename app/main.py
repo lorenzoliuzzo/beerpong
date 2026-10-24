@@ -93,7 +93,9 @@ def is_admin(request: Request) -> bool:
 
 
 def my_team_id(request: Request) -> int | None:
-    return request.session.get("team")
+    # A phone is in a couple as one of its two players: every way in (number, personal link, the partner's
+    # invite) says which. A session without one is from an older version and logs in again.
+    return request.session.get("team") if request.session.get("player") in (1, 2) else None
 
 
 def my_player(request: Request) -> int | None:
@@ -107,13 +109,9 @@ def device_id(request: Request) -> str:
     return request.session["device"]
 
 
-def enter_team(request: Request, db: sqlite3.Connection, team_id: int, player: int | None = None) -> None:
-    """This phone now belongs to the couple, and to one of its players when we know which."""
-    request.session["team"] = team_id
-    if player is None:
-        request.session.pop("player", None)
-    else:
-        request.session["player"] = player
+def enter_team(request: Request, db: sqlite3.Connection, team_id: int, player: int) -> None:
+    """This phone now belongs to one player of the couple."""
+    request.session.update({"team": team_id, "player": player})
     service.register_device(db, device_id(request), team_id, player)
 
 
@@ -347,6 +345,23 @@ def look_save(
         flash(request, str(e), "err")
         return redirect("/io/profilo")
     flash(request, "Profilo aggiornato ✓")
+    return redirect("/io")
+
+
+@router.post("/io/coppia")
+def couple_save(
+    request: Request, name: str = Form(""), p1: str = Form(""), p2: str = Form(""),
+    phone1: str = Form(""), phone2: str = Form(""), db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    team_id = my_team_id(request)
+    if team_id is None:
+        return redirect("/checkin")
+    try:
+        service.update_couple(db, team_id, name, p1, p2, phone1, phone2)
+    except TournamentError as e:
+        flash(request, str(e), "err")
+        return redirect("/io/profilo#coppia")
+    flash(request, "Dati della coppia aggiornati ✓")
     return redirect("/io")
 
 
@@ -706,8 +721,7 @@ def checkin_phone(
             flash(request, f"Il torneo è già iniziato e «{t['name']}» non ha fatto il check-in: parlate con l'organizzazione.", "err")
             return redirect("/checkin")
         if request.session.get("checkin_ok"):
-            if not arrive(request, db, t, {player}):
-                return redirect("/checkin")
+            arrive(request, db, t, {player})  # in the profile even if not yet: there they fix what is missing
         elif service.may_enter_early(t):
             flash(request, f"Ciao {t[f'p{player}']}! {AT_VENUE}")
         else:
@@ -734,7 +748,7 @@ def arrive(request: Request, db: sqlite3.Connection, t: sqlite3.Row, players: se
     try:
         both = service.players_arrive(db, t["id"], players)
     except TournamentError as e:
-        flash(request, f"{e} Parlate con l'organizzazione.", "err")
+        flash(request, str(e), "err")
         return False
     if both:
         flash(request, f"Check-in fatto ✓ «{t['name']}» è al completo: ritirate la prima birra 🍺")
@@ -753,11 +767,8 @@ def arrival(
     code, proves it. A player already here may confirm the partner who has no phone."""
     t = service.team(db, my_team_id(request)) if my_team_id(request) is not None else None
     player = my_player(request)
-    if t is None:
+    if t is None or player is None:
         return redirect("/checkin")
-    if player is None:
-        flash(request, "Prima dicci chi sei.", "err")
-        return redirect("/io")
     if not request.session.get("checkin_ok"):
         if _throttled(request):
             flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
@@ -787,12 +798,12 @@ def first_beer(request: Request, giocatore: int = Form(...), db: sqlite3.Connect
 def personal_access(request: Request, token: str, db: sqlite3.Connection = Depends(get_db)) -> Response:
     """The link sent with the payment confirmation: it opens the couple's profile as its first player."""
     try:
-        t = service.read_access(db, token)
+        t, player = service.read_access(db, token)
     except TournamentError as e:
         flash(request, str(e), "err")
         return redirect("/checkin")
-    enter_team(request, db, t["id"], 1)
-    flash(request, f"Ciao {t['p1']}! Questo telefono ora è il tuo in «{t['name']}». {AT_VENUE}")
+    enter_team(request, db, t["id"], player)
+    flash(request, f"Ciao {t[f'p{player}']}! Questo telefono ora è il tuo in «{t['name']}». {AT_VENUE}")
     return redirect("/io")
 
 
@@ -835,7 +846,7 @@ def demo_as_couple(request: Request, db: sqlite3.Connection = Depends(get_db)) -
     team_id = secrets.choice(pool)
     request.session.pop("role", None)
     request.session.pop("field", None)
-    enter_team(request, db, team_id)
+    enter_team(request, db, team_id, 1)
     flash(request, f"Siete «{service.team(db, team_id)['name']}»: attivate le notifiche, tra poco tocca a voi!")
     return redirect("/io")
 
@@ -905,68 +916,12 @@ def guest_team_save(
 
 
 @router.get("/checkin/{team_id}")
-def checkin_form(request: Request, team_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+def checkin_team(request: Request, team_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """A couple picked from the list: its player enters with their own number, which says who they are."""
     t = service.team(db, team_id)
     if t is None:
         raise HTTPException(404)
     return page(request, db, "checkin_team.html", t=t, allowed=request.session.get("checkin_ok", False))
-
-
-@router.post("/checkin/{team_id}")
-def checkin_save(
-    request: Request,
-    team_id: int,
-    name: str = Form(""),
-    p1: str = Form(""),
-    p2: str = Form(""),
-    phone1: str = Form(""),
-    phone2: str = Form(""),
-    payment: str = Form(""),
-    io: str = Form(""),
-    insieme: str = Form(""),
-    db: sqlite3.Connection = Depends(get_db),
-) -> Response:
-    t = service.team(db, team_id)
-    if t is None:
-        raise HTTPException(404)
-    # Re-editing your own check-in is fine; checking in someone else needs the QR on the table.
-    if not request.session.get("checkin_ok") and my_team_id(request) != team_id:
-        flash(request, "Si fa alla serata: inquadrate il QR all'ingresso.", "err")
-        return redirect(f"/checkin/{team_id}")
-    if t["checked_in"] and my_team_id(request) != team_id:
-        flash(request, "Questa coppia ha già fatto il check-in: entra con il tuo numero di telefono.", "err")
-        return redirect(f"/checkin/{team_id}")
-    try:
-        service.check_in(db, team_id, name, p1, p2, phone1, phone2, payment)
-    except TournamentError as e:
-        flash(request, str(e), "err")
-        return redirect(f"/checkin/{team_id}")
-    player = _int(io) if _int(io) in (1, 2) else None
-    enter_team(request, db, team_id, player)
-    if player is not None and request.session.get("checkin_ok"):
-        arrive(request, db, service.team(db, team_id), {player, 3 - player} if insieme else {player})
-    else:
-        flash(request, "Dati salvati ✓")
-    return redirect("/io")
-
-
-@router.post("/checkin/{team_id}/entra")
-def checkin_join(
-    request: Request, team_id: int, phone: str = Form(...), db: sqlite3.Connection = Depends(get_db)
-) -> Response:
-    t = service.team(db, team_id)
-    if t is None:
-        raise HTTPException(404)
-    if _throttled(request):
-        flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
-        return redirect(f"/checkin/{team_id}")
-    if not service.phone_matches(t, phone):
-        _record_failure(request)
-        flash(request, "Il numero non corrisponde a quelli lasciati al check-in.", "err")
-        return redirect(f"/checkin/{team_id}")
-    enter_team(request, db, team_id, service.player_for_phone(t, phone))
-    flash(request, f"Benvenuto in «{t['name']}»!")
-    return redirect("/io")
 
 
 @router.post("/esci-squadra")
@@ -975,15 +930,6 @@ def leave_team(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
     request.session.pop("player", None)
     service.forget_device(db, device_id(request))
     return redirect("/")
-
-
-@router.post("/io/chi-sono")
-def choose_player(request: Request, giocatore: int = Form(...), db: sqlite3.Connection = Depends(get_db)) -> Response:
-    team_id = my_team_id(request)
-    if team_id is None or giocatore not in (1, 2):
-        return redirect("/io")
-    enter_team(request, db, team_id, giocatore)
-    return redirect("/io")
 
 
 def invite_url(request: Request, db: sqlite3.Connection) -> str | None:
@@ -1378,8 +1324,8 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
         played=sum(m.done for m in playable), total=sum(1 for m in views if not m.bye),
         info=service.load_tournament(db), reg=service.registration(db),
         pay_code=service.pay_code, wa_number=service.whatsapp_number, pay_message=service.payment_message,
-        access_message=lambda info, t: service.access_message(
-            info, t, f"{public_site_url(request, db)}/accesso/{service.access_token(db, t['id'])}"
+        access_message=lambda info, t, player: service.access_message(
+            info, t, player, f"{public_site_url(request, db)}/accesso/{service.access_token(db, t['id'], player)}"
         ),
     )
 

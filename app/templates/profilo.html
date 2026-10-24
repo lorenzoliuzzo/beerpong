@@ -19,6 +19,20 @@
   </div>
 </div>
 
+<form class="card" method="post" action="/io/coppia" id="coppia">
+  <h2 style="margin-top:0">👥 La coppia</h2>
+  <label for="name">Nome della squadra</label>
+  <input id="name" name="name" value="{{ t.name }}" maxlength="40" required autocomplete="off">
+  {% for i in (1, 2) %}
+    <label for="p{{ i }}">{{ "Tu" if me_player == i else "Il compagno" }}</label>
+    <input id="p{{ i }}" name="p{{ i }}" value="{{ t['p' ~ i] }}" maxlength="40" required autocomplete="off" placeholder="Nome">
+    <input name="phone{{ i }}" type="tel" inputmode="tel" value="{{ t['phone' ~ i] }}" aria-label="Telefono di {{ t['p' ~ i] or 'giocatore ' ~ i }}"
+           placeholder="{{ 'Il tuo numero' if me_player == i else 'Il suo numero: così entra anche lui con il suo' }}" style="margin-top:6px">
+  {% endfor %}
+  <p class="muted small">Ognuno entra con il proprio numero, che dice chi è.</p>
+  <button class="wide ghost" type="submit">Salva i dati</button>
+</form>
+
 <form class="card" method="post" action="/io/profilo">
   <label for="emoji">La vostra emoji</label>
   <div class="emoji-pick">
