@@ -62,16 +62,57 @@
 </div>
 
 {% if own %}
+  {% set mate = 3 - me_player if me_player else none %}
   {% if cfg.phase == "setup" and not t.checked_in %}
-    <form class="card arrive" method="post" action="/io/arrivati">
-      <h2 style="margin:0 0 4px">Siete arrivati alla serata?</h2>
-      <p class="muted small">Inquadrate il QR all'ingresso, oppure scrivete qui il codice di 4 cifre che trovate sotto il QR e sulla TV: vi segniamo presenti per il sorteggio.</p>
-      <div style="display:flex;gap:8px">
-        <input name="codice" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required aria-label="Codice della serata" autocomplete="off">
-        <button type="submit">Siamo qui</button>
+    <div class="card arrive">
+      <h2 style="margin:0 0 6px">Arrivo alla serata</h2>
+      <div class="phones">
+        {% for i in (1, 2) %}
+          <span class="pill {{ 'ok' if t['arrived' ~ i ~ '_at'] }}">{{ t["p" ~ i] }} · {{ ("✓ arrivato/a " ~ t['arrived' ~ i ~ '_at'][11:16]) if t['arrived' ~ i ~ '_at'] else "in arrivo" }}</span>
+        {% endfor %}
       </div>
-    </form>
+      {% if not me_player %}
+        <p class="muted small">Dicci chi sei, qui sotto, e poi segna il tuo arrivo.</p>
+      {% elif not t["arrived" ~ me_player ~ "_at"] %}
+        <form method="post" action="/io/arrivo">
+          {% if not checkin_ok %}
+            <p class="muted small">Inquadra il QR all'ingresso, oppure scrivi il codice di 4 cifre che trovi sotto il QR e sulla TV.</p>
+            <input name="codice" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required aria-label="Codice della serata" autocomplete="off">
+          {% endif %}
+          {% if not t["arrived" ~ mate ~ "_at"] %}
+            <label class="small" style="margin:6px 0"><input type="checkbox" name="compagno" value="1"> Anche {{ t["p" ~ mate] }} è qui con me (se non ha il telefono)</label>
+          {% endif %}
+          <button class="wide" type="submit">🍺 Sono arrivato/a</button>
+        </form>
+      {% else %}
+        <p class="small">Manca {{ t["p" ~ mate] }}: segna il suo arrivo dal suo telefono, oppure, se non ce l'ha, confermalo tu.</p>
+        <form method="post" action="/io/arrivo"><input type="hidden" name="compagno" value="1">
+          <button class="ghost wide" type="submit">{{ t["p" ~ mate] }} è qui con me</button></form>
+      {% endif %}
+    </div>
   {% endif %}
+
+  {# The free first beer: each player who has arrived shows the voucher once; it lasts a minute on screen. #}
+  {% for i in (1, 2) if t["arrived" ~ i ~ "_at"] and cfg.phase == "setup" %}
+    {% set taken = t["beer" ~ i ~ "_at"] %}
+    {% if not taken %}
+      <form class="card beer" method="post" action="/io/birra" onsubmit="return confirm('Mostra il buono al bancone: dura un minuto e poi sparisce. Lo apro?')">
+        <input type="hidden" name="giocatore" value="{{ i }}">
+        <div class="beer-row"><span class="beer-icon">🍺</span>
+          <div class="grow"><strong>La prima birra di {{ t["p" ~ i] }}</strong><div class="muted small">Toccala davanti al bancone: si mostra per un minuto e poi si cancella.</div></div></div>
+        <button class="wide" type="submit">Mostra il buono</button>
+      </form>
+    {% elif (now_iso < beer_until(taken)) %}
+      <div class="card beer voucher" data-until="{{ beer_until(taken) }}">
+        <div class="beer-icon big">🍺</div>
+        <div class="voucher-title">PRIMA BIRRA</div>
+        <div class="voucher-name">{{ t["p" ~ i] }} · {{ t.name }}</div>
+        <div class="voucher-left"><span data-left>60</span> s</div>
+      </div>
+    {% else %}
+      <p class="muted small" style="text-align:center">🍺 Prima birra di {{ t["p" ~ i] }} ritirata alle {{ taken[11:16] }}</p>
+    {% endif %}
+  {% endfor %}
 {% endif %}
 
 <!-- BIRRA BEVUTA LIVE (COPPIA E TORNEO) -->

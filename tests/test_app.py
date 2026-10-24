@@ -54,7 +54,10 @@ def import_teams(c: TestClient, n: int) -> None:
 
 
 def checkin_form(t, **overrides) -> dict:
-    form = {"name": t["name"], "p1": t["p1"], "p2": t["p2"], "phone1": "+39 333 1234567", "phone2": "", "payment": "contanti"}
+    form = {
+        "name": t["name"], "p1": t["p1"], "p2": t["p2"], "phone1": "+39 333 1234567", "phone2": "", "payment": "contanti",
+        "io": "1", "insieme": "1",
+    }
     return {**form, **overrides}
 
 
@@ -203,7 +206,7 @@ def test_checkin_needs_qr_key_and_mandatory_answers(client: TestClient) -> None:
     assert not db_call(service.team, 1)["checked_in"]
 
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    assert "Telefono (obbligatorio)" in client.get("/checkin/1").text
+    assert "Telefono del giocatore 1 (obbligatorio)" in client.get("/checkin/1").text
     assert "telefono valido" in client.post("/checkin/1", data=checkin_form(t, phone1="12")).text
     assert "domanda sul ticket" in client.post("/checkin/1", data=checkin_form(t, payment="")).text
 
@@ -394,12 +397,15 @@ def test_guest_from_party_list_enters_as_couple(client: TestClient) -> None:
     assert "1 coppie e 1 iscritti solo serata" in r.text
     client.post("/logout")
 
-    form = {"phone1": "+39 333 0000101", "name": "Pinte Pazze", "p1": "Ottavia", "p2": "Fulvio", "phone2": "", "payment": "online"}
+    form = {
+        "phone1": "+39 333 0000101", "name": "Pinte Pazze", "p1": "Ottavia", "p2": "Fulvio", "phone2": "",
+        "payment": "online", "insieme": "1",
+    }
     assert "Si fa alla serata" in client.post("/checkin/nuova", data=form).text
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     assert "non risulta tra gli iscritti" in client.post("/checkin/nuova", data={**form, "phone1": "3330000000"}).text
     r = client.post("/checkin/nuova", data=form)
-    assert "Siete in gara" in r.text and "Pinte Pazze" in r.text
+    assert "Check-in fatto ✓ «Pinte Pazze» è al completo" in r.text
     t = next(t for t in db_call(service.teams).values() if t["name"] == "Pinte Pazze")
     assert (t["checked_in"], t["phone1"], t["payment"]) == (1, "3330000101", "online")
 
@@ -935,15 +941,19 @@ def test_qr_then_phone_checks_in_and_opens_the_profile(client: TestClient) -> No
     assert "si conferma con il pagamento" in r.text and not db_call(service.team, ids["Lontre"])["checked_in"]
 
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    # each player arrives on their own: the couple is present once both have
     r = client.post("/checkin/accedi", data={"phone": "+39 333 111 0003"}, follow_redirects=False)
-    assert r.headers["location"] == "/questionario" and db_call(service.team, ids["Lontre"])["checked_in"] == 1
-    assert "Check-in fatto ✓ Benvenuti, Lontre!" in client.get("/questionario").text
+    lontre = db_call(service.team, ids["Lontre"])
+    assert r.headers["location"] == "/questionario" and lontre["arrived1_at"] and not lontre["checked_in"]
+    assert "Ci sei ✓ Manca Dora" in client.get("/questionario").text
+    client.post("/io/arrivo", data={"compagno": "1"})  # Dora has no phone: Ciro confirms her
+    assert db_call(service.team, ids["Lontre"])["checked_in"] == 1
 
     # the partner's number works too; a number in two couples asks which one
     r = client.post("/checkin/accedi", data={"phone": "3331110001"})
     assert "Quale coppia?" in r.text and "Gufi" in r.text and "Castori" in r.text
     client.post("/checkin/accedi", data={"phone": "3331110001", "team_id": ids["Castori"]})
-    assert db_call(service.team, ids["Castori"])["checked_in"] == 1 and not db_call(service.team, ids["Gufi"])["checked_in"]
+    assert db_call(service.team, ids["Castori"])["arrived1_at"] and not db_call(service.team, ids["Gufi"])["arrived1_at"]
 
     # a party-only guest goes to the couple form; an unknown number gets a hint
     assert client.post("/checkin/accedi", data={"phone": "3339990000"}, follow_redirects=False).headers["location"] == "/checkin/nuova"
@@ -958,7 +968,7 @@ def test_phone_login_after_the_start(client: TestClient) -> None:
     client.post("/admin/avvia")
     client.post("/logout")
     with TestClient(client.app) as phone:
-        assert "Bentornati, S0!" in phone.post("/checkin/accedi", data={"phone": "3331110000"}).text
+        assert "Bentornato/a, " in phone.post("/checkin/accedi", data={"phone": "3331110000"}).text
         assert "Il torneo è già iniziato" in phone.post("/checkin/accedi", data={"phone": "3331110004"}).text
 
 
@@ -1180,7 +1190,7 @@ def test_each_player_gets_their_own_phone_and_invites_the_partner(client: TestCl
     client.post("/logout")
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     t = db_call(service.team, 2)
-    client.post("/checkin/2", data=checkin_form(t, phone1="333 0000001", phone2="347 0000002"))
+    client.post("/checkin/2", data=checkin_form(t, phone1="333 0000001", phone2="347 0000002", io=""))
     page = client.get("/io").text
     assert "Chi sta usando questo telefono?" in page and "/io/invito.svg" not in page  # filled the form: who?
     page = client.post("/io/chi-sono", data={"giocatore": 1}).text
@@ -1239,11 +1249,13 @@ def test_paid_couples_enter_from_home_and_check_in_at_the_venue(client: TestClie
 
     with TestClient(client.app) as home:
         page = home.get(link).text
-        assert "Ciao Ada!" in page and "Siete arrivati alla serata?" in page
+        assert "Ciao Ada!" in page and "Arrivo alla serata" in page
         assert not db_call(service.team, ids["Gufi"])["checked_in"]
         wrong = "1111" if db_call(service.venue_code) == "0000" else "0000"
-        assert "Codice sbagliato" in home.post("/io/arrivati", data={"codice": wrong}).text
-        page = home.post("/io/arrivati", data={"codice": db_call(service.venue_code)}).text
+        assert "Codice sbagliato" in home.post("/io/arrivo", data={"codice": wrong}).text
+        page = home.post("/io/arrivo", data={"codice": db_call(service.venue_code)}).text
+        assert "Ci sei ✓ Manca Bice" in page and not db_call(service.team, ids["Gufi"])["checked_in"]
+        page = home.post("/io/arrivo", data={"compagno": "1"}).text  # the code was typed once on this phone
         assert "Check-in fatto ✓" in page and db_call(service.team, ids["Gufi"])["checked_in"] == 1
 
     with TestClient(client.app) as other:
@@ -1261,7 +1273,8 @@ def test_the_venue_qr_checks_in_a_couple_already_in_its_profile(client: TestClie
         phone.get(f"/accesso/{db_call(service.access_token, 1)}")
         assert not db_call(service.team, 1)["checked_in"]
         r = phone.get(f"/checkin?k={db_call(get_setting, 'reg_key')}", follow_redirects=False)
-        assert r.headers["location"] == "/io" and db_call(service.team, 1)["checked_in"] == 1
+        assert r.headers["location"] == "/io" and db_call(service.team, 1)["arrived1_at"]
+        assert not db_call(service.team, 1)["checked_in"]  # the partner has not arrived yet
 
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 200
@@ -1305,3 +1318,42 @@ def test_everyone_sees_who_has_arrived(client: TestClient) -> None:
     assert "2/5 coppie" in page and "In arrivo (3)" in page
     assert page.index("Squadra 3") < page.index("In arrivo")  # arrived: Squadra 3 (id 4) and Squadra 1 (id 2)
     assert db_call(service.team, 2)["checked_in_at"]
+
+
+def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import_teams(client, 4)
+    client.post("/admin/squadre/1/pagato", data={"pagato": 1})
+    client.post("/logout")
+    key = db_call(get_setting, "reg_key")
+    t = db_call(service.team, 1)
+    db_call(lambda db: db.execute("UPDATE teams SET phone1 = '3330000001', phone2 = '3470000002' WHERE id = 1") and db.commit())
+
+    with TestClient(client.app) as first, TestClient(client.app) as second:
+        first.get(f"/checkin?k={key}")
+        first.post("/checkin/accedi", data={"phone": "3330000001"})
+        assert f"{t['p2']} ✓" not in client.get("/arrivi").text and f"{t['p1']} ✓ · manca {t['p2']}" in client.get("/arrivi").text
+        page = first.get("/io").text
+        assert f"La prima birra di {t['p1']}" in page and f"La prima birra di {t['p2']}" not in page
+        assert not db_call(service.team, 1)["checked_in"]
+
+        second.get(f"/checkin?k={key}")
+        assert "è al completo" in second.post("/checkin/accedi", data={"phone": "347 000 0002"}).text
+        assert db_call(service.team, 1)["checked_in"] == 1
+
+        page = second.post("/io/birra", data={"giocatore": 2}).text
+        assert "PRIMA BIRRA" in page and "data-until=" in page
+        assert "già stata ritirata" in second.post("/io/birra", data={"giocatore": 2}).text
+        monkeypatch.setattr(service, "BEER_SHOWN_S", -1)  # a minute later the voucher is gone for good
+        page = second.get("/io").text
+        assert "PRIMA BIRRA" not in page and f"Prima birra di {t['p2']} ritirata alle" in page
+        assert f"La prima birra di {t['p1']}" in page  # the partner's is still to collect
+
+
+def test_the_desk_marks_both_players_arrived(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/admin/squadre/2/presente", data={"presente": 1})
+    t = db_call(service.team, 2)
+    assert t["checked_in"] == 1 and t["arrived1_at"] and t["arrived2_at"]
+    client.post("/admin/squadre/2/presente", data={"presente": 0})
+    t = db_call(service.team, 2)
+    assert (t["checked_in"], t["arrived1_at"], t["arrived2_at"]) == (0, None, None)

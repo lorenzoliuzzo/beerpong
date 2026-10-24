@@ -229,6 +229,17 @@
     catch (_) { prompt("Copia il link:", btn.dataset.copy); }
   });
 
+  // The first-beer voucher: on screen for a minute from when it was opened (server time), then gone.
+  (() => {
+    const offset = Number(document.body.dataset.serverTs || Date.now()) - Date.now();
+    const tick = () => document.querySelectorAll("[data-until]").forEach((v) => {
+      const left = Math.ceil((new Date(v.dataset.until) - (Date.now() + offset)) / 1000);
+      if (left <= 0) { v.remove(); return; }
+      v.querySelector("[data-left]").textContent = left;
+    });
+    tick(); setInterval(tick, 500);
+  })();
+
   // Global synchronized tournament clock ticker
   (() => {
     let clockOffset = null;

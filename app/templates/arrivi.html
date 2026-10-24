@@ -29,7 +29,9 @@
   <h2 style="margin-top:18px">In arrivo ({{ arr.expected|length }})</h2>
   <div class="list">
     {% for t in arr.expected %}
-      <a class="row muted" href="/squadra/{{ t.id }}">{{ ui.avatar(t) }}<div class="grow"><div class="title">{{ t.name }}</div><span class="small">{{ ui.players(t) }}</span></div></a>
+      {% set half = t.arrived1_at or t.arrived2_at %}
+      <a class="row {{ 'muted' if not half }}" href="/squadra/{{ t.id }}">{{ ui.avatar(t) }}<div class="grow"><div class="title">{{ t.name }}</div><span class="small">{{ ui.players(t) }}</span></div>
+        {% if half %}<span class="pill warn">{{ t.p1 if t.arrived1_at else t.p2 }} ✓ · manca {{ t.p2 if t.arrived1_at else t.p1 }}</span>{% endif %}</a>
     {% endfor %}
   </div>
 {% endif %}

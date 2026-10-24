@@ -238,7 +238,7 @@ def _same_phone(a: str, b: str) -> bool:
 def register_guest_team(
     db: sqlite3.Connection, phone: str, name: str, p1: str, p2: str, phone2: str, payment: str
 ) -> int:
-    """A party-only guest turns out to be a couple: create the team, already checked in."""
+    """A party-only guest turns out to be a couple: create the team (its arrival is marked by the caller)."""
     _require_setup(db)
     guest = next(
         (g for g in db.execute("SELECT * FROM guests WHERE team_id IS NULL") if _same_phone(g["phone"], phone)), None
@@ -254,7 +254,7 @@ def register_guest_team(
     try:
         with db:
             cur = db.execute(
-                "INSERT INTO teams(name, p1, p2, phone1, phone2, payment, checked_in) VALUES (?, ?, ?, ?, ?, ?, 1)",
+                "INSERT INTO teams(name, p1, p2, phone1, phone2, payment) VALUES (?, ?, ?, ?, ?, ?)",
                 (name, p1, p2, guest["phone"], phone2, payment),
             )
             db.execute("UPDATE guests SET team_id = ? WHERE id = ?", (cur.lastrowid, guest["id"]))
@@ -284,8 +284,7 @@ def check_in(
     try:
         with db:
             db.execute(
-                "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ?, payment = ?, checked_in = 1"
-                " WHERE id = ?",
+                "UPDATE teams SET name = ?, p1 = ?, p2 = ?, phone1 = ?, phone2 = ?, payment = ? WHERE id = ?",
                 (name, p1, p2, phone1, phone2, payment, team_id),
             )
     except sqlite3.IntegrityError:
@@ -393,11 +392,49 @@ def admin_check_in(db: sqlite3.Connection, team_id: int, present: bool) -> None:
     t = team(db, team_id)
     if present and t is not None and not (t["p1"] and t["p2"]):
         raise TournamentError(f"«{t['name']}» non ha ancora entrambi i giocatori: completa la coppia prima.")
+    now = datetime.now().isoformat(timespec="minutes") if present else None
     with db:
+        # The desk marks the whole couple; a player who already tapped keeps their own time.
         db.execute(
-            "UPDATE teams SET checked_in = ?, checked_in_at = ? WHERE id = ?",
-            (int(present), datetime.now().isoformat(timespec="minutes") if present else None, team_id),
+            "UPDATE teams SET checked_in = ?, checked_in_at = ?, arrived1_at = CASE WHEN ? THEN COALESCE(arrived1_at, ?)"
+            " END, arrived2_at = CASE WHEN ? THEN COALESCE(arrived2_at, ?) END WHERE id = ?",
+            (int(present), now, present, now, present, now, team_id),
         )
+
+
+def players_arrive(db: sqlite3.Connection, team_id: int, players: set[int]) -> bool:
+    """Players tapping «Sono arrivato/a» (or one confirming the partner): the couple is present, and goes into
+    the draw, once both have arrived. True when it is."""
+    _require_setup(db)
+    t = team(db, team_id)
+    if t is None or not players <= {1, 2}:
+        raise TournamentError("Coppia non trovata.")
+    if not (t["p1"] and t["p2"]):
+        raise TournamentError(f"«{t['name']}» non ha ancora entrambi i giocatori: completate la coppia allo staff.")
+    now = datetime.now().isoformat(timespec="minutes")
+    with db:
+        for player in players:
+            db.execute(f"UPDATE teams SET arrived{player}_at = COALESCE(arrived{player}_at, ?) WHERE id = ?", (now, team_id))
+        db.execute(
+            "UPDATE teams SET checked_in = 1, checked_in_at = COALESCE(checked_in_at, ?)"
+            " WHERE id = ? AND arrived1_at IS NOT NULL AND arrived2_at IS NOT NULL",
+            (now, team_id),
+        )
+    return bool(team(db, team_id)["checked_in"])
+
+
+BEER_SHOWN_S = 60
+
+
+def take_beer(db: sqlite3.Connection, team_id: int, player: int) -> None:
+    """The first beer: the voucher is used the moment it is shown, and shows for a minute only."""
+    t = team(db, team_id)
+    if t is None or player not in (1, 2) or not t[f"arrived{player}_at"]:
+        raise TournamentError("La prima birra si ritira all'arrivo alla serata.")
+    if t[f"beer{player}_at"]:
+        raise TournamentError(f"La prima birra di {t[f'p{player}']} è già stata ritirata.")
+    with db:
+        db.execute(f"UPDATE teams SET beer{player}_at = ? WHERE id = ?", (datetime.now().isoformat(timespec="seconds"), team_id))
 
 
 def set_paid(db: sqlite3.Connection, team_id: int, paid: bool) -> None:

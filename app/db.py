@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS teams (
     q_level TEXT, q_aim1 INTEGER, q_aim2 INTEGER, q_goal TEXT, q_at TEXT,
     note TEXT NOT NULL DEFAULT '',
     grp INTEGER,
-    checked_in_at TEXT,  -- when the couple arrived at the venue
+    checked_in_at TEXT,  -- when the couple arrived at the venue: both its players, each with a tap
+    arrived1_at TEXT, arrived2_at TEXT,
+    beer1_at TEXT, beer2_at TEXT,  -- the free first beer each player collects on arrival
     -- How the couple presents itself, set from its own profile.
     emoji TEXT NOT NULL DEFAULT '', motto TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT '',
     photo TEXT NOT NULL DEFAULT '', nick1 TEXT NOT NULL DEFAULT '', nick2 TEXT NOT NULL DEFAULT ''
@@ -211,6 +213,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE cup_hits ADD COLUMN player INTEGER CHECK (player IN (1, 2))")
     if "checked_in_at" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN checked_in_at TEXT")
+    for column in ("arrived1_at", "arrived2_at", "beer1_at", "beer2_at"):
+        if column not in team_columns:
+            conn.execute(f"ALTER TABLE teams ADD COLUMN {column} TEXT")
     for column in ("emoji", "motto", "color", "photo", "nick1", "nick2"):
         if column not in team_columns:
             conn.execute(f"ALTER TABLE teams ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")

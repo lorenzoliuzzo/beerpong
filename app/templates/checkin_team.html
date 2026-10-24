@@ -6,9 +6,9 @@
 
 {% if t.checked_in and not mine %}
   <h1>{{ t.name }}</h1>
-  <p class="muted">{{ ui.players(t) }} hanno già fatto il check-in. Entrate con uno dei numeri di telefono che avete lasciato.</p>
+  <p class="muted">{{ ui.players(t) }} hanno già fatto il check-in. Entra con il tuo numero di telefono, quello che hai lasciato.</p>
   <form class="card" method="post" action="/checkin/{{ t.id }}/entra">
-    <label for="phone">Il vostro numero di telefono</label>
+    <label for="phone">Il tuo numero di telefono</label>
     <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required>
     <button class="wide" type="submit">Entra</button>
   </form>
@@ -19,7 +19,7 @@
 
 {% elif not allowed and not mine %}
   <h1>{{ t.name }}</h1>
-  <div class="card">Il check-in si fa alla serata: inquadrate il <strong>QR all'ingresso</strong>. Se avete già pagato, <a href="/checkin">entrate con il vostro numero</a>.</div>
+  <div class="card">Il check-in si fa alla serata: inquadrate il <strong>QR all'ingresso</strong>. Se avete già pagato, <a href="/checkin">entra con il tuo numero</a>.</div>
 
 {% else %}
   <h1>{{ "I vostri dati" if t.checked_in else "Check-in" }}</h1>
@@ -33,12 +33,23 @@
       <input id="p2" name="p2" value="{{ t.p2 }}" maxlength="40" required autocomplete="off" placeholder="Nome del compagno">
     </div>
     <div class="card">
-      <label for="phone1">Telefono (obbligatorio)</label>
+      <label for="phone1">Telefono del giocatore 1 (obbligatorio)</label>
       <input id="phone1" name="phone1" type="tel" inputmode="tel" autocomplete="tel" value="{{ t.phone1 }}" required>
-      <label for="phone2">Telefono del compagno (facoltativo)</label>
+      <label for="phone2">Telefono del giocatore 2 (facoltativo)</label>
       <input id="phone2" name="phone2" type="tel" inputmode="tel" value="{{ t.phone2 }}">
-      <p class="muted small">Serve solo all'organizzazione per chiamarvi quando tocca a voi, e al compagno per entrare nella squadra dal suo telefono.</p>
+      <p class="muted small">Ognuno entra con il suo numero. Serve anche all'organizzazione per chiamarvi quando tocca a voi.</p>
     </div>
+    {% if not t.checked_in %}
+      <div class="card">
+        <h2 style="margin-top:0">Chi sei?</h2>
+        <div class="choices">
+          <label><input type="radio" name="io" value="1" required> Giocatore 1</label>
+          <label><input type="radio" name="io" value="2" required> Giocatore 2</label>
+        </div>
+        <label style="margin-top:8px"><input type="checkbox" name="insieme" value="1" checked> Il compagno è qui con me</label>
+        <p class="muted small">Se arriva dopo, lo segna lui dal suo telefono, o tu dal profilo.</p>
+      </div>
+    {% endif %}
     <div class="card">
       <h2 style="margin-top:0">Avete pagato il ticket?</h2>
       <div class="choices">

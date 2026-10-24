@@ -4,13 +4,13 @@
 {% set setup = cfg.phase == "setup" %}
 <h1>{{ "Check-in" if setup and allowed else "Entra nel vostro profilo" }}</h1>
 {% if setup and not allowed %}
-  <p class="muted">Avete pagato? Entrate nel profilo con il vostro numero, anche da casa. Alla serata inquadrate il <strong>QR all'ingresso</strong>: vi segna presenti.</p>
+  <p class="muted">Avete pagato? Entra nel profilo della coppia con il tuo numero, anche da casa. Alla serata inquadra il <strong>QR all'ingresso</strong>: ti segna arrivato/a.</p>
 {% endif %}
 <form class="card" method="post" action="/checkin/accedi">
-  <label for="phone"><strong>Il vostro numero di telefono</strong></label>
+  <label for="phone"><strong>Il tuo numero di telefono</strong></label>
   <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="333 123 4567" autofocus>
-  <p class="muted small">Quello lasciato all'iscrizione: va bene anche il numero del compagno.{% if setup and allowed %} Vi segniamo presenti ed entrate nel vostro profilo.{% endif %}</p>
-  <button class="wide" type="submit">{{ "Fai il check-in" if setup and allowed else "Entra" }}</button>
+  <p class="muted small">Ognuno entra con il suo, quello lasciato all'iscrizione: l'app sa chi sei.{% if setup and allowed %} Ti segniamo arrivato/a: la coppia è presente quando ci siete tutti e due.{% endif %}</p>
+  <button class="wide" type="submit">{{ "Sono arrivato/a" if setup and allowed else "Entra" }}</button>
 </form>
 
 <details class="section">
@@ -37,7 +37,7 @@
 {% if setup and allowed %}
   <a class="banner" href="/checkin/nuova">
     <div class="label">Iscritti «solo serata»?</div>
-    Se siete in due e volete giocare, entrate con il numero lasciato nel form →
+    Se siete in due e volete giocare, entra con il numero che hai lasciato nel form →
   </a>
 {% endif %}
 {% endblock %}

@@ -1504,3 +1504,13 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 .arrive-bar { height: 8px; border-radius: 4px; background: var(--warn-soft); overflow: hidden; margin: 6px 0 14px; }
 .arrive-bar span { display: block; height: 100%; background: var(--ok, #2f9e44); }
 .row.arrival { gap: 10px; border-left: 4px solid var(--team, transparent); }
+
+/* The first beer on arrival: a voucher shown once at the bar */
+.card.beer .beer-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.beer-icon { font-size: 2rem; }
+.voucher { text-align: center; background: #f08c00; color: #fff; border: 4px dashed #fff3bf; animation: voucher-pulse 1s ease-in-out infinite alternate; }
+.voucher .beer-icon.big { font-size: 4.5rem; }
+.voucher-title { font-size: 2rem; font-weight: 900; letter-spacing: .08em; }
+.voucher-name { font-size: 1.1rem; font-weight: 700; }
+.voucher-left { margin-top: 6px; font-size: 1.4rem; font-weight: 800; }
+@keyframes voucher-pulse { from { transform: scale(1); } to { transform: scale(1.02); } }

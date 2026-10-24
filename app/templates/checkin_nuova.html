@@ -10,18 +10,19 @@
   <p class="muted">Per chi si è iscritto al form come «solo serata» e vuole giocare: serve il numero di telefono che avete lasciato nel form.</p>
   <form method="post" action="/checkin/nuova">
     <div class="card">
-      <label for="phone1">Numero lasciato nel form</label>
+      <label for="phone1">Il tuo numero, quello lasciato nel form</label>
       <input id="phone1" name="phone1" type="tel" inputmode="tel" autocomplete="tel" required>
     </div>
     <div class="card">
       <label for="name">Nome della squadra</label>
       <input id="name" name="name" maxlength="40" required autocomplete="off">
-      <label for="p1">Giocatore 1</label>
+      <label for="p1">Il tuo nome</label>
       <input id="p1" name="p1" maxlength="40" required autocomplete="off">
-      <label for="p2">Giocatore 2</label>
+      <label for="p2">Il compagno</label>
       <input id="p2" name="p2" maxlength="40" required autocomplete="off">
-      <label for="phone2">Telefono del compagno (facoltativo)</label>
+      <label for="phone2">Telefono del compagno (facoltativo, per entrare con il suo numero)</label>
       <input id="phone2" name="phone2" type="tel" inputmode="tel">
+      <label style="margin-top:8px"><input type="checkbox" name="insieme" value="1" checked> Il compagno è qui con me</label>
     </div>
     <div class="card">
       <h2 style="margin-top:0">Avete pagato il ticket?</h2>
