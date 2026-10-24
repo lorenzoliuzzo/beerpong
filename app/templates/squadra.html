@@ -11,7 +11,7 @@
     <div class="flex-1">
       <div class="tph-badges">
         {% if profile and profile.grp_name %}
-          <a href="/gironi?g={{ t.grp }}" class="pill ok">{{ profile.grp_name }}</a>
+          <a href="/classifiche?vista=gironi&amp;g={{ t.grp }}" class="pill ok">{{ profile.grp_name }}</a>
         {% endif %}
         {% if profile and profile.field %}
           <a href="/gironi?tavolo={{ profile.field }}" class="pill">{{ ui.icon("table") }} Tavolo {{ profile.field }}</a>
@@ -168,7 +168,7 @@
 {% if dash.table %}
   <div class="section-head mt-6">
     <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
-    <a href="/gironi?g={{ t.grp }}" class="small">Vai al girone ›</a>
+    <a href="/classifiche?vista=gironi&amp;g={{ t.grp }}" class="small">Vai al girone ›</a>
   </div>
   {{ ui.table(dash.table.rows, T, thirds, mine=t.id) }}
 {% endif %}

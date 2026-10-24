@@ -70,7 +70,7 @@
 ] %}
 <nav class="tabbar">
   {% for href, label, icon in tabs %}
-    {% set on = (href == "/io" and (path == "/io" or path.startswith("/checkin") or path.startswith("/squadra"))) or (href == "/gironi" and (path in ("/", "/gironi", "/tabellone", "/programma") or path.startswith("/gironi/") or path.startswith("/live"))) or (href == "/classifiche" and (path == "/classifiche" or path.startswith("/classifiche/"))) %}
+    {% set on = (href == "/io" and (path == "/io" or path.startswith("/checkin") or path.startswith("/squadra"))) or (href == "/gironi" and (path in ("/", "/gironi", "/programma") or path.startswith("/gironi/") or path.startswith("/live"))) or (href == "/classifiche" and (path == "/classifiche" or path.startswith("/classifiche/"))) %}
     <a href="{{ href }}" class="{{ 'on' if on }}" {% if on %}aria-current="page"{% endif %}>
       <svg viewBox="0 0 24 24" aria-hidden="true">{{ icon|safe }}</svg>{{ label }}
     </a>

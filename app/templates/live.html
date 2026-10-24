@@ -6,7 +6,7 @@
   <div class="slim-head mb-2">
     <span class="muted small">{{ m.label }}{% if m.field %} · <strong>{{ ui.icon("table") }} Tavolo {{ m.field }}</strong>{% endif %}</span>
     {% if m.field %}
-      <a class="btn small ghost" href="/gironi?sez=tavoli&amp;tavolo={{ m.field }}">{{ ui.icon("back") }} Tavolo {{ m.field }}</a>
+      <a class="btn small ghost" href="/gironi?tavolo={{ m.field }}">{{ ui.icon("back") }} Tavolo {{ m.field }}</a>
     {% endif %}
   </div>
 

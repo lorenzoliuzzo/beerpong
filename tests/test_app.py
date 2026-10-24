@@ -172,15 +172,27 @@ def test_navigation_tabs_structure(client: TestClient) -> None:
 
 def test_gironi_single_and_all_modes(client: TestClient) -> None:
     setup_tournament(client, 8)
-    # Default view without ?g=all is mode-single (shows single group with matches)
-    r_single = client.get("/gironi")
+    # Groups live in Classifica: one group with its matches by default, all of them with ?g=all
+    r_single = client.get("/classifiche?vista=gironi")
     assert r_single.status_code == 200
     assert 'class="mode-single"' in r_single.text
-
-    # View all groups (?g=all) is mode-all (standings only, matches hidden via CSS)
-    r_all = client.get("/gironi?g=all")
-    assert r_all.status_code == 200
+    r_all = client.get("/gironi?g=all")  # an old link: lands on Classifica
+    assert str(r_all.url).endswith("/classifiche?vista=gironi&g=all")
     assert 'class="mode-all"' in r_all.text
+    assert 'id="groups-container"' not in client.get("/gironi").text  # the home is only the tables
+
+
+def test_one_home_for_now_one_for_standings(client: TestClient) -> None:
+    setup_tournament(client, 8)
+    page = client.get("/classifiche").text
+    tabs = re.findall(r'href="/classifiche\?vista=(\w+)"[^>]*>(\w+)</a>', page)
+    assert tabs[:4] == [("gironi", "Gironi"), ("tabellone", "Tabellone"), ("giocatori", "Giocatori"), ("coppie", "Coppie")]
+    for old, new in [("/tabellone", "/classifiche?vista=tabellone"), ("/tabellone?vista=tavoli", "/classifiche?vista=tabellone&per=tavolo"),
+                     ("/gironi?sez=classifiche", "/classifiche?vista=gironi"), ("/gironi?archivio=1", "/classifiche?vista=gironi")]:
+        assert client.get(old, follow_redirects=False).headers["location"] == new, old
+    assert 'class="on">Tabellone' in client.get("/classifiche?vista=eliminazione").text
+    assert 'class="on">Giocatori' in client.get("/classifiche?vista=tiri").text
+    assert "nav-sez-classifiche" not in client.get("/").text
 
 
 def test_asynchronous_tables_and_group_mapping(client: TestClient) -> None:
@@ -889,7 +901,7 @@ def test_rankings_are_stats_only(client: TestClient) -> None:
     client.post("/admin/avvia")
     page = client.get("/classifiche").text
     assert 'href="/classifiche?vista=gironi" class="on">Gironi' in page
-    assert 'href="/classifiche?vista=eliminazione"' in page
+    assert 'href="/classifiche?vista=tabellone"' in page
     page_coppie = client.get("/classifiche?vista=coppie").text
     assert '<tr class="mine' in page_coppie and "Mostra tutta la classifica" not in page_coppie  # 8 couples: no cut yet
     mine = [m for m in db_call(service.matches) if m.side(1)]
@@ -1711,7 +1723,7 @@ def test_one_match_can_be_scored_shot_by_shot(client: TestClient) -> None:
     assert client.post(f"/partita/{m.id}", data={"s1": 2, "s2": 1}).status_code == 200
     hits = db_call(service.cup_hits, m.id)
     assert hits == {1: {1: 1, 2: 2}, 2: {5: 2}}  # from the referee's shots, with who sank each
-    assert 'href="/classifiche?vista=tiri"' in client.get("/classifiche").text
+    assert "Precisione al tiro" in client.get("/classifiche?vista=giocatori").text
 
 
 def test_every_css_variable_used_is_defined() -> None:

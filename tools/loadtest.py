@@ -89,8 +89,8 @@ async def spectator(base: str, st: Stats, rng: random.Random) -> None:
         await browse(c, st, rng, watch_share=0.8)
 
 
-PAGES = ["/io", "/", "/gironi", "/tabellone", "/programma", "/classifiche", "/classifiche?vista=giocatori",
-         "/classifiche?vista=tiri", "/live"]
+PAGES = ["/io", "/", "/gironi", "/programma", "/classifiche", "/classifiche?vista=tabellone", "/classifiche?vista=giocatori",
+         "/live"]
 
 
 async def browse(c: httpx.AsyncClient, st: Stats, rng: random.Random, watch_share: float) -> None:
@@ -169,7 +169,7 @@ async def until_champion(admin: httpx.AsyncClient, st: Stats, minutes: float) ->
     while time.monotonic() < deadline:
         await asyncio.sleep(10)
         await st.call("admin", admin, "GET", "/admin")
-        r = await st.call("page", admin, "GET", "/tabellone")
+        r = await st.call("page", admin, "GET", "/classifiche?vista=tabellone")
         if r is not None and "Campioni del Torneo" in r.text:
             return re.search(r'<div class="headline">🏆 ([^<]+)</div>', r.text).group(1)
         print(f"  … {st.matches} partite confermate, {st.taps} tiri", flush=True)
@@ -223,7 +223,7 @@ async def main() -> None:
     champion = await until_champion(admin, st, args.minutes)
     st.done = True
     await asyncio.gather(*crowd, *refs, return_exceptions=True)
-    r = await st.call("page", admin, "GET", "/classifiche?vista=tiri")
+    r = await st.call("page", admin, "GET", "/classifiche?vista=giocatori")
     got = re.search(r"Dai tiri segnati dagli arbitri \((\d+) tiri\)", r.text) if r is not None else None
     await admin.aclose()
     report(st, time.monotonic() - t0, champion, int(got.group(1)) if got else None)

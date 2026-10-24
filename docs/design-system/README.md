@@ -26,7 +26,7 @@ The interface of a one-night beer pong tournament app: every player on their own
 - **Scale:** spacing `sp-half` 2px, `sp-1` 4, `sp-2` 8, `sp-3` 12, `sp-4` 16, `sp-6` 24, `sp-8` 32; radii `radius-sm` 8, `radius` 14, `radius-lg` 20, `radius-pill`. Templates use utility classes on that scale (`mt-3`, `mb-2`, `flex gap-2`, `center`, `plain-link`), not inline styles.
 - **Shape:** soft cards (`radius` 14px) with 1px `line` borders and no shadows; pills (`radius-pill`) for status; round avatars; cups as circles in a triangle rack.
 - **Type:** the platform system font, no web fonts. Three weights only: `fw-regular` 400 (body, meta), `fw-medium` 600 (labels, pills, buttons, your row), `fw-bold` 700 (headings, scores, big numbers); size does the rest of the hierarchy.
-- **Layout:** phone-only, one column, max 560px (`content-max`), 16px gutter, fixed bottom tab bar with three tabs (Squadra / Tavoli / Classifica), sticky top bar with the title and a "Staff" link.
+- **Layout:** phone-only, one column, max 560px (`content-max`), 16px gutter, fixed bottom tab bar with three tabs: Coppia (you), Tavoli (what happens now), Classifica (Gironi · Tabellone · Giocatori · Coppie), sticky top bar with the title and a "Staff" link.
 - **Touch:** 44px minimum targets (`touch-min`), 48px inputs at 16px (no iOS zoom), +/− steppers, radio cards, 72px referee buttons (`ref-go-h`).
 - **Motion:** pulses for urgency (the "hot" banner, the clock's last 30 s, the voucher), off under `prefers-reduced-motion` for the banner only.
 
