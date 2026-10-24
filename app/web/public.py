@@ -6,6 +6,7 @@ import re
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
+from urllib.parse import urlencode
 from pathlib import Path
 
 import qrcode
@@ -42,13 +43,15 @@ def groups_page(
     archivio: str = "",
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
+    if (sez == "classifiche" or g or archivio) and not tavolo:  # groups moved to Classifica: old links land there
+        return redirect("/classifiche?" + urlencode({"vista": "gironi", **({"g": g} if g else {})}))
     all_views = service.matches(db)
     tables = service.group_tables(db)
     cfg = service.load_config(db)
     t_views = service.table_views(db, g_tables=tables, all_matches=all_views)
     team_id = my_team_id(request)
     me_team = service.team(db, team_id) if team_id else None
-    is_ko_phase = cfg.phase.knockout_reached and not archivio
+    is_ko_phase = cfg.phase.knockout_reached
     my_table = None
     if team_id and is_ko_phase:
         my_table = next(
@@ -65,24 +68,6 @@ def groups_page(
         active_tavolo = t_views[0].field
     else:
         active_tavolo = 1
-
-    if g == "all":
-        active_grp = "all"
-    elif g.isdecimal() and any(t.grp == int(g) for t in tables):
-        active_grp = f"g{int(g)}"
-    elif me_team and me_team["grp"] is not None:
-        active_grp = f"g{me_team['grp']}"
-    elif tables:
-        active_grp = f"g{tables[0].grp}"
-    else:
-        active_grp = "all"
-
-    if sez in ("tavoli", "classifiche"):
-        active_sez = sez
-    elif g:
-        active_sez = "classifiche"
-    else:
-        active_sez = "tavoli"
 
     setup_tables = None
     if cfg.phase.is_setup:
@@ -104,9 +89,9 @@ def groups_page(
 
     return page(
         request, db, "gironi.html", tables=tables, table_views=t_views, T=service.teams(db), setup_tables=setup_tables,
-        active_grp=active_grp, active_tavolo=active_tavolo, active_sez=active_sez, my_table=my_table,
+        active_tavolo=active_tavolo, my_table=my_table,
         thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
-        projection=service.projected_first_round(db), labels=service.standing_labels(db),
+        labels=service.standing_labels(db),
         ko_plan=service.planned_knockout(db) if cfg.phase is Phase.GROUPS else [],
         dash=dash, overview=service.checkin_overview(db), final=ko[-1][1][0] if ko else None,
         tournament_liters=t_liters, total_cups=t_cups_live,
@@ -214,14 +199,37 @@ def schedule(request: Request, team: str | None = None, db: sqlite3.Connection =
     return page(request, db, "programma.html", slots=service.by_slot(views), plan=plan, team_id=team_id, live=True)
 
 
+VIEW_ALIASES = {"eliminazione": "tabellone", "tiri": "giocatori"}  # the names before the merge
+
+
+def active_group(g: str, tables: list[service.GroupTable], me_team: dict | None) -> str:
+    if g == "all":
+        return "all"
+    if g.isdecimal() and any(t.grp == int(g) for t in tables):
+        return f"g{int(g)}"
+    if me_team and me_team["grp"] is not None:
+        return f"g{me_team['grp']}"
+    return f"g{tables[0].grp}" if tables else "all"
+
+
 @router.get("/classifiche")
-def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
+def rankings(request: Request, vista: str = "", g: str = "", per: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
     tables = service.group_tables(db)
     rounds = service.knockout_rounds(db)
-    view = vista if vista in ("gironi", "eliminazione", "coppie", "giocatori", "tiri") else "gironi"
+    vista = VIEW_ALIASES.get(vista, vista)
+    view = vista if vista in ("gironi", "tabellone", "giocatori", "coppie") else "gironi"
     team_stats, scorers = service.team_ranking(db), service.scorers(db)
     t_liters, t_cups_live, _ = service.beer_stats(db)
+    has_shots = db.execute("SELECT 1 FROM reports LIMIT 1").fetchone() is not None
     team_id = my_team_id(request)
+    by_table: dict[int, list] = defaultdict(list)
+    plan = []
+    if view == "tabellone":
+        ko = [m for _, ms in rounds for m in ms if not m.bye]
+        plan = [] if ko else service.planned_knockout(db)
+        for m in sorted(ko, key=lambda m: m.slot or 0) or plan:
+            if m.field:
+                by_table[m.field].append(m)
     mine = None
     if team_id is not None:
         mine = {
@@ -231,32 +239,21 @@ def rankings(request: Request, vista: str = "", db: sqlite3.Connection = Depends
     return page(
         request, db, "classifiche.html", view=view, tables=tables, rounds=rounds,
         thirds=service.thirds_needed(db), T=service.teams(db),
-        labels=service.standing_labels(db), projection=service.projected_first_round(db),
+        labels=service.standing_labels(db) if view == "tabellone" else {},
+        projection=service.projected_first_round(db) if view == "tabellone" else [],
         mine=mine, scorers=scorers, team_stats=team_stats,
-        shots=tracking.shot_stats(db) if view == "tiri" else None,
-        has_shots=db.execute("SELECT 1 FROM reports LIMIT 1").fetchone() is not None,
+        active_grp=active_group(g, tables, service.team(db, team_id) if team_id else None),
+        per="tavolo" if per == "tavolo" else "turno", by_table=sorted(by_table.items()), plan=plan,
+        shots=tracking.shot_stats(db) if view == "giocatori" and has_shots else None,
+        has_shots=has_shots,
         tournament_liters=t_liters, total_cups_live=t_cups_live,
         live=True,
     )
 
 
 @router.get("/tabellone")
-def knockout(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
-    rounds = service.knockout_rounds(db)
-    ko = [m for _, ms in rounds for m in ms if not m.bye]
-    plan = [] if ko else service.planned_knockout(db)
-    by_table: dict[int, list] = defaultdict(list)
-    for m in sorted(ko, key=lambda m: m.slot or 0) or plan:
-        if m.field:
-            by_table[m.field].append(m)
-    return page(
-        request, db, "tabellone.html", rounds=rounds, view="tavoli" if vista == "tavoli" else "turni",
-        by_table=sorted(by_table.items()), plan=plan,
-        table_views=service.table_views(db), tables=service.group_tables(db),
-        thirds=service.thirds_needed(db), progress=service.tournament_progress(db),
-        labels=service.standing_labels(db), projection=service.projected_first_round(db), T=service.teams(db),
-        live=True,
-    )
+def knockout(vista: str = "") -> Response:
+    return redirect("/classifiche?vista=tabellone" + ("&per=tavolo" if vista == "tavoli" else ""))
 
 
 @router.get("/cartellone")
