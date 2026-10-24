@@ -48,7 +48,7 @@
       <label><input type="radio" name="referees" value="{{ key }}" {{ 'checked' if info.referees == key }}> {{ label }}</label>
     {% endfor %}
   </div>
-  <p class="muted small">Con il PIN: lo trovi in Organizzazione → Accessi, uno per tavolo. Chi non sta giocando: tocca «Arbitra questa partita» sulla partita in corso.</p>
+  <p class="muted small">Gli organizzatori arbitrano il tavolo del loro girone (scegli chi nella scheda della coppia); l'admin può arbitrare qualsiasi tavolo. Con «anche chi non sta giocando» chiunque libero può toccare «Arbitra questa partita» sulla partita in corso.</p>
   <label for="rules">Regole</label>
   <textarea id="rules" name="rules" style="min-height:180px" placeholder="6 bicchieri per lato, gironi da 4, si passa in due…">{{ info.rules }}</textarea>
   <button class="wide" type="submit">{{ "Salva" if info.created else "Crea il torneo" }}</button>

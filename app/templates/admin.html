@@ -303,12 +303,8 @@
     <form method="post" action="/admin/chiave" onsubmit="return confirm('Il QR già stampato smetterà di funzionare. Continuare?')">
       <button type="submit" class="ghost small">Genera nuova chiave</button>
     </form>
-    <h3>PIN staff</h3>
-    <div class="list">
-      <div class="row"><span>Admin</span><code>{{ admin_pin }}</code></div>
-      {% for f, pin in pins %}<div class="row"><span>Arbitro tavolo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
-      {% for f, pin in pins %}<div class="row"><span>Arbitro tavolo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
-    </div>
+    <h3>PIN admin</h3>
+    <details class="pin-reveal"><summary>Mostra il PIN admin</summary><p><code>{{ admin_pin }}</code></p></details>
     <form method="post" action="/admin/pin">
       <label for="pin">Nuovo PIN admin (almeno 6 cifre)</label>
       <div style="display:flex;gap:8px"><input id="pin" name="pin" inputmode="numeric" required><button type="submit" class="ghost">Cambia</button></div>

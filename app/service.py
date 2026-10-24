@@ -15,7 +15,7 @@ from pathlib import Path
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer, URLSafeTimedSerializer
 
 from . import bracket, planning
-from .db import get_setting, random_key, random_pin, set_setting
+from .db import get_setting, random_key, set_setting
 from .standings import Result, Row, compute_table
 
 MAX_TEAM_CUPS = 30
@@ -36,7 +36,7 @@ SCORING = {
     "tiri": "L'arbitro segna tiro per tiro",
 }
 # Who may referee when a match needs one.
-REFEREES = {"pin": "Con il PIN del tavolo", "volontari": "Chi non sta giocando", "entrambi": "Tutti e due"}
+REFEREES = {"volontari": "Anche chi non sta giocando", "organizzatori": "Solo gli organizzatori"}
 
 
 @dataclass(frozen=True)
@@ -50,15 +50,11 @@ class Config:
     phase: str
     start_time: str
     scoring: str = "coppie"
-    referees: str = "entrambi"
-
-    @property
-    def pin_referees(self) -> bool:
-        return self.referees in ("pin", "entrambi")
+    referees: str = "volontari"
 
     @property
     def volunteer_referees(self) -> bool:
-        return self.referees in ("volontari", "entrambi")
+        return self.referees == "volontari"
 
 
 @dataclass
@@ -125,28 +121,8 @@ def load_config(db: sqlite3.Connection) -> Config:
     )
 
 
-def referee_pin(db: sqlite3.Connection, field_no: int) -> str:
-    key = f"ref_pin_{field_no}"
-    row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
-    if row:
-        return row["value"]
-    taken = {r["value"] for r in db.execute("SELECT value FROM settings WHERE key LIKE 'ref_pin_%' OR key = 'admin_pin'")}
-    pin = random_pin()
-    while pin in taken:
-        pin = random_pin()
-    with db:
-        set_setting(db, key, pin)
-    return pin
-
-
-def authenticate(db: sqlite3.Connection, pin: str) -> tuple[str, int | None] | None:
-    if secrets.compare_digest(pin, get_setting(db, "admin_pin")):
-        return "admin", None
-    if get_setting(db, "referees") in ("pin", "entrambi"):
-        for row in db.execute("SELECT key, value FROM settings WHERE key LIKE 'ref_pin_%'"):
-            if secrets.compare_digest(pin, row["value"]):
-                return "referee", int(row["key"].removeprefix("ref_pin_"))
-    return None
+def is_admin_pin(db: sqlite3.Connection, pin: str) -> bool:
+    return secrets.compare_digest(pin, get_setting(db, "admin_pin"))
 
 
 def checkin_key_ok(db: sqlite3.Connection, key: str) -> bool:
@@ -2176,7 +2152,7 @@ class TournamentInfo:
     form_url: str
     pay_info: str  # how to pay: Satispay number, IBAN, ...
     scoring: str = "coppie"
-    referees: str = "entrambi"
+    referees: str = "volontari"
 
     @property
     def created(self) -> bool:

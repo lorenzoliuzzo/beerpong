@@ -128,10 +128,11 @@ def form_fields(html: str, action: str, cls: str) -> dict[str, str] | None:
 
 
 async def referee(base: str, field_no: int, pin: str, st: Stats, rng: random.Random, tap_s: float) -> None:
+    """One admin phone per table: with no table PINs, the admin referees a table from /arbitro?campo=N."""
     async with new_client(base) as c:
         await st.call("referee", c, "POST", "/login", data={"pin": pin})
         while not st.done:
-            r = await st.call("referee", c, "GET", "/arbitro")
+            r = await st.call("referee", c, "GET", f"/arbitro?campo={field_no}")
             ids = re.findall(r'href="/segna/(\d+)"', r.text) if r is not None else []
             if not ids:
                 await asyncio.sleep(2)
@@ -215,11 +216,9 @@ async def main() -> None:
         if st.checked_in >= 2 * COUPLES:
             break
     await st.call("admin", admin, "POST", "/admin/avvia")
-    r = await st.call("admin", admin, "GET", "/admin")
-    pins = dict(re.findall(r"<span>Arbitro tavolo (\d+)</span><code>(\d+)</code>", r.text))
-    refs = [asyncio.create_task(referee(args.base, int(f), p, st, random.Random(rng.random()), args.tap))
-            for f, p in sorted(pins.items())]
-    print(f"Torneo avviato: {len(pins)} arbitri, {len(crowd)} telefoni", flush=True)
+    refs = [asyncio.create_task(referee(args.base, f, args.pin, st, random.Random(rng.random()), args.tap))
+            for f in range(1, FIELDS + 1)]
+    print(f"Torneo avviato: {FIELDS} arbitri, {len(crowd)} telefoni", flush=True)
 
     champion = await until_champion(admin, st, args.minutes)
     st.done = True

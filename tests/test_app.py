@@ -49,6 +49,19 @@ def login(c: TestClient, pin: str) -> None:
     assert r.status_code == 303 and r.headers["location"] != "/login"
 
 
+def referee_login(c: TestClient, field: int) -> None:
+    """Table referees have no PIN: a player of an organizer couple on that table referees it from their profile."""
+    views = db_call(service.matches)
+    playing = {t for m in views if m.playing for t in (m.t1, m.t2)}
+    on_table = {t for m in views if m.stage == "group" and m.field == field for t in (m.t1, m.t2)}
+    t = next(t for t in db_call(service.teams).values() if t["id"] in on_table - playing)
+    phone = f"333777{field:04d}"
+    db_call(lambda db: (db.execute("UPDATE teams SET organizer = 1, referee_player = 1, phone1 = ? WHERE id = ?",
+                                   (phone, t["id"])), db.commit()))
+    c.post("/logout")
+    c.post("/checkin/accedi", data={"phone": phone})
+
+
 def import_teams(c: TestClient, n: int) -> None:
     login(c, ADMIN_PIN)
     c.post("/admin/impostazioni", data={"title": "Test", "fields": 3, "group_min": 5, "ko_min": 6, "buffer_min": 1})
@@ -1380,13 +1393,11 @@ def shot_by_shot() -> None:
 def test_referee_only_edits_own_field(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 10, fields=2)
-    pin = db_call(service.referee_pin, 1)
     views = db_call(service.matches)
     own = next(m for m in views if m.field == 1)
     other = next(m for m in views if m.field == 2)
 
-    client.post("/logout")
-    login(client, pin)
+    referee_login(client, 1)
     data = {"s1": 5, "s2": 1}
     assert client.post(f"/partita/{other.id}", data=data, follow_redirects=False).headers["location"] == "/login"
     assert client.post(f"/partita/{own.id}", data=data, follow_redirects=False).headers["location"] == "/arbitro"
@@ -1398,7 +1409,7 @@ def test_referee_only_edits_own_field(client: TestClient) -> None:
 def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     overview = client.get("/arbitro").text
     assert f'href="/segna/{m.id}"' in overview and "▶ Segna la partita" in overview
@@ -1430,7 +1441,7 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
 def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
 
     client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
@@ -1486,7 +1497,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
 def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     page = client.get(f"/segna/{m.id}").text
@@ -1509,7 +1520,7 @@ def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
 def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     db_call(lambda db: service.start_match(db, m.id, time.time() - 6 * 60, 1))
     db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
@@ -1549,7 +1560,7 @@ def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestC
 def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     for n, (pl, cup) in enumerate([(1, 1), (2, 4)]):
@@ -1570,7 +1581,7 @@ def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
 def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient) -> None:
     shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     page = client.get(f"/segna/{m.id}").text
@@ -1616,25 +1627,22 @@ def test_volunteer_referee_and_live_beer_liters(client: TestClient) -> None:
     assert "Scontri diretti" not in sq_html
 
 
-def set_scoring(scoring: str, referees: str = "entrambi") -> None:
+def set_scoring(scoring: str, referees: str = "volontari") -> None:
     db_call(lambda db: (set_setting(db, "scoring", scoring), set_setting(db, "referees", referees), db.commit()))
 
 
 def test_couples_score_by_default_and_need_no_referee(client: TestClient) -> None:
     setup_tournament(client, 8, fields=2)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    pin = db_call(service.referee_pin, 1)
-    client.post("/logout")
-    login(client, pin)
+    referee_login(client, 1)
     assert client.get(f"/segna/{m.id}", follow_redirects=False).headers["location"] == "/login"
     assert f'action="/partita/{m.id}/arbitra"' not in client.get("/gironi").text
 
 
 def test_a_referee_enters_the_final_result_with_its_cups(client: TestClient) -> None:
-    set_scoring("risultato", referees="pin")
+    set_scoring("risultato", referees="organizzatori")
     setup_tournament(client, 8, fields=2)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    pin = db_call(service.referee_pin, 1)
     client.post("/logout")
 
     with TestClient(client.app) as couple:
@@ -1647,7 +1655,7 @@ def test_a_referee_enters_the_final_result_with_its_cups(client: TestClient) -> 
         assert not db_call(service.match, m.id).done
 
     with TestClient(client.app) as referee:
-        login(referee, pin)
+        referee_login(referee, 1)
         assert referee.get(f"/segna/{m.id}", follow_redirects=False).headers["location"] == f"/risultato/{m.id}"
         r = referee.post(f"/risultato/{m.id}", data={"c1": ["1", "2", "3"], "c2": ["4"]}, follow_redirects=False)
         assert r.headers["location"] == "/arbitro"
@@ -1656,7 +1664,7 @@ def test_a_referee_enters_the_final_result_with_its_cups(client: TestClient) -> 
     done = db_call(service.match, m.id)
     assert (done.s1, done.s2) == (3, 1) and db_call(service.cup_hits, m.id)[1] == {1: None, 2: None, 3: None}
 
-    # volunteers are off with PINs only
+    # volunteers are off when only organizers referee
     assert "/arbitra" not in client.get("/gironi").text
 
 
@@ -1686,3 +1694,15 @@ def test_every_css_variable_used_is_defined() -> None:
     defined = set(re.findall(r"(--[\w-]+)\s*:", text))
     used = set(re.findall(r"var\((--[\w-]+)", text))
     assert used - defined == set()
+
+
+def test_only_the_admin_has_a_pin(client: TestClient) -> None:
+    db_call(lambda db: (set_setting(db, "ref_pin_1", "654321"), set_setting(db, "referees", "pin"), db.commit()))
+    init_db()  # an older database: its table PINs go, and "PIN only" becomes "organizers only"
+    assert db_call(lambda db: db.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'ref_pin_%'").fetchone()[0]) == 0
+    assert db_call(get_setting, "referees") == "organizzatori"
+    r = client.post("/login", data={"pin": "654321"}, follow_redirects=False)
+    assert r.headers["location"] == "/login"
+    login(client, ADMIN_PIN)
+    page = client.get("/admin").text
+    assert "Arbitro tavolo" not in page and "Mostra il PIN admin" in page

@@ -144,7 +144,7 @@ DEFAULTS = {
     "start_time": "21:30",
     "date": "",
     "scoring": "coppie",
-    "referees": "entrambi",
+    "referees": "volontari",
     "fee": "",
     "rules": "",
     "form_url": "",
@@ -226,6 +226,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE teams ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
     if "referee_player" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN referee_player INTEGER CHECK (referee_player IN (1, 2))")
+    # Table PINs for referees are gone: only the admin has a PIN. Map the old referee choices onto what is left.
+    conn.execute("DELETE FROM settings WHERE key LIKE 'ref_pin_%'")
+    conn.execute("UPDATE settings SET value = 'volontari' WHERE key = 'referees' AND value = 'entrambi'")
+    conn.execute("UPDATE settings SET value = 'organizzatori' WHERE key = 'referees' AND value = 'pin'")
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str:

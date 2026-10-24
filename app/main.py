@@ -149,8 +149,8 @@ def can_referee(request: Request, m: service.MatchView, db: sqlite3.Connection) 
         return True
     if m.mode == "coppie":
         return False
-    if request.session.get("role") == "referee":
-        return service.load_config(db).pin_referees and request.session.get("field") == m.field
+    if request.session.get("role") == "referee":  # only the demo hands out a table this way
+        return request.session.get("field") == m.field
     if m.id in request.session.get("vol_matches", []) and can_volunteer_referee(request, m, db):
         return True
     return m.field is not None and team_referee_table(request, db) == m.field
@@ -1015,14 +1015,12 @@ def login(request: Request, pin: str = Form(...), db: sqlite3.Connection = Depen
     if _throttled(request):
         flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
         return redirect("/login")
-    who = service.authenticate(db, pin.strip())
-    if who is None:
+    if not service.is_admin_pin(db, pin.strip()):
         _record_failure(request)
         flash(request, "PIN non valido.", "err")
         return redirect("/login")
-    role, field_no = who
-    request.session.update({"role": role, "field": field_no})
-    return redirect("/admin" if role == "admin" else "/arbitro")
+    request.session.update({"role": "admin", "field": None})
+    return redirect("/admin")
 
 
 @router.post("/logout")
@@ -1308,7 +1306,6 @@ admin = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 @admin.get("")
 def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
     cfg = service.load_config(db)
-    pins = [(f, service.referee_pin(db, f)) for f in range(1, cfg.fields + 1)] if cfg.pin_referees else []
     pending_groups = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
     views = service.matches(db)
     missing_splits = sum(1 for m in views for s in (1, 2) if m.split_missing(s))
@@ -1318,7 +1315,7 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
         request, db, "admin.html", overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
         push_subs=push.subscriber_count(db),
         answered=sum(1 for t in service.teams(db).values() if t["q_at"]),
-        solo=service.unassigned_guests(db), pins=pins,
+        solo=service.unassigned_guests(db),
         admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
         checkin_url=checkin_url(request, db), tables=tables,
         played=sum(m.done for m in playable), total=sum(1 for m in views if not m.bye),
@@ -1626,7 +1623,7 @@ def admin_tournament_save(
     title: str = Form(""), date: str = Form(""), start_time: str = Form(""),
     target_teams: int = Form(...), fields: int = Form(...), fee: str = Form(""),
     rules: str = Form(""), form_url: str = Form(""), pay_info: str = Form(""),
-    scoring: str = Form("coppie"), referees: str = Form("entrambi"),
+    scoring: str = Form("coppie"), referees: str = Form("volontari"),
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     info = service.TournamentInfo(
