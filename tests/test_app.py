@@ -20,7 +20,7 @@ ADMIN_PIN = "123456"
 
 
 def icon(name: str) -> str:
-    return f'<svg class="icon" aria-hidden="true"><use href="#i-{name}"/></svg>'
+    return f'<svg class="icon" aria-hidden="true"><use href="/static/icons.svg?v={web_common.templates.env.globals["icons_v"]}#i-{name}"/></svg>'
 
 
 CHART = icon("chart")
@@ -1767,7 +1767,7 @@ def test_the_interface_uses_icons_and_leaves_emoji_to_the_voice() -> None:
     for template in sorted((app_dir / "templates").glob("*.html")):
         text = re.sub(r"\{% for e in \[.*?\] %\}", "", template.read_text())  # the emoji couples pick as avatar
         assert {c for c in text if c in interface} == set(), template.name
-    sprite = (app_dir / "templates" / "_icons.html").read_text()
+    sprite = (app_dir / "static" / "icons.svg").read_text()
     used = {n for t in (app_dir / "templates").glob("*.html") for n in re.findall(r'icon\("([\w-]+)"', t.read_text())}
     used |= set(re.findall(r'ico\("([\w-]+)"\)', (app_dir / "templates" / "live.html").read_text()))
     assert {n for n in used if f'id="i-{n}"' not in sprite} == set()

@@ -16,7 +16,6 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
 <body {% if live %}data-live{% endif %} data-server-ts="{{ server_ts }}"{% if demo and (role or me) %} data-demo-role="1"{% endif %} class="{% block body_class %}{% endblock %}">
-{% include "_icons.html" %}
 {% if demo %}
 <div class="demo-bar">
   <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">coppie inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
@@ -28,8 +27,8 @@
 
 <div class="demo-guide" id="demo-guide" hidden>
   <div class="demo-guide-card">
-    <h2>Come vuoi provare la demo?</h2>
-    <p class="muted small mt-0">Le coppie sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
+    <h2 class="mt-0">Come vuoi provare la demo?</h2>
+    <p class="muted small">Le coppie sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
     <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
       <strong>{{ ui.icon("beer") }} Da giocatore</strong><span>Entri in una coppia che gioca tra poco: coppia, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
     {% if cfg.scoring.needs_referee %}

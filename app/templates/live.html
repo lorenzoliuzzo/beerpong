@@ -75,7 +75,7 @@
   let data = null, offset = 0, busy = false;
 
   const $ = (sel) => document.querySelector(sel);
-  const ico = (n) => `<svg class="icon" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+  const ico = (n) => `<svg class="icon" aria-hidden="true"><use href="/static/icons.svg?v={{ icons_v }}#i-${n}"/></svg>`;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const serverNow = () => (Date.now() + offset) / 1000;
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;

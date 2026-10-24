@@ -45,7 +45,7 @@
       </section>
     {% endfor %}
   {% else %}
-    <div class="card pt-6 pr-4 pb-6 pl-4 center">
+    <div class="card empty-state">
       <p class="muted m-0">Le classifiche dei gironi compariranno all'avvio del torneo.</p>
     </div>
   {% endif %}
@@ -102,7 +102,7 @@
       </div>
     {% endfor %}
   {% else %}
-    <div class="card pt-6 pr-4 pb-6 pl-4 center">
+    <div class="card empty-state">
       <p class="muted m-0">Il tabellone di eliminazione diretta verrà generato alla conclusione dei gironi.</p>
     </div>
   {% endif %}
@@ -246,7 +246,7 @@
     {% if shots.players|length > 5 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ shots.players|length }})</button>{% endif %}
     </div>
   {% else %}
-    <div class="card pt-6 pr-4 pb-6 pl-4 center">
+    <div class="card empty-state">
       <div class="mb-2" style="font-size:2rem">{{ ui.icon("target") }}</div>
       <div class="title">Nessun tiro segnalato finora</div>
       <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli arbitri iniziano a segnare i tiri.</p>

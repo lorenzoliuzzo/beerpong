@@ -40,7 +40,7 @@ The interface of a one-night beer pong tournament app: every player on their own
 
 ## Iconography
 
-One stroke set: 24px grid, 2px stroke, round caps and joins, `currentColor`, sized to the text (`1.15em`; `.icon.xl` for empty states). The symbols live in `app/templates/_icons.html` (included once by `base.html`) and are drawn with `ui.icon("name")`, or `ico("name")` in live.html's script. The three tab-bar icons are the same style. Emoji are voice, not icons: avatars, push and WhatsApp texts, flash messages, cheers, podium medals. A PWA icon (`icon-192.png`, `icon-512.png`).
+One stroke set: 24px grid, 2px stroke, round caps and joins, `currentColor`, sized to the text (`1.15em`; `.icon.xl` for empty states). The symbols live in `app/static/icons.svg` (one cached file, versioned like style.css) and are drawn with `ui.icon("name")`, or `ico("name")` in live.html's script. The three tab-bar icons are the same style. Emoji are voice, not icons: avatars, push and WhatsApp texts, flash messages, cheers, podium medals. A PWA icon (`icon-192.png`, `icon-512.png`).
 
 ## Components
 

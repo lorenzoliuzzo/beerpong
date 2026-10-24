@@ -25,6 +25,7 @@ BASE = Path(__file__).resolve().parent.parent  # app/
 templates = Jinja2Templates(directory=BASE / "templates")
 # Changes with the stylesheet, so phones never keep an old copy after a deploy.
 templates.env.globals["static_v"] = hashlib.sha256((BASE / "static" / "style.css").read_bytes()).hexdigest()[:10]
+templates.env.globals["icons_v"] = hashlib.sha256((BASE / "static" / "icons.svg").read_bytes()).hexdigest()[:10]
 templates.env.globals["team_colors"] = service.COLORS
 templates.env.globals.update(Phase=Phase, Scoring=Scoring, LivePhase=LivePhase)
 log = logging.getLogger("beerpong")

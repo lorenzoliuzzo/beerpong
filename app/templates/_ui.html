@@ -1,5 +1,5 @@
-{# One stroke icon from the sprite in _icons.html, sized to the text around it. #}
-{% macro icon(name, cls="") %}<svg class="icon{{ " " ~ cls if cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{% endmacro %}
+{# One stroke icon from static/icons.svg, sized to the text around it. #}
+{% macro icon(name, cls="") %}<svg class="icon{{ " " ~ cls if cls }}" aria-hidden="true"><use href="/static/icons.svg?v={{ icons_v }}#i-{{ name }}"/></svg>{% endmacro %}
 
 {# "· tra 12 min" after a time: base.html counts down with the server clock; nothing once a match is on. #}
 {% macro countdown(m) %}{% if m.start_iso and not m.done and not m.started_at and not m.bye %}<span class="cd" data-countdown="{{ m.start_iso }}"></span>{% endif %}{% endmacro %}
