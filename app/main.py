@@ -589,6 +589,18 @@ def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3
     return _team_page(request, db, team_id, vs, own=False)
 
 
+@router.get("/squadra/{team_id}/statistiche")
+def team_stats(request: Request, team_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    dash = service.team_dashboard(db, team_id)
+    if dash is None:
+        raise HTTPException(404)
+    own = team_id == my_team_id(request)
+    return page(
+        request, db, "statistiche.html", dash=dash, profile=service.team_profile(db, team_id), own=own,
+        me_player=my_player(request) if own else None,
+    )
+
+
 # --- Live tracking ---------------------------------------------------------
 
 

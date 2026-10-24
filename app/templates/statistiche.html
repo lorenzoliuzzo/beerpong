@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Statistiche · {{ dash.team.name }}{% endblock %}
+{% block content %}
+{% set t = dash.team %}
+<p><a href="{{ '/io' if own else '/squadra/' ~ t.id }}">‹ {{ t.name }}</a></p>
+<h1>📊 Statistiche</h1>
+<!-- BIRRA BEVUTA LIVE (COPPIA E TORNEO) -->
+{% if profile %}
+  <div class="stats-grid" style="margin-top:12px">
+    <div class="stat-box">
+      <span class="lbl">Litri bevuti ({{ t.name }})</span>
+      <div class="val">{{ "%.2f"|format(profile.liters_drunk)|replace(".", ",") }} L 🍺</div>
+      <span class="sub">{{ profile.cups_drunk_live }} bicchieri bevuti live</span>
+    </div>
+    <div class="stat-box">
+      <span class="lbl">Litri bevuti nel torneo</span>
+      <div class="val">{{ "%.1f"|format(profile.tournament_liters)|replace(".", ",") }} L 🍻</div>
+      <span class="sub">{{ profile.total_cups_live }} bicchieri totali (1 L/squadra)</span>
+    </div>
+  </div>
+{% endif %}
+
+{% if profile and profile.played %}
+  <!-- SEZIONE 1: TUTTI I RANKING DELLA SQUADRA -->
+  <div class="section-head" style="margin-top:18px">
+    <h2>🏅 Posizionamento nei Ranking</h2>
+    <a href="/classifiche" class="small">Vedi classifiche ›</a>
+  </div>
+  <div class="profile-rankings-grid">
+    <div class="pr-card">
+      <span class="pr-label">Nel {{ profile.grp_name or "Girone" }}</span>
+      <div class="pr-val">{% if profile.grp_rank %}{{ profile.grp_rank }}° <small>/ {{ profile.grp_total }}</small>{% else %}—{% endif %}</div>
+      <span class="pr-sub">{{ profile.grp_points }} pt · DB {{ "%+d"|format(profile.grp_diff) }}</span>
+    </div>
+    <div class="pr-card">
+      <span class="pr-label">Ranking Attacco (🥤)</span>
+      <div class="pr-val">{% if profile.team_cups_rank %}#{{ profile.team_cups_rank }} <small>/ {{ profile.total_teams }}</small>{% else %}—{% endif %}</div>
+      <span class="pr-sub">{{ profile.cups_for }} bicchieri ({{ "%.1f"|format(profile.cups_avg) }}/gara)</span>
+    </div>
+    {% if profile.team_shots %}
+    <div class="pr-card">
+      <span class="pr-label">Ranking Precisione 🎯</span>
+      <div class="pr-val">{% if profile.team_accuracy_rank %}#{{ profile.team_accuracy_rank }}{% else %}—{% endif %}</div>
+      <span class="pr-sub">{{ "%.0f"|format(profile.team_accuracy) }}% ({{ profile.team_hits }}/{{ profile.team_shots }} tiri)</span>
+    </div>
+    {% endif %}
+    <div class="pr-card">
+      <span class="pr-label">Rendimento Generale</span>
+      <div class="pr-val">{% if profile.overall_group_rank %}#{{ profile.overall_group_rank }} <small>/ {{ profile.total_teams }}</small>{% else %}—{% endif %}</div>
+      <span class="pr-sub">Win rate {{ profile.win_rate }}% ({{ profile.won }}V {{ profile.drawn }}N {{ profile.lost }}P)</span>
+    </div>
+  </div>
+
+  <!-- SEZIONE 2: STATISTICHE DI COPPIA -->
+  <div class="section-head" style="margin-top:20px">
+    <h2>🤝 Statistiche di Coppia</h2>
+    <span class="muted small">{{ profile.played }} partite giocate</span>
+  </div>
+  <div class="card couple-stats-card">
+    <div class="couple-kpi-row">
+      <div>
+        <div class="ck-num">{{ profile.won }}-{{ profile.drawn }}-{{ profile.lost }}</div>
+        <div class="ck-lbl">V · N · P ({{ profile.win_rate }}%)</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ profile.cups_for }}</div>
+        <div class="ck-lbl">Bicchieri Fatti</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ profile.cups_against }}</div>
+        <div class="ck-lbl">Bicchieri Subiti</div>
+      </div>
+      <div>
+        <div class="ck-num">🍺 {{ "%.2f"|format(profile.liters_drunk)|replace(".", ",") }} L</div>
+        <div class="ck-lbl">Litri Bevuti</div>
+      </div>
+      {% if profile.team_shots %}
+      <div>
+        <div class="ck-num">💨 {{ profile.blows }}</div>
+        <div class="ck-lbl">Soffi in difesa</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ "%.0f"|format(profile.team_accuracy) }}%</div>
+        <div class="ck-lbl">Precisione Tiro</div>
+      </div>
+      {% endif %}
+      <div>
+        <div class="ck-num {{ 'pos-diff' if profile.cups_diff > 0 else ('neg-diff' if profile.cups_diff < 0 else '') }}">{{ "%+d"|format(profile.cups_diff) }}</div>
+        <div class="ck-lbl">Diff. Bicchieri</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ "%.1f"|format(profile.cups_avg) }}</div>
+        <div class="ck-lbl">Media / Partita</div>
+      </div>
+    </div>
+
+    {% if profile.players|length == 2 %}
+      {% set p1 = profile.players[0] %}
+      {% set p2 = profile.players[1] %}
+      <div class="couple-split-bar-wrap">
+        <div class="csb-labels">
+          <span>🎯 <strong>{{ p1.name }}</strong> ({{ p1.share_pct }}%)</span>
+          <span class="muted small">Contributo ai canestri</span>
+          <span>({{ p2.share_pct }}%) <strong>{{ p2.name }}</strong> 🎯</span>
+        </div>
+        <div class="csb-track">
+          <div class="csb-fill-1" style="width: {{ p1.share_pct }}%"></div>
+          <div class="csb-fill-2" style="width: {{ 100 - p1.share_pct }}%"></div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- SEZIONE 3: STATISTICHE PERSONALI DEI 2 GIOCATORI -->
+  <div class="section-head" style="margin-top:20px">
+    <h2>👤 Statistiche Personali Giocatori</h2>
+    <a href="/classifiche?vista=giocatori" class="small">Classifica marcatori ›</a>
+  </div>
+  <div class="players-profile-grid">
+    {% for p in profile.players %}
+      <div class="player-profile-card {{ 'me' if p.index == me_player }}">
+        <div class="ppc-head">
+          <div>
+            <span class="muted small">{{ "Tu" if p.index == me_player else "Giocatore " ~ p.index }}</span>
+            <h3 style="margin:2px 0 0">{{ p.name }}</h3>
+          </div>
+          <div class="ppc-ranks">
+            {% if p.scorer_rank %}
+              <span class="pill ok" title="Posizione in Classifica Marcatori">🏅 #{{ p.scorer_rank }} Marcatori</span>
+            {% endif %}
+            {% if p.accuracy_rank %}
+              <span class="pill" title="Posizione per Precisione al tiro">🔭 #{{ p.accuracy_rank }} Precisione</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="ppc-stats">
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ p.official_cups }} 🥤</span>
+            <span class="ppc-lbl">Canestri Ufficiali</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ "%.1f"|format(p.official_avg) }}</span>
+            <span class="ppc-lbl">Media / Partita</span>
+          </div>
+          <div class="ppc-stat">
+            <span class="ppc-val">{{ p.share_pct }}%</span>
+            <span class="ppc-lbl">Quota Coppia</span>
+          </div>
+          {% if p.live_shots %}
+            <div class="ppc-stat">
+              <span class="ppc-val">{{ "%.0f"|format(p.live_accuracy) }}%</span>
+              <span class="ppc-lbl">Precisione ({{ p.live_hits }}/{{ p.live_shots }})</span>
+            </div>
+          {% endif %}
+          {% if t["q_aim" ~ p.index] is not none %}
+            <div class="ppc-stat">
+              <span class="ppc-val">{{ t["q_aim" ~ p.index] * 10 }}%</span>
+              <span class="ppc-lbl">Dichiarato{% if p.live_shots %} · reale {{ "%.0f"|format(p.live_accuracy) }}%{% endif %}</span>
+            </div>
+          {% endif %}
+          <div class="ppc-stat">
+            <span class="ppc-val">{% if p.fav_cup %}#{{ p.fav_cup }} <small>({{ p.fav_cup_hits }}x)</small>{% else %}—{% endif %}</span>
+            <span class="ppc-lbl">Bicchiere Pref.</span>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if profile.team_heatmap.values()|sum > 0 %}
+    <div class="section-head" style="margin-top:20px"><h2>🎯 Dove centrano</h2></div>
+    <div class="card">
+      {{ ui.heat_rack(profile.team_heatmap, t.name) }}
+      {% if profile.players|length == 2 %}
+        <div class="heat-players">
+          {% for p in profile.players %}{{ ui.heat_rack(p.heatmap, p.name, compact=True) }}{% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+{% elif profile %}
+  <p class="muted small" style="margin-top:18px">Statistiche di coppia e dei giocatori compariranno dopo la prima partita.</p>
+{% endif %}
+{% endblock %}

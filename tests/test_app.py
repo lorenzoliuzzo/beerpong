@@ -190,12 +190,14 @@ def test_phase_transition_and_team_profile(client: TestClient) -> None:
     rng = random.Random(77)
     setup_tournament(client, 8, fields=2)
     r_profile = client.get("/squadra/1")
-    assert r_profile.status_code == 200
-    assert "compariranno dopo la prima partita" in r_profile.text and "Posizionamento nei Ranking" not in r_profile.text
+    assert r_profile.status_code == 200 and "📊 Statistiche" not in r_profile.text  # nothing to show yet
+    r_stats = client.get("/squadra/1/statistiche")
+    assert "compariranno dopo la prima partita" in r_stats.text and "Posizionamento nei Ranking" not in r_stats.text
 
     # Finish all group matches -> /gironi (Tavoli) now shows the active knockout round directly
     play_all(client, "group", rng)
-    r_profile = client.get("/squadra/1").text
+    assert 'href="/squadra/1/statistiche"' in client.get("/squadra/1").text  # stats live on their own page
+    r_profile = client.get("/squadra/1/statistiche").text
     assert "Posizionamento nei Ranking" in r_profile and "Statistiche Personali Giocatori" in r_profile
     assert "Litri bevuti" in r_profile and "Scontri diretti" not in r_profile
     r_gironi = client.get("/gironi", follow_redirects=False)
@@ -1069,9 +1071,9 @@ def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
     setup_tournament(client, 8, fields=2)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     record(client, m.id, 3, 0)
-    assert "Dove centrano" in client.get(f"/squadra/{m.t1}").text  # the couple's rack, before the players split it
+    assert "Dove centrano" in client.get(f"/squadra/{m.t1}/statistiche").text  # the couple's rack, before the players split it
     client.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1", "cup2": "2", "cup3": "1"})
-    profile = client.get(f"/squadra/{m.t1}").text
+    profile = client.get(f"/squadra/{m.t1}/statistiche").text
     assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
     assert 'title="1 colpo (' in profile and "<i>#" not in profile
 
@@ -1627,7 +1629,8 @@ def test_volunteer_referee_and_live_beer_liters(client: TestClient) -> None:
     assert t_cups == 2 and t_liters == 0.33
     assert by_team[m.t2] == (0.33, 2)
     sq_html = client.get(f"/squadra/{m.t2}").text
-    assert "0,33 L" in sq_html and "Per fase" in sq_html and "Partite fatte" in sq_html
+    assert "Per fase" in sq_html and "Partite fatte" in sq_html
+    assert "0,33 L" in client.get(f"/squadra/{m.t2}/statistiche").text
     assert "Scontri diretti" not in sq_html
 
 
