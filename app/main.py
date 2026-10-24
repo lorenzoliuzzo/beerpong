@@ -502,7 +502,7 @@ def service_worker() -> Response:
 def manifest(db: sqlite3.Connection = Depends(get_db)) -> Response:
     return JSONResponse({
         "name": get_setting(db, "title"), "short_name": "Beer Pong", "start_url": "/", "display": "standalone",
-        "background_color": "#12100d", "theme_color": "#d9480f",
+        "background_color": "#12100d", "theme_color": "#b93d0b",
         "icons": [{"src": f"/static/icon-{s}.png", "sizes": f"{s}x{s}", "type": "image/png"} for s in (192, 512)],
     }, media_type="application/manifest+json")
 

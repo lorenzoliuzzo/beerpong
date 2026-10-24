@@ -5,11 +5,11 @@
   --text: #1c1915;
   --muted: #736a5e;
   --line: #e6ddcd;
-  --accent: #d9480f;
+  --accent: #b93d0b;
   --accent-ink: #ffffff;
   --accent-soft: #fde8db;
   --gold: #e8a317;
-  --ok: #2b8a3e;
+  --ok: #237a35;
   --ok-ink: #ffffff;
   --ok-soft: #dcf3e1;
   --warn-soft: #fff1c9;
@@ -395,27 +395,6 @@ details.section { scroll-margin-top: 104px; }
 }
 .cup.up { background: radial-gradient(circle at 35% 35%, #ffe08a, var(--beer)); }
 .cup.down { background: transparent; border-style: dashed; border-color: var(--line); color: var(--muted); opacity: .6; }
-.rack.big .cup { width: 54px; height: 54px; font-size: 1.1rem; }
-.rack.big { gap: 8px; margin: 16px 0; }
-.rack.big .rrow { gap: 8px; }
-.shooters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.shooters .col { display: grid; gap: 8px; }
-.shooter {
-  display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 54px;
-  color: #fff; font-weight: 800; padding: 10px 12px; border-radius: 12px;
-}
-.shooters .s1 .shooter { background: var(--t1); }
-.shooters .s2 .shooter { background: var(--t2); }
-.shooter small { font-weight: 700; opacity: .85; font-variant-numeric: tabular-nums; }
-.sheet { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; }
-.sheet[hidden] { display: none; }
-.sheet-card {
-  width: 100%; background: var(--surface); border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + var(--safe-bottom));
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, .2);
-}
-.sheet-title { text-align: center; font-size: 1.05rem; }
-.sheet-actions { display: grid; gap: 8px; }
-.sheet-actions .wide { margin-top: 0; }
 .toast {
   position: fixed; left: 16px; right: 16px; bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 12px); z-index: 25;
   background: var(--text); color: var(--bg); padding: 12px 14px; border-radius: 12px; font-weight: 700;
@@ -423,14 +402,7 @@ details.section { scroll-margin-top: 104px; }
 }
 .toast[hidden] { display: none; }
 .toast .link { color: var(--beer); }
-.feed { display: grid; gap: 6px; }
-.fitem { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; background: var(--surface);
-  border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .88rem; }
-.fitem.s1 { box-shadow: inset 4px 0 var(--t1); }
-.fitem.s2 { box-shadow: inset 4px 0 var(--t2); }
-.ftime { font-family: ui-monospace, monospace; color: var(--muted); font-size: .78rem; }
-.fvotes { font-size: .75rem; color: var(--muted); }
-.live-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--err); color: #fff; font-weight: 800; font-size: .7rem; text-decoration: none; margin-left: 6px; }
+.live-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--err); color: var(--err-ink); font-weight: 800; font-size: .7rem; text-decoration: none; margin-left: 6px; }
 .live-pill.past { background: var(--line); color: var(--text); }
 .awards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .award { text-align: center; margin: 0; }
@@ -1495,7 +1467,7 @@ a.ref-overview.running .ref-go { background: var(--accent); color: var(--accent-
 .admin-steps a { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 8px; border-radius: var(--radius); background: var(--warn-soft); color: var(--text); text-decoration: none; font-size: .8rem; }
 .admin-steps b { font-size: .85rem; }
 .admin-steps .done a { background: var(--ok-soft); }
-.admin-steps .now a { outline: 2px solid var(--accent, #d9480f); }
+.admin-steps .now a { outline: 2px solid var(--accent); }
 @media (max-width: 480px) { .admin-steps { grid-template-columns: 1fr 1fr; } }
 
 /* Profile: which players of the couple are on their own phone, and the invite for the partner */
@@ -1514,13 +1486,13 @@ a.ref-overview.running .ref-go { background: var(--accent); color: var(--accent-
 .team-profile-hero.colored { border-left: 6px solid var(--team); }
 .tph-motto { margin: 4px 0 0; font-style: italic; }
 .arrive-bar { height: 8px; border-radius: 4px; background: var(--warn-soft); overflow: hidden; margin: 6px 0 14px; }
-.arrive-bar span { display: block; height: 100%; background: var(--ok, #2f9e44); }
+.arrive-bar span { display: block; height: 100%; background: var(--ok); }
 .row.arrival { gap: 10px; border-left: 4px solid var(--team, transparent); }
 
 /* The first beer on arrival: a voucher shown once at the bar */
 .card.beer .beer-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
 .beer-icon { font-size: 2rem; }
-.voucher { text-align: center; background: #f08c00; color: #fff; border: 4px dashed #fff3bf; animation: voucher-pulse 1s ease-in-out infinite alternate; }
+.voucher { text-align: center; background: #f08c00; color: #1c1915; border: 4px dashed #fff3bf; animation: voucher-pulse 1s ease-in-out infinite alternate; }
 .voucher .beer-icon.big { font-size: 4.5rem; }
 .voucher-title { font-size: 2rem; font-weight: 900; letter-spacing: .08em; }
 .voucher-name { font-size: 1.1rem; font-weight: 700; }
