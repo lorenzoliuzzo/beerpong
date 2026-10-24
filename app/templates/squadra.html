@@ -154,8 +154,8 @@
     {% endif %}
     {% if spot %}
       <div class="card">
-        <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
-        <div class="headline" style="font-size:1.3rem;font-weight:900;margin:4px 0">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
+        <div class="label muted small" style="font-weight:var(--fw-medium);text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
+        <div class="headline" style="font-size:1.3rem;font-weight:var(--fw-bold);margin:4px 0">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
         {% if spot.first_time %}<p style="margin:0 0 8px">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
         <div class="list">
           {% for m in spot.group.teams %}
@@ -202,7 +202,7 @@
     {% if group_matches %}
       <h3 style="margin:10px 0 6px;font-size:0.95rem">🏁 Fase a Gironi · {{ dash.table.name if dash.table else "Girone" }}</h3>
       {% for m in group_matches %}
-        <div class="muted small" style="margin:6px 0 2px;font-weight:700">Giornata {{ loop.index }}</div>
+        <div class="muted small" style="margin:6px 0 2px;font-weight:var(--fw-medium)">Giornata {{ loop.index }}</div>
         {{ ui.match(m, show_label=False, mine=t.id) }}
       {% endfor %}
     {% endif %}
@@ -210,7 +210,7 @@
     {% if ko_matches %}
       <h3 style="margin:16px 0 6px;font-size:0.95rem">🏆 Fase a Eliminazione Diretta</h3>
       {% for m in ko_matches %}
-        <div class="muted small" style="margin:6px 0 2px;font-weight:700">{{ m.label }}</div>
+        <div class="muted small" style="margin:6px 0 2px;font-weight:var(--fw-medium)">{{ m.label }}</div>
         {{ ui.match(m, show_label=False, mine=t.id) }}
       {% endfor %}
     {% endif %}

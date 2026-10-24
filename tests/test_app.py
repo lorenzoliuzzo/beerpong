@@ -1714,6 +1714,16 @@ def test_you_and_live_have_their_own_colour_not_the_brand_orange() -> None:
             assert "--accent" not in body, selector
 
 
+def test_font_weights_come_from_the_three_step_scale() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    sources = [app_dir / "static" / "style.css", *sorted((app_dir / "templates").glob("*.html"))]
+    text = "\n".join(p.read_text() for p in sources)
+    weights = re.findall(r"font-weight:\s*([^;\"]+)", text)
+    assert [w for w in weights if not w.startswith("var(--fw-")] == []
+    assert re.findall(r"font:\s*\d{3}\b", text) == []
+    assert set(re.findall(r"--fw-(\w+):", text)) == {"regular", "medium", "bold"}
+
+
 def test_only_the_admin_has_a_pin(client: TestClient) -> None:
     db_call(lambda db: (set_setting(db, "ref_pin_1", "654321"), set_setting(db, "referees", "pin"), db.commit()))
     init_db()  # an older database: its table PINs go, and "PIN only" becomes "organizers only"
