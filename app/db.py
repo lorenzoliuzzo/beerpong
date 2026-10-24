@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS cup_hits (
     match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
     side INTEGER NOT NULL CHECK (side IN (1, 2)),
     cup INTEGER NOT NULL CHECK (cup BETWEEN 1 AND 10),
+    player INTEGER CHECK (player IN (1, 2)),  -- which player of the couple sank it, as they claim it
     PRIMARY KEY (match_id, side, cup)
 );
 CREATE TABLE IF NOT EXISTS matches (
@@ -127,6 +128,11 @@ DEFAULTS = {
     "target_teams": "32",
     "phase": "setup",
     "start_time": "21:30",
+    "date": "",
+    "fee": "",
+    "rules": "",
+    "form_url": "",
+    "pay_info": "",
 }
 
 
@@ -189,6 +195,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for column, kind in (("q_level", "TEXT"), ("q_aim1", "INTEGER"), ("q_aim2", "INTEGER"), ("q_goal", "TEXT"), ("q_at", "TEXT")):
         if column not in team_columns:
             conn.execute(f"ALTER TABLE teams ADD COLUMN {column} {kind}")
+    hit_columns = {row[1] for row in conn.execute("PRAGMA table_info(cup_hits)")}
+    if "player" not in hit_columns:
+        conn.execute("ALTER TABLE cup_hits ADD COLUMN player INTEGER CHECK (player IN (1, 2))")
     if "referee_player" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN referee_player INTEGER CHECK (referee_player IN (1, 2))")
 

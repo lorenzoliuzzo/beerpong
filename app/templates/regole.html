@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Info e regole · {{ info.title }}{% endblock %}
+{% block content %}
+<h1>{{ info.title }}</h1>
+{% if info.date %}
+  <p class="muted" style="margin-top:0">📅 {{ info.date[8:10] }}/{{ info.date[5:7] }}/{{ info.date[:4] }} · ore {{ info.start_time }} · {{ info.fields }} tavoli</p>
+{% endif %}
+
+<div class="summary">
+  <div class="tile {{ 'ok' if places.placed|length < places.target }}"><div class="big">{{ places.placed|length }}/{{ places.target }}</div><span class="muted small">posti occupati</span></div>
+  <div class="tile ok"><div class="big">{{ places.confirmed|length }}</div><span class="muted small">coppie confermate</span></div>
+  {% if info.fee %}<div class="tile"><div class="big">{{ info.fee }} €</div><span class="muted small">a coppia</span></div>{% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Come iscriversi</h2>
+  <ol class="small">
+    <li>{% if info.form_url %}Compilate il <a href="{{ info.form_url }}" rel="noopener" target="_blank">modulo di iscrizione</a>{% else %}Il modulo di iscrizione arriva a breve{% endif %}.</li>
+    <li>Pagate la quota{% if info.fee %} di {{ info.fee }} €{% endif %} scrivendo nella causale il codice della vostra coppia: ve lo mandiamo noi.</li>
+    <li>Il pagamento conferma il posto{% if places.placed|length >= places.target %}: i posti sono pieni, chi si iscrive ora va in lista d'attesa{% endif %}.</li>
+  </ol>
+  {% if info.pay_info %}<p class="pre small">{{ info.pay_info }}</p>{% endif %}
+</div>
+
+{% if info.rules %}
+  <div class="card">
+    <h2 style="margin-top:0">Regole</h2>
+    <p class="pre">{{ info.rules }}</p>
+  </div>
+{% endif %}
+<style>
+  .pre { white-space: pre-line; }
+</style>
+{% endblock %}

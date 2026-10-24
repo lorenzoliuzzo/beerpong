@@ -6,13 +6,11 @@
   <div class="meta">
     <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
     <span>{{ m.time }}{{ countdown(m) }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
-      {%- if m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Dettagli" if m.done else "● LIVE" }}</a>
-      {%- elif m.t1 and m.t2 and m.playing %}<a class="live-pill past" href="/live/{{ m.id }}">📣 in chiamata</a>{% endif %}</span>
+      {%- if m.t1 and m.t2 and m.playing %}<span class="live-pill past">📣 in chiamata</span>{% endif %}</span>
   </div>
   <div class="teams">
     {% if m.t1 %}<a class="t {{ 'win' if m.winner == m.t1 }}" href="/squadra/{{ m.t1 }}">{{ m.n1 }}{% if labels and m.t1 in labels %}<small class="origin">{{ labels[m.t1] }}</small>{% endif %}</a>{% else %}<span class="t muted">{{ m.n1 }}</span>{% endif %}
     {% if m.done and not m.bye %}<span class="sc">{{ m.s1 }}–{{ m.s2 }}</span>
-    {% elif m.live_score %}<span class="sc live-sc" title="Punteggio live"><span class="live-dot" style="margin-right:3px"></span>{{ m.live_score[0] }}–{{ m.live_score[1] }}</span>
     {% else %}<span class="sc vs">vs</span>{% endif %}
     {% if m.t2 %}<a class="t r {{ 'win' if m.winner == m.t2 }}" href="/squadra/{{ m.t2 }}">{{ m.n2 }}{% if labels and m.t2 in labels %}<small class="origin">{{ labels[m.t2] }}</small>{% endif %}</a>{% else %}<span class="t r muted">{{ m.n2 }}</span>{% endif %}
   </div>
@@ -23,9 +21,8 @@
     </div>
   {% endif %}
   {% set sides = split_sides(m) %}
-  {% set ref_ok = can_referee(m) %}
   {% set mine_side = me and not m.bye and m.t1 and m.t2 and m.side(me.id) %}
-  {% if actions and (ref_ok or mine_side or sides) %}
+  {% if actions and (mine_side or sides) %}
     <div class="actions">
       {% if mine_side and not m.done %}
         <a class="btn small" href="/risultato/{{ m.id }}">📝 Inserisci risultato</a>
@@ -37,8 +34,8 @@
       {% elif sides %}
         <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica canestri</a>
       {% endif %}
-      {% if ref_ok and not mine_side %}
-        <a class="btn small ghost" href="/partita/{{ m.id }}">{{ "Correggi" if m.done else "Inserisci risultato" }}</a>
+      {% if role == "admin" and not mine_side %}
+        <a class="btn small ghost" href="/risultato/{{ m.id }}">{{ "Correggi" if m.done else "Inserisci risultato" }}</a>
       {% endif %}
     </div>
   {% endif %}
@@ -141,10 +138,9 @@
 {% endmacro %}
 
 {% macro mini(m, mine=None) %}
-<a class="mini {{ 'mine' if mine and m.side(mine) }}" href="{{ '/live/' ~ m.id if (m.t1 and m.t2 and not m.bye) else ('/squadra/' ~ m.t1 ~ '?vs=' ~ m.t2) }}">
+<a class="mini {{ 'mine' if mine and m.side(mine) }}" href="{{ '/squadra/' ~ m.t1 ~ '?vs=' ~ m.t2 if m.t1 and m.t2 else '#' }}">
   <span class="{{ 'win' if m.winner == m.t1 }}">{{ m.n1 }}</span>
   {% if m.done %}<strong>{{ m.s1 }}–{{ m.s2 }}</strong>
-  {% elif m.live_score %}<strong style="color:#e03131">● {{ m.live_score[0] }}–{{ m.live_score[1] }}</strong>
   {% else %}<span class="muted small">{{ m.time }}{{ countdown(m) }}{% if m.field %} · T{{ m.field }}{% endif %}</span>{% endif %}
   <span class="r {{ 'win' if m.winner == m.t2 }}">{{ m.n2 }}</span>
 </a>

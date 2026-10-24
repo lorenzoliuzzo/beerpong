@@ -1,7 +1,9 @@
 import random
+import sqlite3
 import threading
 import time
 from collections.abc import Iterator
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -21,7 +23,6 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
     app_main._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
-    app_main._report_times.clear()
     with TestClient(create_app()) as c:
         yield c
     app_main._failures.clear()
@@ -33,6 +34,13 @@ def db_call(fn, *args):
         return fn(db, *args)
     finally:
         db.close()
+
+
+def record(c: TestClient, match_id: int, s1: int, s2: int, winner: int | str | None = None, **kw):
+    data: dict = {"c1": [str(i) for i in range(1, s1 + 1)], "c2": [str(i) for i in range(1, s2 + 1)]}
+    if winner is not None:
+        data["vincitore"] = str(winner)
+    return c.post(f"/risultato/{match_id}", data=data, **kw)
 
 
 def login(c: TestClient, pin: str) -> None:
@@ -62,12 +70,9 @@ def setup_tournament(c: TestClient, n_teams: int, fields: int = 3) -> None:
 def play_all(c: TestClient, stage: str, rng: random.Random) -> None:
     ids = [m.id for m in db_call(service.matches) if m.stage == stage and not m.done and m.t1 and m.t2]
     for mid in ids:
-        r = c.post(
-            f"/partita/{mid}",
-            data={"s1": rng.randint(0, 10), "s2": rng.randint(0, 10), "vincitore": "1"},
-            follow_redirects=False,
-        )
-        assert r.status_code == 303 and r.headers["location"].startswith("/arbitro"), r.headers
+        cups = db_call(service.cups_in_play, mid)
+        r = record(c, mid, rng.randint(0, cups), rng.randint(0, cups), "1", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"].startswith("/gironi"), r.headers
 
 
 def test_db_dependency_closes_from_another_thread(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,7 +142,7 @@ def test_asynchronous_tables_and_group_mapping(client: TestClient) -> None:
     t1_first = t_views[0].current
     t1_second = t_views[0].next_match
     assert t1_first is not None and t1_second is not None
-    client.post(f"/partita/{t1_first.id}", data={"s1": 10, "s2": 6})
+    record(client, t1_first.id, 10, 6)
 
     now_ms, next_ms = db_call(lambda db: service.live(service.matches(db)))
     now_by_field = {m.field: m for m in now_ms}
@@ -163,7 +168,6 @@ def test_phase_transition_and_team_profile(client: TestClient) -> None:
     r_gironi = client.get("/gironi", follow_redirects=False)
     assert r_gironi.status_code == 200 and "Semifinali" in r_gironi.text
     assert client.get("/gironi?archivio=1").status_code == 200
-
 
 
 def test_admin_and_qr_require_login(client: TestClient) -> None:
@@ -283,7 +287,7 @@ def test_full_tournament(client: TestClient, n_teams: int) -> None:
     assert sum(s.cups_for for s in db_call(service.team_ranking)) == total
 
     for path in ["/", "/programma", "/classifiche", "/classifiche?vista=coppie", "/tabellone",
-                 "/squadra/1?vs=2", "/programma?team=3", "/arbitro"]:
+                 "/squadra/1?vs=2", "/programma?team=3"]:
         assert client.get(path).status_code == 200, path
     assert "Campioni" in client.get("/").text
 
@@ -301,49 +305,34 @@ def test_team_splits_cups_for_player_ranking(client: TestClient) -> None:
     login(client, ADMIN_PIN)
     client.post("/admin/avvia")
     m = db_call(service.matches)[0]
-    client.post(f"/partita/{m.id}", data={"s1": 7, "s2": 4})
+    record(client, m.id, 5, 4)
     team1 = db_call(service.team, m.t1)
 
     with TestClient(client.app) as phone:
         phone.post(f"/checkin/{m.t1}/entra", data={"phone": phones[m.t1]})
         assert "Dividete i canestri" in phone.get("/").text
-        phone.post(f"/canestri/{m.id}", data={"side": 2, "primo": 1})
+        phone.post(f"/canestri/{m.id}", data={"side": 2, "cup1": "1"})  # not their side
         assert db_call(service.match, m.id).split2 is None
-        assert "tra 0 e 7" in phone.post(f"/canestri/{m.id}", data={"side": 1, "primo": 8}).text
-        phone.post(f"/canestri/{m.id}", data={"side": 1, "primo": 5})
+        assert "Indica chi ha centrato" in phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1"}).text
+        phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1", "cup2": "1", "cup3": "2", "cup4": "1", "cup5": "2"})
 
     view = db_call(service.match, m.id)
-    assert view.split1 == (5, 2) and view.split2 is None
+    assert view.split1 == (3, 2) and view.split2 is None
     top = db_call(service.scorers)[:2]
-    assert [(s.player, s.cups) for s in top] == [(team1["p1"], 5), (team1["p2"], 2)]
+    assert [(s.player, s.cups) for s in top] == [(team1["p1"], 3), (team1["p2"], 2)]
 
-    client.post(f"/partita/{m.id}", data={"s1": 6, "s2": 4})
+    record(client, m.id, 4, 4)  # cup 5 was not sunk after all: the other cups keep their player
+    assert db_call(service.match, m.id).split1 == (3, 1)
+    record(client, m.id, 6, 4)  # two more cups nobody has claimed yet
     assert db_call(service.match, m.id).split1 is None
-
-
-def test_referee_only_edits_own_field(client: TestClient) -> None:
-    setup_tournament(client, 10, fields=2)
-    pin = db_call(service.referee_pin, 1)
-    views = db_call(service.matches)
-    own = next(m for m in views if m.field == 1)
-    other = next(m for m in views if m.field == 2)
-
-    client.post("/logout")
-    login(client, pin)
-    data = {"s1": 5, "s2": 1}
-    assert client.post(f"/partita/{other.id}", data=data, follow_redirects=False).headers["location"] == "/login"
-    assert client.post(f"/partita/{own.id}", data=data, follow_redirects=False).headers["location"] == "/arbitro"
-    assert client.get("/admin", follow_redirects=False).status_code == 303
-    m = db_call(service.match, own.id)
-    assert (m.s1, m.s2, m.winner) == (5, 1, m.t1)
 
 
 def test_knockout_tie_requires_winner(client: TestClient) -> None:
     setup_tournament(client, 8, fields=4)
     play_all(client, "group", random.Random(1))
     semi = next(m for m in db_call(service.matches) if m.stage == "ko")
-    assert "overtime" in client.post(f"/partita/{semi.id}", data={"s1": 4, "s2": 4}).text
-    client.post(f"/partita/{semi.id}", data={"s1": 4, "s2": 4, "vincitore": "2"})
+    assert "overtime" in record(client, semi.id, 4, 4).text
+    record(client, semi.id, 4, 4, "2")
     final = next(m for m in db_call(service.matches) if m.label == "Finale")
     assert final.t1 == semi.t2
 
@@ -353,10 +342,10 @@ def test_reopen_groups_until_knockout_played(client: TestClient) -> None:
     play_all(client, "group", random.Random(2))
     last_group = [m for m in db_call(service.matches) if m.stage == "group"][-1]
 
-    assert "Gironi chiusi" in client.post(f"/partita/{last_group.id}", data={"s1": 9, "s2": 0}).text
+    assert "Gironi chiusi" in record(client, last_group.id, 9, 0).text
     client.post("/admin/riapri")
     assert db_call(get_setting, "phase") == "groups"
-    client.post(f"/partita/{last_group.id}", data={"s1": 9, "s2": 0})
+    record(client, last_group.id, 9, 0)
     assert db_call(get_setting, "phase") == "knockout"
 
     play_all(client, "ko", random.Random(3))
@@ -366,7 +355,7 @@ def test_reopen_groups_until_knockout_played(client: TestClient) -> None:
 def test_shift_schedule_moves_only_pending(client: TestClient) -> None:
     setup_tournament(client, 8, fields=1)
     first, second = db_call(service.matches)[:2]
-    client.post(f"/partita/{first.id}", data={"s1": 2, "s2": 0})
+    record(client, first.id, 2, 0)
     client.post("/admin/sposta", data={"minuti": 15})
     after = {m.id: m.time for m in db_call(service.matches)}
     assert after[first.id] == first.time
@@ -746,7 +735,7 @@ def test_shared_tables_never_show_a_couple_twice(client: TestClient) -> None:
         now, _ = db_call(lambda db: service.live(service.matches(db)))
         playing = [t for m in now for t in (m.t1, m.t2)]
         assert len(playing) == len(set(playing))
-        client.post(f"/partita/{min(now, key=lambda m: m.field).id}", data={"s1": 10, "s2": 4})
+        record(client, min(now, key=lambda m: m.field).id, 10, 4)
 
 
 def test_31_couples_on_4_tables_balance_the_queues(client: TestClient) -> None:
@@ -871,7 +860,7 @@ def test_knockout_waits_for_the_other_tables(client: TestClient) -> None:
     ko = [m for m in db_call(service.matches) if m.stage == "ko"]
     before = {m.id: m.time for m in ko}
     first = next(m for m in ko if m.t1 and m.t2 and not m.done)
-    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 2})
+    record(client, first.id, 10, 2)
     after = {m.id: m.time for m in db_call(service.matches) if m.stage == "ko"}
     assert {k: v for k, v in after.items() if k != first.id} == {k: v for k, v in before.items() if k != first.id}
     now, upcoming = db_call(lambda db: service.live(service.matches(db)))
@@ -908,7 +897,7 @@ def test_shared_tables_views_never_show_a_couple_twice(client: TestClient) -> No
     setup_tournament(client, 5, fields=2)
     for _ in range(2):
         first = next(m for m in db_call(service.matches) if m.field == 1 and not m.done)
-        client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 4})
+        record(client, first.id, 10, 4)
         current = [tv.current for tv in db_call(service.table_views) if tv.current]
         playing = [t for m in current for t in (m.t1, m.t2)]
         assert len(playing) == len(set(playing))
@@ -977,7 +966,7 @@ def test_phone_login_after_the_start(client: TestClient) -> None:
 def test_wrong_numbers_are_throttled(client: TestClient) -> None:
     import_teams(client, 4)
     client.post("/logout")
-    for _ in range(8):
+    for _ in range(app_main.ATTEMPT_MAX_FAILURES):
         client.post("/checkin/accedi", data={"phone": "3330000000"})
     assert "Troppi tentativi" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text
 
@@ -988,159 +977,11 @@ def test_admin_control_room_during_the_groups(client: TestClient) -> None:
     assert page.index('id="torneo"') < page.index('id="coppie"')  # the tournament comes first once it runs
     assert '<span class="muted small">partite</span>' in page and "tavoli in ritardo" in page
     current = [m for m in db_call(service.matches) if m.playing]
-    assert len(current) == 4 and all(f'href="/arbitro?campo={m.field}">Arbitra</a>' in page for m in current)
+    assert len(current) == 4 and all(f'href="/risultato/{m.id}">Risultato</a>' in page for m in current)
 
-    referee = client.get("/arbitro").text
-    assert referee.count("▶ Segna la partita") == 4  # one card per table, the scoring has its own page
     m = current[0]
-    form = client.get(f"/partita/{m.id}").text
+    form = client.get(f"/risultato/{m.id}").text
     assert f"{m.n1} <span class=\"muted\">vs</span> {m.n2}" in form and f"‹ Tavolo {m.field}" in form
-
-
-def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    overview = client.get("/arbitro").text
-    assert f'href="/segna/{m.id}"' in overview and "▶ Segna la partita" in overview
-    page = client.get(f"/segna/{m.id}").text
-    assert 'class="tabbar"' not in page and "/live/" not in page  # the scoring screen stands on its own
-    assert "▶ Inizia: parte il tempo" in page and "Chi tira per primo?" in page and f"{m.n1}</strong>" in page
-
-    later = sorted((x for x in db_call(service.matches) if x.field == 1 and not x.done and x.id != m.id), key=lambda x: x.slot)
-    client.post(f"/partita/{m.id}/inizia")
-    started = db_call(service.match, m.id)
-    assert started.started_at is not None and db_call(lambda db: tracking.state(db, m.id)).started_at == started.started_at
-    page = client.get(f"/segna/{m.id}").text
-    assert 'class="ref-half shooting"' in page and "Inserisci il risultato a mano" in page and 'class="ref-clock"' in page
-    assert "● LIVE" in client.get("/").text
-    assert "già iniziata" in client.post(f"/partita/{m.id}/inizia").text
-    assert db_call(service.match, later[0].id).time >= started.time  # the table's next times run from the start
-
-    client.post(f"/partita/{m.id}/annulla-inizio")
-    assert db_call(service.match, m.id).started_at is None
-    client.post(f"/partita/{m.id}/inizia")
-    client.post(f"/partita/{m.id}", data={"s1": 10, "s2": 6})
-    nxt = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
-    assert nxt.id != m.id and "▶ Segna la partita" in client.get("/arbitro").text
-
-    other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
-    assert client.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"
-
-
-def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-
-    client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
-    page = client.get(f"/segna/{m.id}").text
-    halves = page[page.index('class="ref-table"'):page.index('class="ref-miss"')]
-    p1_name = db_call(service.team, m.t2)["p1"]
-    assert halves.index('ref-half target') < halves.index('ref-half shooting')  # couple 2 shoots, from the right
-    assert f"🎯 {p1_name}" in halves and "bicchieri (6)" in halves
-    script = page[page.rindex("<script>"):page.rindex("</script>")]
-    assert script.count("(() => {") == script.count("})();")  # the scoring script is closed, so it runs
-
-    def shoot(player: int, cup: int) -> None:
-        client.post(f"/partita/{m.id}/tiro", data={"giocatore": player, "bicchiere": cup})
-
-    shoot(1, 0)
-    shoot(2, 5)  # couple 2 is done with its turn: couple 1 shoots next
-    rv = db_call(lambda db: tracking.referee_view(db, m.id))
-    assert rv.turn_side == 1 and rv.next_player == 1 and rv.state.side_hits(2) == 1 and rv.state.side_hits(1) == 0
-    p2 = db_call(service.team, m.t2)["p2"]
-    assert rv.hit_by[1] == {5: 2}  # couple 1's cup 5, taken by couple 2's second player
-    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 0})
-    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": 0})
-    assert f'title="Colpito da {p2}"><small>{p2[:2]}</small>' in client.get(f"/segna/{m.id}").text
-    client.post(f"/partita/{m.id}/annulla-tiro")
-    client.post(f"/partita/{m.id}/annulla-tiro")
-    assert "Quel bicchiere non c" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 7}).text  # 6 cups
-    assert 'class="flash err"' not in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 5}).text
-    client.post(f"/partita/{m.id}/annulla-tiro")
-    assert db_call(lambda db: tracking.referee_view(db, m.id)).turn_side == 1
-
-    swapped = client.post(f"/partita/{m.id}/lati").text
-    names = swapped[swapped.index('class="ref-names"'):]
-    assert names.index(m.n2) < names.index(m.n1)  # mirrored: couple 2 on the left for this referee
-
-    for cup in range(1, service.CUPS + 1):  # couple 1 clears couple 2's 6 cups, alternating with misses
-        shoot(1, cup)
-        shoot(2, 0)
-        if db_call(lambda db: tracking.referee_view(db, m.id)).state.winner_side:
-            break
-        shoot(1, 0)
-        shoot(2, 0)
-    page = client.get(f"/segna/{m.id}").text
-    assert "🏆 Vince" in page and "✓ Conferma 6–1" in page
-    client.post(f"/partita/{m.id}", data={"s1": 6, "s2": 1, "vincitore": 1})
-    done = db_call(service.match, m.id)
-    assert (done.s1, done.s2, done.winner) == (6, 1, m.t1) and done.split1 == (6, 0)
-    stats = {(p.team_id, p.player): p for p in db_call(tracking.shot_stats).players}
-    p1 = db_call(service.team, m.t1)["p1"]
-    assert stats[(m.t1, p1)].hits == 6  # the referee's shots are the players' statistics
-    assert "I tiri li segna l" in client.get(f"/live/{m.id}").text
-
-
-def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
-    page = client.get(f"/segna/{m.id}").text
-    assert 'name="n" value="0"' in page and "data-live" not in page.split("<body", 1)[1].split(">", 1)[0]
-    assert 'class="tabbar"' not in page and "‹ Tavolo 1" in page
-
-    def tap(n: int, player: int, cup: int) -> str:
-        return client.post(f"/partita/{m.id}/tiro", data={"giocatore": player, "bicchiere": cup, "n": n}).text
-
-    tap(0, 1, 4)
-    tap(0, 1, 4)  # a double tap or a retry after a lost answer: still one shot
-    count = lambda: db_call(lambda db: tracking.official_count(tracking.referee_view(db, m.id)))
-    assert count() == 1
-    assert "La schermata non era aggiornata" in tap(0, 2, 5)  # a stale screen does not guess
-    assert count() == 1
-    tap(1, 2, 0)
-    assert count() == 2 and 'name="n" value="2"' in client.get(f"/segna/{m.id}").text
-
-
-def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    db_call(lambda db: service.start_match(db, m.id, time.time() - 6 * 60, 1))
-    db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
-    page = client.get(f"/segna/{m.id}").text
-    assert 'class="ref-win ref-timeout" hidden' in page and "✓ Conferma 1–0" in page  # shown by the clock
-
-
-def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestClient) -> None:
-    login(client, ADMIN_PIN)
-    client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(8))})
-    client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 7, "buffer_min": 1})
-    ref = next(t for t in db_call(service.teams).values() if t["name"] == "S0")
-    client.post(f"/admin/squadre/{ref['id']}", data={"name": "S0", "p1": "A0", "p2": "B0", "phone1": "3331110000",
-                                                     "organizzatori": "1", "arbitro": "2"})
-    assert db_call(service.team, ref["id"])["referee_player"] == 2
-    for t in db_call(service.teams).values():
-        client.post(f"/admin/squadre/{t['id']}/presente", data={"presente": 1})
-    client.post("/admin/avvia")
-    client.post("/logout")
-
-    with TestClient(client.app) as phone:
-        phone.post("/checkin/accedi", data={"phone": "3331110000"})
-        table = db_call(lambda db: service.referee_table(db, ref["id"]))
-        profile = phone.get("/io").text
-        assert f"B0 arbitra il Tavolo {table}" in profile and 'href="/arbitro"' in profile
-        screen = phone.get("/arbitro").text
-        assert f"🏓 Tavolo {table} · Arbitro · B0" in screen and 'class="tabbar"' not in screen
-        mine = next(m for m in db_call(service.matches) if m.playing and m.field == table)
-        other = next(m for m in db_call(service.matches) if m.playing and m.field != table)
-        phone.post(f"/partita/{mine.id}/inizia", data={"primo": 1})
-        assert db_call(service.match, mine.id).started_at is not None
-        assert phone.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"
-        assert db_call(service.match, other.id).started_at is None
 
 
 def test_the_referee_couples_matches_are_spaced_out_on_its_table() -> None:
@@ -1153,26 +994,6 @@ def test_the_referee_couples_matches_are_spaced_out_on_its_table() -> None:
         spots = [i for i, f in enumerate(queue) if ref in (f.team1, f.team2)]
         assert len(spots) == 3 and min(b - a for a, b in zip(spots, spots[1:])) >= 3
         assert all({a.team1, a.team2}.isdisjoint({b.team1, b.team2}) for a, b in zip(queue, queue[1:]))
-
-
-def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
-    for n, (pl, cup) in enumerate([(1, 1), (2, 4)]):
-        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": cup, "n": n})
-    for n, pl in ((2, 1), (3, 2)):
-        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": 0, "n": n})
-    page = client.get(f"/segna/{m.id}").text
-    assert "⟲ Riordina" in page  # couple 1 shoots again at couple 2's 4 cups
-    client.post(f"/partita/{m.id}/riordina", data={"lato": 2})
-    st = db_call(lambda db: tracking.state(db, m.id))
-    assert st.racks[2].cups == {1, 2, 3, 4} and st.rows[2] == live.FORMATIONS[4]
-    page = client.get(f"/segna/{m.id}").text
-    assert f"↶ Annulla: riordino bicchieri di {m.n2}" in page
-    client.post(f"/partita/{m.id}/annulla-tiro")
-    assert db_call(lambda db: tracking.state(db, m.id)).racks[2].cups == {2, 3, 5, 6}
 
 
 def test_questionnaire_after_check_in_sets_the_couples_prior(client: TestClient) -> None:
@@ -1206,38 +1027,12 @@ def test_stylesheet_link_changes_with_the_file(client: TestClient) -> None:
     assert f'/static/style.css?v={hashlib.sha256(css).hexdigest()[:10]}"' in client.get("/").text
 
 
-def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
-    page = client.get(f"/segna/{m.id}").text
-    assert 'value="soffio"' in page and "💨 Soffiato" in page
-
-    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})
-    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})  # double tap: one blow
-    rv = db_call(lambda db: tracking.referee_view(db, m.id))
-    assert rv.state.side_hits(1) == 0 and len(rv.state.racks[2].cups) == 6  # the cup stays: no point
-    assert rv.state.attempts[(1, 1)] == 1 and rv.blows == (0, 1)  # a miss for the shooter, a save for couple 2
-    assert "↶ Annulla:" in client.get(f"/segna/{m.id}").text and "💨 soffiato" in client.get(f"/segna/{m.id}").text
-    assert client.get(f"/api/live/{m.id}").json()["blows"] == [0, 1]
-
-    client.post(f"/partita/{m.id}/annulla-tiro")
-    assert db_call(lambda db: tracking.referee_view(db, m.id)).blows == (0, 0)  # undoing the shot takes the blow back
-    client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})
-    assert db_call(lambda db: service.team_profile(db, m.t2)).blows == 1
-    assert "Tiro non valido" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": "x", "n": 1}).text
-
-
 def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
     setup_tournament(client, 8, fields=2)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    db_call(lambda db: service.start_match(db, m.id, time.time() - 60, 1))
-    for n, (pl, cup) in enumerate([(1, 4), (2, 5), (1, 0), (2, 0), (1, 6), (2, 0)]):
-        db_call(lambda db: tracking.referee_shot(db, m.id, pl, cup, time.time() - 50 + n, n))
-    client.post(f"/partita/{m.id}", data={"s1": 3, "s2": 0})  # the profile's statistics start after a match
-    shots = client.get("/classifiche?vista=tiri").text
-    assert "Il più colpito, cerchiato" in shots and "heat-cup h7" in shots and "heat-cup h7 top" in shots
+    record(client, m.id, 3, 0)
+    assert "Dove centrano" in client.get(f"/squadra/{m.t1}").text  # the couple's rack, before the players split it
+    client.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1", "cup2": "2", "cup3": "1"})
     profile = client.get(f"/squadra/{m.t1}").text
     assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
     assert 'title="1 colpo (' in profile and "<i>#" not in profile
@@ -1262,31 +1057,6 @@ def test_knockout_timetable_per_table_is_announced_during_the_groups(client: Tes
     assert "Vincente semifinale 2" in client.get("/tabellone?vista=tavoli").text
 
 
-def test_volunteer_referee_and_live_beer_liters(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    client.post("/logout")
-
-    # A non-playing spectator or couple can volunteer to referee the match and record every shot
-    home_html = client.get("/gironi").text
-    assert f'action="/partita/{m.id}/arbitra"' not in home_html  # no referee: the couples enter the result
-    return
-    r = client.post(f"/partita/{m.id}/arbitra", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == f"/segna/{m.id}"
-    assert client.get(f"/segna/{m.id}").status_code == 200
-    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
-    for n, (pl, cup) in enumerate([(1, 1), (2, 2), (1, 0)]):
-        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": cup, "n": n})
-
-    # 2 cups hit against team 2 in a 6-cup match (1 L per team per match) -> 2/6 = 0.33 L drunk by team 2
-    t_liters, t_cups, by_team = db_call(service.beer_stats)
-    assert t_cups == 2 and t_liters == 0.33
-    assert by_team[m.t2] == (0.33, 2)
-    sq_html = client.get(f"/squadra/{m.t2}").text
-    assert "0,33 L" in sq_html and "Per fase" in sq_html and "Partite fatte" in sq_html
-    assert "Scontri diretti" not in sq_html
-
-
 def test_secondary_tables_removed_as_knockout_advances(client: TestClient) -> None:
     rng = random.Random(11)
     setup_tournament(client, 16, fields=4)
@@ -1297,7 +1067,7 @@ def test_secondary_tables_removed_as_knockout_advances(client: TestClient) -> No
     # Quarterfinals (4 matches) use all 4 tables; finish them to enter Semifinals (2 matches on main tables 1 & 2)
     qf_ids = [m.id for m in db_call(service.matches) if m.stage == "ko" and m.round == 1 and not m.done]
     for mid in qf_ids:
-        client.post(f"/partita/{mid}", data={"s1": 6, "s2": 3})
+        record(client, mid, 6, 3)
     t_views = db_call(service.table_views)
     assert [tv.field for tv in t_views] == [1, 2] and all(tv.is_main for tv in t_views)
     page = client.get("/gironi").text
@@ -1318,7 +1088,6 @@ def test_salvezza_when_last_target_cup_is_hit_starts_overtime_immediately() -> N
     assert st.phase == "overtime" and st.racks[1].cups == {1, 2, 3} and st.racks[2].cups == {1, 2, 3}
 
 
-
 def test_couples_enter_their_own_result_with_cup_positions(client: TestClient) -> None:
     setup_tournament(client, 8, fields=4)
     m = next(x for x in db_call(service.matches) if x.playing)
@@ -1335,3 +1104,69 @@ def test_couples_enter_their_own_result_with_cup_positions(client: TestClient) -
     assert done.done and (done.s1, done.s2, done.winner) == (3, 1, m.t1)
     cups = db_call(lambda db: sorted(tuple(r) for r in db.execute("SELECT side, cup FROM cup_hits WHERE match_id = ?", (m.id,))))
     assert cups == [(1, 1), (1, 4), (1, 6), (2, 2)]
+
+
+TOURNAMENT = {
+    "title": "Beer Pong d'autunno", "date": "2026-11-21", "start_time": "21:00", "target_teams": 4, "fields": 2,
+    "fee": "12,50", "rules": "6 bicchieri per lato.\nSi passa in due.", "form_url": "https://forms.gle/abc",
+    "pay_info": "Satispay al 333 0000000",
+}
+
+
+def test_admin_creates_the_tournament_and_shares_its_page(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    assert "da creare" in client.get("/admin").text
+    assert "Scegli la data" in client.post("/admin/torneo", data={**TOURNAMENT, "date": ""}).text
+    assert "https://" in client.post("/admin/torneo", data={**TOURNAMENT, "form_url": "javascript:alert(1)"}).text
+    assert "Quota non valida" in client.post("/admin/torneo", data={**TOURNAMENT, "fee": "dieci"}).text
+    assert "Torneo salvato" in client.post("/admin/torneo", data=TOURNAMENT).text
+    info = db_call(service.load_tournament)
+    assert (info.title, info.target_teams, info.fields, info.fee) == ("Beer Pong d'autunno", 4, 2, "12,50")
+    assert "21/11 · 4 coppie" in client.get("/admin").text
+
+    client.post("/logout")
+    public = client.get("/regole").text
+    assert "21/11/2026" in public and "12,50 €" in public and 'href="https://forms.gle/abc"' in public
+    assert "Si passa in due." in public and "0/4" in public
+
+
+def test_payments_are_confirmed_from_a_pasted_statement(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/torneo", data=TOURNAMENT)
+    client.post("/admin/squadre/importa", data={"testo": "\n".join(
+        f"Squadra {i}; Ada {i}; Bruno {i}; 33300000{i:02d}" for i in range(6)
+    )})
+    ids = sorted(db_call(service.teams))
+    reg = db_call(service.registration)
+    assert len(reg.placed) == 4 and [t["id"] for t in reg.waiting] == ids[4:]  # 4 places, form order
+    page = client.get("/admin").text
+    assert service.pay_code(ids[0]) in page and "wa.me/393330000000?text=" in page and "Lista d'attesa (2)" in page
+
+    statement = "\n".join([
+        "Data;Descrizione;Importo",
+        f"24/10/2026;Satispay da Ada 0 - causale {service.pay_code(ids[0]).lower()};12,50",
+        f"24/10/2026;Bonifico BP-{ids[1]};12,50",
+        "24/10/2026;Satispay da +39 333 000 0002;12,50",  # no code, but the couple's phone
+        "24/10/2026;Satispay da sconosciuto;12,50",
+    ])
+    flash = client.post("/admin/pagamenti/estratto", data={"estratto": statement}).text
+    assert "3 pagamenti confermati" in flash and "sconosciuto" in flash
+    assert [t["paid"] for t in db_call(service.registration).placed] == [1, 1, 1, 0]
+    assert '<div class="big">3/4</div><span class="muted small">pagate</span>' in client.get("/admin").text  # places only
+    assert "1 già confermati" in client.post("/admin/pagamenti/estratto", data={"estratto": f"BP{ids[0]}"}).text
+
+
+def test_new_tournament_archives_the_old_one_and_starts_empty(client: TestClient, tmp_path: Path) -> None:
+    setup_tournament(client, 8, fields=2)
+    client.post("/admin/torneo", data=TOURNAMENT)
+    pin = db_call(lambda db: get_setting(db, "admin_pin"))
+    assert "scrivi NUOVO" in client.post("/admin/torneo/nuovo", data={"conferma": "si"}).text
+    assert db_call(service.teams)
+
+    page = client.post("/admin/torneo/nuovo", data={"conferma": "nuovo"}).text
+    assert "Torneo precedente archiviato in torneo-" in page and "Crea il torneo" in page
+    assert not db_call(service.teams) and not db_call(service.matches)
+    assert db_call(lambda db: (get_setting(db, "phase"), get_setting(db, "admin_pin"))) == ("setup", pin)
+    (archived,) = (tmp_path / "archivio").glob("torneo-*.db")
+    with closing(sqlite3.connect(archived)) as old:
+        assert old.execute("SELECT COUNT(*) FROM teams").fetchone()[0] == 8

@@ -5,7 +5,7 @@ import sqlite3
 import time
 from datetime import datetime, timedelta
 
-from app import db, service, tracking
+from app import db, service
 
 
 # Invented couples: the public demo must never show the real participants.
@@ -73,48 +73,18 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
         for idx, m in enumerate(queue[:n_done]):
             s1 = rng.choice([service.CUPS, rng.randint(2, service.CUPS - 1)])
             s2 = service.CUPS if s1 < service.CUPS else rng.randint(1, service.CUPS - 1)
-            base_t = now_ts + idx * 300
 
-            # Scored by the table's referee, as every match: their shots are the statistics.
-            for side, score in [(1, s1), (2, s2)]:
-                cups = rng.sample(range(1, service.CUPS + 1), min(service.CUPS, score))
-                for shot_i, cup in enumerate(cups):
-                    player = 1 if shot_i % 2 == 0 else 2
-                    tracking.add_shot(db_conn, m.id, side, player, cup, base_t + 10 + shot_i * 6)
-                for miss_i in range(rng.randint(2, 5)):  # a few misses for realistic accuracy
-                    tracking.add_shot(db_conn, m.id, side, rng.choice([1, 2]), 0, base_t + 100 + miss_i * 5)
-
+            # Entered by the couples: the cups each side sank, then each player claims theirs.
+            hits = {side: set(rng.sample(range(1, service.CUPS + 1), score)) for side, score in ((1, s1), (2, s2))}
             service.record_result(db_conn, m.id, s1, s2)
-            p1_cups_s1 = rng.randint(1, s1 - 1) if s1 > 1 else s1
-            service.assign_cups(db_conn, m.id, 1, p1_cups_s1)
-            p1_cups_s2 = rng.randint(1, s2 - 1) if s2 > 1 else s2
-            service.assign_cups(db_conn, m.id, 2, p1_cups_s2)
+            service.save_cup_hits(db_conn, m.id, hits)
+            for side in (1, 2):
+                service.assign_cup_players(db_conn, m.id, side, {c: rng.choice([1, 2]) for c in hits[side]})
             finished_count += 1
-
-    # Add live shots in progress to the current match ("In campo ora") on each of the 4 tables!
-    now_matches, _ = service.live(service.matches(db_conn))
-    live_now_ts = time.time()
-    target_scores = [(4, 3), (2, 5), (3, 3), (1, 0)]  # below the 6 cups: these matches are still on
-    for idx, m in enumerate(now_matches):
-        targets = target_scores[idx % len(target_scores)]
-        started = live_now_ts - 240
-        service.start_match(db_conn, m.id, started)
-        # Scored by the table's referee, turn by turn, until both couples reach their target.
-        at = started + 5
-        while at < live_now_ts:
-            rv = tracking.referee_view(db_conn, m.id)
-            if rv.state.winner_side:
-                break
-            side = rv.turn_side
-            behind = rv.state.side_hits(side) < targets[side - 1]
-            standing = sorted(rv.state.racks[3 - side].cups)
-            cup = rng.choice(standing) if behind and rng.random() < 0.5 else 0
-            tracking.referee_shot(db_conn, m.id, rv.next_player, cup, at)
-            at += 5
 
     print(
         f"Demo created successfully! {finished_count} matches finished asynchronously across 4 tables, "
-        f"{len(now_matches)} live now."
+        "0 live now."
     )
 
 

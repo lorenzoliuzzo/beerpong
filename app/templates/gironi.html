@@ -310,8 +310,6 @@
                         {% if m.done %}
                           {% if m.winner == tid %}<span class="pill ok">✓ Qualificata ({{ m.s1 if side == 1 else m.s2 }}–{{ m.s2 if side == 1 else m.s1 }})</span>
                           {% else %}<span class="pill">Eliminata ({{ m.s1 if side == 1 else m.s2 }}–{{ m.s2 if side == 1 else m.s1 }})</span>{% endif %}
-                        {% elif m.live_score %}
-                          <span class="pill warn">● In campo ({{ m.live_score[0] if side == 1 else m.live_score[1] }}–{{ m.live_score[1] if side == 1 else m.live_score[0] }})</span>
                         {% else %}
                           <span class="muted small">~{{ m.time }}</span>
                         {% endif %}
@@ -468,10 +466,10 @@
     <form method="post" action="/esci-squadra" onsubmit="return confirm('Scollegare questo telefono dalla squadra?')"><button class="link" type="submit">Scollega telefono</button></form> ·
   {% endif %}
   {% if role %}
-    {{ "Admin" if role == "admin" else "Arbitro tavolo " ~ my_field }} ·
+    Admin ·
     <form method="post" action="/logout"><button class="link" type="submit">esci</button></form>
   {% else %}
-    <a href="/login">Accesso Staff / Arbitro</a>
+    <a href="/login">Accesso Staff</a>
   {% endif %}
 </div>
 {% endblock %}

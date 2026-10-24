@@ -1,21 +1,29 @@
 {% extends "base.html" %}
-{% import "_ui.html" as ui with context %}
 {% block content %}
 <h1>Dividi i canestri</h1>
 <p class="muted">{{ m.label }} · {{ m.n1 }} {{ m.s1 }}–{{ m.s2 }} {{ m.n2 }}</p>
 {% for side in sides %}
   {% set team = T[m.t1 if side == 1 else m.t2] %}
-  {% set score = m.s1 if side == 1 else m.s2 %}
-  {% set split = m.split1 if side == 1 else m.split2 %}
-  <form class="card" method="post" action="/canestri/{{ m.id }}"
-        oninput="this.querySelector('.rest').textContent = {{ score }} - (+this.primo.value || 0)">
-    <h2 style="margin-top:0">{{ team.name }} · {{ score }} bicchieri</h2>
+  {% set mine = hits[side] %}
+  <form class="card" method="post" action="/canestri/{{ m.id }}">
+    <h2 style="margin-top:0">{{ team.name }} · {{ mine|length }} bicchieri</h2>
     <input type="hidden" name="side" value="{{ side }}">
-    <label>{{ team.p1 }}</label>
-    {{ ui.stepper("primo", split[0] if split else (score // 2 + score % 2), max=score, label=team.p1) }}
-    <label>{{ team.p2 }}</label>
-    <div class="total rest">{{ split[1] if split else score // 2 }}</div>
-    <button class="wide" type="submit">Conferma</button>
+    {% if mine %}
+      <p class="muted small">Per ogni bicchiere centrato, chi l'ha messo?</p>
+      {% for cup, player in mine.items() %}
+        <div class="choices split-cup">
+          <span class="badge">#{{ cup }}</span>
+          <label><input type="radio" name="cup{{ cup }}" value="1" required {{ 'checked' if player == 1 }}> {{ team.p1 }}</label>
+          <label><input type="radio" name="cup{{ cup }}" value="2" required {{ 'checked' if player == 2 }}> {{ team.p2 }}</label>
+        </div>
+      {% endfor %}
+      <button class="wide" type="submit">Conferma</button>
+    {% else %}
+      <p class="muted small">Nessun bicchiere centrato in questa partita.</p>
+    {% endif %}
   </form>
 {% endfor %}
+<style>
+  .split-cup { display:flex; align-items:center; gap:10px; margin:6px 0; }
+</style>
 {% endblock %}

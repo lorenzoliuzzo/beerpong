@@ -13,6 +13,7 @@ from app import push, service
 from app.db import get_setting
 from tests.test_app import (  # noqa: F401
     ADMIN_PIN,
+    record,
     checkin_form,
     client,
     db_call,
@@ -84,15 +85,15 @@ def test_start_sends_first_match_then_turn_notices_once(client: TestClient, sent
 
     sent.clear()
     first = next(m for m in db_call(service.matches) if m.field == 1)
-    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 3})
+    record(client, first.id, 6, 3)
     now, _ = db_call(lambda db: service.live(service.matches(db)))
     on_table_1 = next(m for m in now if m.field == 1)
     expected_now = {f"https://fcm.googleapis.com/fcm/send/{t}" for t in (on_table_1.t1, on_table_1.t2)}
     assert {e for e, m in sent if m["title"] == "🔥 Tocca a voi! Tavolo 1"} == expected_now
-    assert all(m["url"].startswith("/live/") for _, m in sent)
+    assert all(m["url"] == "/io" for _, m in sent)
 
     sent.clear()
-    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 4})  # a correction changes nobody's turn
+    record(client, first.id, 6, 4)  # a correction changes nobody's turn
     assert sent == []
 
 

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Torneo · {{ cfg.title }}{% endblock %}
+{% block content %}
+<p><a href="/admin">‹ Organizzazione</a></p>
+<h1>{{ "Il torneo" if info.created else "Crea il torneo" }}</h1>
+<p class="muted">Queste informazioni compaiono nella pagina pubblica <a href="/regole">/regole</a>, da condividere insieme al link di iscrizione.</p>
+
+<form class="card" method="post" action="/admin/torneo">
+  <label for="title">Nome del torneo</label>
+  <input id="title" name="title" value="{{ info.title }}" required>
+  <div class="two-cols">
+    <div>
+      <label for="date">Data</label>
+      <input id="date" name="date" type="date" value="{{ info.date }}" required>
+    </div>
+    <div>
+      <label for="start_time">Inizio</label>
+      <input id="start_time" name="start_time" type="time" value="{{ info.start_time }}" required>
+    </div>
+  </div>
+  <div class="two-cols">
+    <div>
+      <label for="target_teams">Coppie (posti)</label>
+      <input id="target_teams" name="target_teams" type="number" inputmode="numeric" min="4" max="64" value="{{ info.target_teams }}" required>
+    </div>
+    <div>
+      <label for="fields">Tavoli</label>
+      <input id="fields" name="fields" type="number" inputmode="numeric" min="1" max="20" value="{{ info.fields }}" required>
+    </div>
+  </div>
+  <label for="fee">Quota per coppia (€)</label>
+  <input id="fee" name="fee" inputmode="decimal" placeholder="10" value="{{ info.fee }}">
+  <label for="form_url">Link di iscrizione (Google Form)</label>
+  <input id="form_url" name="form_url" type="url" inputmode="url" placeholder="https://forms.gle/…" value="{{ info.form_url }}">
+  <label for="pay_info">Come pagare</label>
+  <textarea id="pay_info" name="pay_info" style="min-height:80px" placeholder="Satispay al 333 1234567 oppure bonifico IBAN IT00 …">{{ info.pay_info }}</textarea>
+  <p class="muted small">Ogni coppia riceve un codice da scrivere nella causale (es. BP007): incollando l'estratto Satispay o del conto, l'app conferma da sola chi ha pagato. Il pagamento è l'unica conferma dell'iscrizione.</p>
+  <label for="rules">Regole</label>
+  <textarea id="rules" name="rules" style="min-height:180px" placeholder="6 bicchieri per lato, gironi da 4, si passa in due…">{{ info.rules }}</textarea>
+  <button class="wide" type="submit">{{ "Salva" if info.created else "Crea il torneo" }}</button>
+</form>
+
+<details class="section" id="nuovo">
+  <summary>Nuovo torneo</summary>
+  <div class="body">
+    <p>Archivia il torneo attuale{% if teams_count %} ({{ teams_count }} coppie){% endif %} e riparte da zero: coppie, iscritti, partite e risultati vengono tolti. PIN, QR e impostazioni restano.</p>
+    <form method="post" action="/admin/torneo/nuovo">
+      <label for="conferma">Scrivi NUOVO per confermare</label>
+      <div style="display:flex;gap:8px"><input id="conferma" name="conferma" autocomplete="off" required><button type="submit" class="ghost">Ricomincia</button></div>
+    </form>
+    {% if archives %}
+      <p class="muted small" style="margin-bottom:4px">Tornei archiviati (nella cartella <code>data/archivio</code>):</p>
+      <ul class="small">{% for a in archives[:10] %}<li>{{ a.name }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+</details>
+<style>
+  .two-cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+</style>
+{% endblock %}

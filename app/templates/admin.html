@@ -4,25 +4,43 @@
 {% set ov = overview %}
 {% set setup = cfg.phase == "setup" %}
 <h1>Organizzazione</h1>
+{% set paid_n = reg.confirmed|length %}
+{% set placed_n = reg.placed|length %}
+<ol class="admin-steps" aria-label="Fasi dell'organizzazione">
+  <li class="{{ 'done' if info.created else 'now' }}"><a href="/admin/torneo">
+    <b>1 · Torneo</b><span>{{ (info.date[8:10] ~ "/" ~ info.date[5:7] ~ " · " ~ info.target_teams ~ " coppie") if info.created else "da creare" }}</span></a></li>
+  <li class="{{ 'done' if placed_n >= reg.target else ('now' if info.created and setup else '') }}"><a href="#coppie">
+    <b>2 · Iscrizioni</b><span>{{ placed_n }}/{{ reg.target }} posti{% if reg.waiting %} · {{ reg.waiting|length }} in attesa{% endif %}</span></a></li>
+  <li class="{{ 'done' if placed_n and paid_n == placed_n else ('now' if placed_n and setup else '') }}"><a href="#pagamenti">
+    <b>3 · Pagamenti</b><span>{{ paid_n }}/{{ placed_n }} confermate</span></a></li>
+  <li class="{{ 'now' if not setup }}"><a href="{{ '#checkin' if setup else '#torneo' }}">
+    <b>4 · Giorno del torneo</b><span>{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></a></li>
+</ol>
 <nav class="subnav" aria-label="Sezioni">
-  <a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
+  <a href="/admin/torneo">Info torneo</a><a href="#pagamenti">Pagamenti</a><a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
   <a href="#solo-serata">Solo serata</a><a href="#notifiche">Notifiche</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
 </nav>
 
 {% set n = chk.players|length %}
 {% if setup %}
+{# Only the couples with a place count here: the waiting list is not expected to pay yet. #}
+{% set placed_ids = reg.placed|map(attribute="id")|list %}
+{% set pn = chk.players|selectattr("id", "in", placed_ids)|list|length %}
+{% macro placed_failing(key) %}{{ chk.failing(key)|selectattr("id", "in", placed_ids)|list|length }}{% endmacro %}
+{% set done_n = chk.done|selectattr("id", "in", placed_ids)|list|length %}
 <div class="summary">
-  <a href="#coppie" data-show="nonpagate" class="tile {{ 'ok' if not chk.failing('nonpagate') }}"><div class="big">{{ n - chk.failing('nonpagate')|length }}/{{ n }}</div><span class="muted small">pagate</span></a>
-  <a href="#coppie" data-show="fuorigruppo" class="tile {{ 'ok' if not chk.failing('fuorigruppo') }}"><div class="big">{{ n - chk.failing('fuorigruppo')|length }}/{{ n }}</div><span class="muted small">nel gruppo</span></a>
-  <a href="#coppie" data-show="senzatelefono" class="tile {{ 'ok' if not chk.failing('senzatelefono') }}"><div class="big">{{ n - chk.failing('senzatelefono')|length }}/{{ n }}</div><span class="muted small">con telefono</span></a>
-  <a href="#coppie" data-show="dasistemare" class="tile {{ 'ok' if chk.done|length == n }}"><div class="big">{{ chk.done|length }}/{{ n }}</div><span class="muted small">tutto ok</span></a>
+  {% for key, label in (("nonpagate", "pagate"), ("fuorigruppo", "nel gruppo"), ("senzatelefono", "con telefono")) %}
+    {% set bad = placed_failing(key)|int %}
+    <a href="#coppie" data-show="{{ key }}" class="tile {{ 'ok' if not bad }}"><div class="big">{{ pn - bad }}/{{ pn }}</div><span class="muted small">{{ label }}</span></a>
+  {% endfor %}
+  <a href="#coppie" data-show="dasistemare" class="tile {{ 'ok' if done_n == pn }}"><div class="big">{{ done_n }}/{{ pn }}</div><span class="muted small">tutto ok</span></a>
 </div>
 {% else %}
 {% set late = tables|selectattr("next_match")|selectattr("next_match.time", "lt", server_hm)|list %}
 <div class="summary">
   <a href="#torneo" class="tile {{ 'ok' if played == total }}"><div class="big">{{ played }}/{{ total }}</div><span class="muted small">partite</span></a>
   <a href="#torneo" class="tile {{ 'ok' if not late }}"><div class="big">{{ late|length }}</div><span class="muted small">tavoli in ritardo</span></a>
-  <a href="/arbitro" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">canestri da dividere</span></a>
+  <a href="#torneo" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">canestri da dividere</span></a>
   <a href="#notifiche" class="tile ok"><div class="big">{{ push_subs[0] }}</div><span class="muted small">telefoni avvisati</span></a>
 </div>
 {% endif %}
@@ -95,7 +113,37 @@
 </details>
 
 {% endset %}
-{% if setup %}{{ coppie_section }}{% endif %}
+{% if setup %}
+<details class="section" id="pagamenti" open>
+  <summary>Pagamenti <span class="pill {{ 'ok' if paid_n == placed_n else 'warn' }}">{{ paid_n }}/{{ placed_n }}</span></summary>
+  <div class="body">
+    <p class="muted small">Il pagamento è l'unica conferma: ogni coppia scrive il suo codice nella causale. Incolla l'estratto Satispay o del conto (anche tutto, righe in più non danno fastidio).</p>
+    <form method="post" action="/admin/pagamenti/estratto">
+      <label for="estratto">Estratto pagamenti</label>
+      <textarea id="estratto" name="estratto" required placeholder="24/10 Satispay da Mario R. 10,00 € BP007"></textarea>
+      <button class="wide" type="submit">Conferma i pagamenti trovati</button>
+    </form>
+    {% if reg.unpaid %}
+      <h3>Da pagare ({{ reg.unpaid|length }})</h3>
+      <div class="list">
+        {% for t in reg.unpaid %}
+          <div class="row">
+            <div class="grow"><div class="title">{{ t.name }} <span class="pill">{{ pay_code(t.id) }}</span></div><span class="muted small">{{ ui.players(t) }}</span></div>
+            {% if t.phone1 %}<a class="btn small ghost" target="_blank" rel="noopener"
+               href="https://wa.me/{{ wa_number(t.phone1) }}?text={{ pay_message(info, t)|urlencode }}">💬 Sollecita</a>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if reg.waiting %}
+      <h3>Lista d'attesa ({{ reg.waiting|length }})</h3>
+      <p class="muted small">Oltre i {{ reg.target }} posti, in ordine di iscrizione: entrano se una coppia rinuncia (eliminala dalla scheda) o se aumenti i posti.</p>
+      <div class="list">{% for t in reg.waiting %}<div class="row"><a class="grow" href="/admin/squadre/{{ t.id }}">{{ loop.index }}. {{ t.name }}</a>{% if t.paid %}<span class="pill ok">ha pagato</span>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
+  </div>
+</details>
+{{ coppie_section }}
+{% endif %}
 
 <details class="section" id="torneo" {{ 'open' if not setup }}>
   <summary>Torneo <span class="pill accent">{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></summary>
@@ -127,16 +175,16 @@
               <div class="grow">
                 <div class="title">Tavolo {{ tv.field }} <span class="muted small">{{ tv.group_letters }}</span>
                   {% if tv in late %}<span class="pill warn">in ritardo</span>{% endif %}</div>
-                {% if m %}<span class="small">{{ m.n1 }} <strong>{{ "%d–%d"|format(*m.live_score) if m.live_score else "vs" }}</strong> {{ m.n2 }}</span>
+                {% if m %}<span class="small">{{ m.n1 }} <strong>vs</strong> {{ m.n2 }}</span>
                   <div class="muted small">{{ m.label }} · dalle {{ m.time }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</div>
                 {% else %}<span class="muted small">{{ "Finito" if tv.total_count and tv.done_count == tv.total_count else "In attesa" }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</span>{% endif %}
               </div>
-              <a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
+              {% if m %}<a class="btn small" href="/risultato/{{ m.id }}">Risultato</a>{% endif %}
             </div>
           {% endfor %}
         </div>
       {% endif %}
-      <a class="btn ghost wide" href="/arbitro">Tutte le partite e i risultati</a>
+      <a class="btn ghost wide" href="/programma">Tutte le partite e i risultati</a>
       {% if cfg.phase in ("groups", "knockout") %}
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
@@ -255,12 +303,10 @@
   <summary>Impostazioni</summary>
   <div class="body">
     <form method="post" action="/admin/impostazioni">
-      <label for="title">Nome del torneo</label>
-      <input id="title" name="title" value="{{ cfg.title }}" required>
-      <label for="start_time">Inizio del torneo</label>
-      <input id="start_time" name="start_time" type="time" value="{{ cfg.start_time }}" required>
-      <label for="fields">Tavoli</label>
-      <input id="fields" name="fields" type="number" inputmode="numeric" min="1" max="20" value="{{ cfg.fields }}" required>
+      <p class="muted small">Nome, data, posti e tavoli sono in <a href="/admin/torneo">Info torneo</a>.</p>
+      <input type="hidden" name="title" value="{{ cfg.title }}">
+      <input type="hidden" name="start_time" value="{{ cfg.start_time }}">
+      <input type="hidden" name="fields" value="{{ cfg.fields }}">
       <label for="group_min">Durata partita girone (min)</label>
       <input id="group_min" name="group_min" type="number" inputmode="numeric" min="1" value="{{ cfg.group_min }}" required>
       <label for="ko_min">Durata eliminazione diretta (min)</label>

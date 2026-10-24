@@ -17,9 +17,8 @@
 <body {% if live %}data-live{% endif %} data-server-ts="{{ server_ts }}"{% if demo and (role or me) %} data-demo-role="1"{% endif %} class="{% block body_class %}{% endblock %}">
 {% if demo %}
 <div class="demo-bar">
-  <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">squadre inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
+  <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">squadre inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
   <form method="post" action="/demo/coppia"><button class="small {{ 'ghost' if me and not role }}" type="submit">Coppia</button></form>
-  <form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>
   <form method="post" action="/demo/admin"><button class="small {{ 'ghost' if role == 'admin' }}" type="submit">Admin</button></form>
   <button class="small ghost demo-help" type="button" data-demo-guide aria-label="Come funziona la demo">?</button>
 </div>
@@ -30,16 +29,13 @@
     <p class="muted small">Le squadre sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
     <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
       <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: squadra, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
-    <form method="post" action="/demo/arbitro" class="demo-role"><button type="submit">
-      <strong>🧑‍⚖️ Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
     <form method="post" action="/demo/admin" class="demo-role"><button type="submit">
       <strong>📋 Da organizzatore</strong><span>La regia: coppie, pagamenti, tavoli in tempo reale, notifiche a tutti.</span></button></form>
     <button class="link" type="button" data-demo-close>Guardo e basta</button>
   </div>
 </div>
-{% set demo_tip = ("arbitro", "Tocca «Segna la partita», scegli chi tira per primo e poi tocca il giocatore e il bicchiere centrato. Il simulatore lascia a te questo tavolo.") if role == "referee" and path.startswith("/arbitro")
-  else (("admin", "Guarda la regia dei tavoli in «Torneo», tocca «Arbitra» su un tavolo per segnare tu, oppure manda una notifica a tutti da «Notifiche».") if role == "admin" and path == "/admin"
-  else (("coppia", "Tocca «Attiva le notifiche»: tra un paio di minuti arriva «Preparatevi», poi «Tocca a voi». In Tavoli segui tutte le partite in corso.") if me and not role and path == "/io" else none)) %}
+{% set demo_tip = ("admin", "Guarda la regia dei tavoli in «Torneo», oppure manda una notifica a tutti da «Notifiche».") if role == "admin" and path == "/admin"
+  else (("coppia", "Tocca «Attiva le notifiche»: tra un paio di minuti arriva «Preparatevi», poi «Tocca a voi». In Tavoli segui tutte le partite in corso.") if me and not role and path == "/io" else none) %}
 {% if demo_tip %}
   <div class="demo-tip" data-demo-tip="{{ demo_tip[0] }}" hidden>
     <span>💡 {{ demo_tip[1] }}</span>
@@ -50,7 +46,7 @@
 {% block header %}
 <header class="top">
   <a class="brand" href="/">🍺 {{ cfg.title }}</a>
-  <a class="staff" href="{{ '/admin' if role == 'admin' else ('/arbitro' if role == 'referee' else '/login') }}">{{ "Admin" if role == "admin" else ("Arbitro" if role == "referee" else "Staff") }}</a>
+  <a class="staff" href="{{ '/admin' if role == 'admin' else '/login' }}">{{ "Admin" if role == "admin" else "Staff" }}</a>
 </header>
 {% endblock %}
 

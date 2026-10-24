@@ -1477,3 +1477,11 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 .ko-plan .muted.small { margin: 0 0 6px; }
 .mini.planned { color: var(--ink); cursor: default; }
 .queue-item.mine-q { background: var(--accent-soft); margin: 0 -8px; padding: 8px; border-radius: 8px; }
+
+/* Admin: the four phases of organizing a tournament */
+.admin-steps { list-style: none; padding: 0; margin: 8px 0 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.admin-steps a { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 8px; border-radius: var(--radius); background: var(--warn-soft); color: var(--text); text-decoration: none; font-size: .8rem; }
+.admin-steps b { font-size: .85rem; }
+.admin-steps .done a { background: var(--ok-soft); }
+.admin-steps .now a { outline: 2px solid var(--accent, #d9480f); }
+@media (max-width: 480px) { .admin-steps { grid-template-columns: 1fr 1fr; } }

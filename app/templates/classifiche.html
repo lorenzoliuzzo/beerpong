@@ -204,54 +204,6 @@
   {% if scorers|length > 10 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ scorers|length }})</button>{% endif %}
   </div>
 
-{% elif view == "tiri" %}
-  {% if shots.total_shots %}
-    <p class="muted small">Dai tiri segnati dagli arbitri ({{ shots.total_shots }} tiri). Precisione minima {{ 8 }} tiri.</p>
-    <div class="awards">
-      {% for icon, title, p in shots.awards %}
-        <div class="card award">
-          <div class="aicon">{{ icon }}</div>
-          <div class="label">{{ title }}</div>
-          <div class="title"><strong>{{ p.player }}</strong></div>
-          <span class="muted small">{{ p.team }}</span>
-          <div class="small">{{ p.hits }}/{{ p.shots }} · {{ (p.accuracy * 100)|round|int }}%{% if p.finishers %} · 🏁 {{ p.finishers }}{% endif %}</div>
-        </div>
-      {% endfor %}
-    </div>
-
-    <h2>Mappa dei bicchieri colpiti</h2>
-    <div class="card">{{ ui.heat_rack(shots.heatmap) }}</div>
-
-    <h2>I più precisi</h2>
-    <div class="table-wrap">
-    <table class="ranked">
-      <thead>
-        <tr><th>#</th><th class="name">Giocatore</th><th>Centri</th><th>Tiri</th><th>% Precisione</th></tr>
-      </thead>
-      <tbody>
-        {% for p in shots.players %}
-        {% set mine_row = me and p.team_id == me.id %}
-        {% set prev_mine = loop.previtem is defined and me and loop.previtem.team_id == me.id %}
-        <tr class="{{ 'mine' if mine_row }} {{ 'beyond' if loop.index > 5 and not mine_row }} {{ 'gap' if mine_row and loop.index > 6 and not prev_mine }}">
-          <td>{{ loop.index }}</td>
-          <td class="name"><strong>{{ p.player }}</strong><br><a class="muted small" href="/squadra/{{ p.team_id }}">{{ p.team }}</a></td>
-          <td><strong>{{ p.hits }}</strong></td>
-          <td>{{ p.shots }}</td>
-          <td><strong>{{ (p.accuracy * 100)|round|int }}%</strong></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% if shots.players|length > 5 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ shots.players|length }})</button>{% endif %}
-    </div>
-  {% else %}
-    <div class="card" style="padding:24px 16px;text-align:center">
-      <div style="font-size:2rem;margin-bottom:8px">🎯</div>
-      <div class="title">Nessun tiro segnalato finora</div>
-      <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli arbitri iniziano a segnare i tiri.</p>
-    </div>
-  {% endif %}
-
 {% endif %}
 {% endblock %}
 

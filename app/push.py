@@ -139,7 +139,7 @@ def due(db: sqlite3.Connection) -> list[Delivery]:
                     message = Message(f"🔥 Tocca a voi! Tavolo {m.field}", f"{m.label} contro {rival}: andate al tavolo.")
                 else:
                     message = Message(f"📣 Preparatevi: Tavolo {m.field}", f"Siete i prossimi contro {rival} (~{m.time}).")
-                out += _deliveries(_subs(db, {team}), Message(message.title, message.body, f"/live/{m.id}"))
+                out += _deliveries(_subs(db, {team}), Message(message.title, message.body, "/io"))
     return out
 
 
