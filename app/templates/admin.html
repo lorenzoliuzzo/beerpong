@@ -205,7 +205,7 @@
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
           <div style="display:flex;gap:8px">
-            <input id="minuti" name="minuti" type="number" inputmode="numeric" value="5" required>
+            <input id="minuti" name="minuti" type="number" inputmode="numeric" placeholder="5" required>
             <button type="submit" class="ghost">Sposta orari</button>
           </div>
         </form>
@@ -215,10 +215,6 @@
           <button type="submit" class="ghost wide">Riapri gironi per correggere un risultato</button>
         </form>
       {% endif %}
-      <form method="post" action="/admin/annulla" style="margin-top:24px;text-align:center"
-            onsubmit="return confirm('Cancellare gironi, programma e TUTTI i risultati? Check-in e pagamenti restano.') && confirm('Sicuro? Non si torna indietro.')">
-        <button type="submit" class="link" style="color:var(--err)">Annulla sorteggio e risultati…</button>
-      </form>
     {% endif %}
   </div>
 </details>
@@ -300,9 +296,7 @@
   <div class="body">
     <a class="btn wide" href="/admin/qr">QR code di check-in da stampare</a>
     <p class="url muted">{{ checkin_url }}</p>
-    <form method="post" action="/admin/chiave" onsubmit="return confirm('Il QR già stampato smetterà di funzionare. Continuare?')">
-      <button type="submit" class="ghost small">Genera nuova chiave</button>
-    </form>
+    <p class="muted small">Per invalidare il QR stampato: <a href="#pericolo">Zona pericolosa</a>.</p>
     <h3>PIN admin</h3>
     <details class="pin-reveal"><summary>Mostra il PIN admin</summary><p><code>{{ admin_pin }}</code></p></details>
     <form method="post" action="/admin/pin">
@@ -331,6 +325,25 @@
       <p class="muted small">Tavoli, durate e inizio valgono quando si generano programma e tabellone: se si avvia dopo l'orario, si parte subito. La finale è senza limite di tempo.</p>
       <button class="wide" type="submit">Salva</button>
     </form>
+  </div>
+</details>
+
+{# Irreversible actions live here, away from the routine toggles. #}
+<details class="section danger-zone" id="pericolo">
+  <summary>Zona pericolosa</summary>
+  <div class="body">
+    <form method="post" action="/admin/chiave" onsubmit="return confirm('Il QR già stampato smetterà di funzionare. Continuare?')">
+      <p class="muted small">Una nuova chiave rende inutile il QR di check-in già stampato.</p>
+      <button type="submit" class="danger wide">Genera nuova chiave del QR</button>
+    </form>
+    {% if not setup %}
+      <form method="post" action="/admin/annulla">
+        <p class="muted small">Cancella gironi, programma e <strong>tutti i risultati</strong>; check-in e pagamenti restano. Non si torna indietro.</p>
+        <label for="conferma">Per confermare scrivi ANNULLA</label>
+        <input id="conferma" name="conferma" required autocomplete="off" pattern="ANNULLA">
+        <button type="submit" class="danger wide">Annulla sorteggio e risultati</button>
+      </form>
+    {% endif %}
   </div>
 </details>
 

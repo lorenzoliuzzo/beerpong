@@ -238,6 +238,9 @@ button.check.on::before { content: "✓"; }
 .group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .section-head h2 { margin: 0; }
+details.danger-zone { border-color: var(--err); margin-top: 28px; }
+details.danger-zone > summary { color: var(--err); }
+details.danger-zone form + form { margin-top: 20px; }
 .group-head h2 { margin: 0; flex: 1; }
 .group-head .badge {
   width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;

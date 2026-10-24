@@ -1753,7 +1753,10 @@ def admin_shift(request: Request, minuti: int = Form(...), db: sqlite3.Connectio
 
 
 @admin.post("/annulla")
-def admin_reset(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+def admin_reset(request: Request, conferma: str = Form(""), db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if conferma.strip() != "ANNULLA":
+        flash(request, "Sorteggio non annullato: per confermare scrivi ANNULLA.", "err")
+        return redirect("/admin#pericolo")
     return _admin_action(request, lambda: service.reset_tournament(db), "Sorteggio annullato: si torna al check-in.")
 
 

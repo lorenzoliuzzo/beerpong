@@ -1713,3 +1713,13 @@ def test_only_the_admin_has_a_pin(client: TestClient) -> None:
     login(client, ADMIN_PIN)
     page = client.get("/admin").text
     assert "Arbitro tavolo" not in page and "Mostra il PIN admin" in page
+
+
+def test_reset_needs_the_word_and_sits_in_the_danger_zone(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    page = client.get("/admin").text
+    assert page.index('id="pericolo"') > page.index('id="impostazioni"')  # last, after the routine sections
+    client.post("/admin/annulla", data={"conferma": "si"})
+    assert db_call(get_setting, "phase") == "groups" and db_call(service.matches)
+    client.post("/admin/annulla", data={"conferma": "ANNULLA"})
+    assert db_call(get_setting, "phase") == "setup" and not db_call(service.matches)
