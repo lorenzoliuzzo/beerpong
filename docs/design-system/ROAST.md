@@ -18,6 +18,8 @@ A critical review of branch `torneo`, updated on branch `claude/beerpong-app-rev
 - **Profile buried the match**: it now reads match banner, arrival and voucher, notifications, referee duty, invite, group, matches; litres, rankings, player stats and heat maps live on `/squadra/<id>/statistiche`.
 - **Mixed vocabulary**: everything players read says *coppia* and *bicchieri*; URLs and code names are unchanged.
 - **Self-destruct buttons among routine toggles**: rotating the QR key and cancelling the draw live in a "Zona pericolosa" at the bottom of /admin; cancelling needs ANNULLA typed in; "Sposta orari" is no longer pre-filled.
+- **God modules**: `service.py` is now the package `app/service/` (core, teams, matches, flow, stats, missing, progress, setup, board, access; none over ~500 lines, re-exported as `service.x`), and `main.py` is a 25-line app factory over `app/web/` (common, public, live, checkin, results, referee, admin), each with its own router.
+- **Strings as a state machine**: `Phase`, `Scoring` and `LivePhase` in `app/states.py` are `StrEnum`s; code and templates ask `cfg.phase.is_setup`, `m.mode.by_shots` and the like.
 
 ## Still open
 
@@ -36,10 +38,6 @@ A critical review of branch `torneo`, updated on branch `claude/beerpong-app-rev
 **Emoji as an icon system.** About 60 distinct emoji, including the referee's controls.
 
 **No scale.** 13 radii, a dozen spacings, 170 inline `style=""`, about 60 hard-coded colours.
-
-**God modules.** `service.py` ~2,500 lines, `main.py` ~1,800.
-
-**Strings as a state machine.** `phase` and `scoring` compared as literals across Python and 14 templates.
 
 ## What to keep
 

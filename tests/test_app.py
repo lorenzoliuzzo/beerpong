@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main as app_main
+from app.web import common as web_common
 from app import live, service, tracking
 from app.db import connect, get_setting, init_db, set_setting
 from app.main import create_app, get_db
@@ -23,10 +23,10 @@ ADMIN_PIN = "123456"
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
-    app_main._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
+    web_common._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
     with TestClient(create_app()) as c:
         yield c
-    app_main._failures.clear()
+    web_common._failures.clear()
 
 
 def db_call(fn, *args):
@@ -1006,7 +1006,7 @@ def test_phone_login_after_the_start(client: TestClient) -> None:
 def test_wrong_numbers_are_throttled(client: TestClient) -> None:
     import_teams(client, 4)
     client.post("/logout")
-    for _ in range(app_main.ATTEMPT_MAX_FAILURES):
+    for _ in range(web_common.ATTEMPT_MAX_FAILURES):
         client.post("/checkin/accedi", data={"phone": "3330000000"})
     assert "Troppi tentativi" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text
     login(client, ADMIN_PIN)  # the crowd's typos do not lock the admin out
@@ -1255,7 +1255,7 @@ def test_the_phone_number_tells_which_player_logs_in(client: TestClient, monkeyp
         page = phone.get("/io").text
         assert f"Ciao {t['p2']}!" in page
 
-    monkeypatch.setattr(service, "INVITE_MAX_AGE_S", -1)
+    monkeypatch.setattr(service.access, "INVITE_MAX_AGE_S", -1)
     token = db_call(service.invite_token, 3, 1)
     with TestClient(client.app) as late:
         assert "invito è scaduto" in late.get(f"/entra/{token}").text

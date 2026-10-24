@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import live, service, tracking
-from app import main as app_main
+from app.web import live as web_live
 from app.live import Report
 from app.main import create_app
 
@@ -44,7 +44,7 @@ def test_win_probability_behaves() -> None:
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
-    app_main._report_times.clear()
+    web_live._report_times.clear()
     with TestClient(create_app()) as c:
         yield c
 
@@ -132,7 +132,7 @@ def test_cheer_rate_limit(client: TestClient) -> None:
 
 def test_live_view_has_trend_streak_cheers_and_other_tables(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     shot_by_shot()
-    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    monkeypatch.setattr("app.web.live.REPORT_MIN_GAP_S", 0)
     setup_tournament(client, 8, fields=2)
     m = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
     other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
@@ -155,7 +155,7 @@ def test_live_view_has_trend_streak_cheers_and_other_tables(client: TestClient, 
 
 def test_one_cheer_of_each_kind_per_account_and_none_while_playing(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     shot_by_shot()
-    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    monkeypatch.setattr("app.web.live.REPORT_MIN_GAP_S", 0)
     client.post("/login", data={"pin": ADMIN_PIN})
     client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(8))})
     client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 7, "buffer_min": 1})
