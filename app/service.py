@@ -2336,6 +2336,11 @@ def forget_device(db: sqlite3.Connection, device: str) -> None:
         db.execute("DELETE FROM devices WHERE device = ?", (device,))
 
 
+def entered_elsewhere(db: sqlite3.Connection, team_id: int, device: str) -> bool:
+    """Whether another phone is already in this couple: from then on the way in is the partner's invite."""
+    return db.execute("SELECT 1 FROM devices WHERE team_id = ? AND device != ?", (team_id, device)).fetchone() is not None
+
+
 def team_devices(db: sqlite3.Connection, team_id: int) -> dict[int, int]:
     """{player: phones} for the players of a couple who entered on their own phone."""
     counts = {1: 0, 2: 0}

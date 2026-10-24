@@ -9,7 +9,7 @@
 <form class="card" method="post" action="/checkin/accedi">
   <label for="phone"><strong>Il tuo numero di telefono</strong></label>
   <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="333 123 4567" autofocus>
-  <p class="muted small">Ognuno entra con il suo, quello lasciato all'iscrizione: l'app sa chi sei.{% if setup and allowed %} Ti segniamo arrivato/a: la coppia è presente quando ci siete tutti e due.{% endif %}</p>
+  <p class="muted small">Quello lasciato all'iscrizione: l'app sa chi sei. Vale per il primo telefono della coppia; l'altro entra con il QR «Invita» dal profilo del compagno.{% if setup and allowed %} Ti segniamo arrivato/a: la coppia è presente quando ci siete tutti e due.{% endif %}</p>
   <button class="wide" type="submit">{{ "Sono arrivato/a" if setup and allowed else "Entra" }}</button>
 </form>
 

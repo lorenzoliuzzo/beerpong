@@ -18,6 +18,6 @@
     <p class="muted small">Quello che hai lasciato all'iscrizione.{% if cfg.phase == "setup" and allowed %} Ti segniamo arrivato/a.{% endif %}</p>
     <button class="wide" type="submit">{{ "Sono arrivato/a" if cfg.phase == "setup" and allowed else "Entra" }}</button>
   </form>
-  <p class="muted small">Il tuo numero non c'è? Chiedi al compagno di mostrarti il QR «Invita» dal suo profilo, oppure passa dallo staff.</p>
+  <p class="muted small">Il compagno è già dentro, o il tuo numero non c'è? Fatti mostrare il QR «Invita» dal suo profilo, oppure passa dallo staff.</p>
 {% endif %}
 {% endblock %}

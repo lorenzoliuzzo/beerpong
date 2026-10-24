@@ -177,8 +177,8 @@ def test_one_cheer_of_each_kind_per_account_and_none_while_playing(client: TestC
     # a couple cheers once whatever the number of its phones
     waiting = next(t for t in db_call(service.teams).values() if t["id"] not in (m.t1, m.t2))
     phones = [TestClient(client.app) for _ in range(2)]
-    for ph in phones:
-        assert "Bentornat" in ph.post("/checkin/accedi", data={"phone": waiting["phone1"]}).text
+    assert "Bentornat" in phones[0].post("/checkin/accedi", data={"phone": waiting["phone1"]}).text
+    assert "Ciao" in phones[1].get(f"/entra/{db_call(service.invite_token, waiting['id'], 2)}").text
     assert tifo(phones[0], 2, "👏").json()["cheers"][1]["👏"] == 1
     assert tifo(phones[1], 2, "👏").json()["cheers"][1]["👏"] == 0  # same couple: the second tap took it back
 

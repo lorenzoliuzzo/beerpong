@@ -258,8 +258,9 @@ def test_partner_enters_from_the_list_with_their_own_number(client: TestClient) 
         # The couple's details are only edited from inside the profile.
         assert partner.post("/io/coppia", data={"name": "Hacker", "p1": "a", "p2": "b", "phone1": "3330000000"}, follow_redirects=False).headers["location"] == "/checkin"
         assert db_call(service.team, 2)["name"] == "Squadra 1"
-        assert f"Bentornato/a, {t['p2']}!" in partner.post("/checkin/accedi", data={"phone": "+39 347 987 6543", "team_id": 2}).text
-        assert f"Ciao {t['p2']}!" in partner.get("/io").text
+        # The couple is already open on player 1's phone: a number alone no longer opens it, the invite does.
+        assert "già aperta su un altro telefono" in partner.post("/checkin/accedi", data={"phone": "+39 347 987 6543", "team_id": 2}).text
+        assert f"Ciao {t['p2']}!" in partner.get(f"/entra/{db_call(service.invite_token, 2, 2)}").text
 
 
 def test_start_uses_only_present_teams_and_admin_sees_missing(client: TestClient) -> None:
@@ -339,8 +340,8 @@ def test_team_splits_cups_for_player_ranking(client: TestClient) -> None:
     record(client, m.id, 5, 4)
     team1 = db_call(service.team, m.t1)
 
-    with TestClient(client.app) as phone:
-        phone.post("/checkin/accedi", data={"phone": phones[m.t1]})
+    with TestClient(client.app) as phone:  # the partner, invited from the phone that checked in
+        phone.get(f"/entra/{db_call(service.invite_token, m.t1, 2)}")
         assert "Dividete i canestri" in phone.get("/").text
         phone.post(f"/canestri/{m.id}", data={"side": 2, "cup1": "1"})  # not their side
         assert db_call(service.match, m.id).split2 is None
@@ -1364,7 +1365,9 @@ def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient) 
         assert not db_call(service.team, 1)["checked_in"]
 
         second.get(f"/checkin?k={key}")
-        assert "è al completo" in second.post("/checkin/accedi", data={"phone": "347 000 0002"}).text
+        assert "già aperta su un altro telefono" in second.post("/checkin/accedi", data={"phone": "347 000 0002"}).text
+        second.get(f"/entra/{db_call(service.invite_token, 1, 2)}")  # the partner comes in with the invite
+        assert "è al completo" in second.post("/io/arrivo").text
         assert db_call(service.team, 1)["checked_in"] == 1
 
         page = second.get("/io").text

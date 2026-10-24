@@ -719,6 +719,11 @@ def checkin_phone(
         return page(request, db, "checkin_scegli.html", found=found, phone=phone)
     t = found[0]
     player = service.player_for_phone(t, phone)
+    if service.entered_elsewhere(db, t["id"], device_id(request)):
+        # A number is easy to know: it opens a couple only for its first phone, then the partner invites.
+        flash(request, f"«{t['name']}» è già aperta su un altro telefono: chiedi al compagno il QR «Invita» "
+                       "dal suo profilo, oppure passa dallo staff.", "err")
+        return redirect("/checkin")
     if not t["checked_in"]:
         if get_setting(db, "phase") != "setup":
             flash(request, f"Il torneo è già iniziato e «{t['name']}» non ha fatto il check-in: parlate con l'organizzazione.", "err")
