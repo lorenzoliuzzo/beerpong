@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app import db, service, tracking
 from tests.test_app import STAR, client, db_call, import_teams  # noqa: F401
-from tools import demo_sim
+from tools import demo_sim, generate_demo_videos as tour
 from tools.populate_demo import setup_demo
 
 
@@ -61,6 +61,30 @@ def test_simulator_refuses_the_real_database(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(db, "init_db", lambda: None)
     with pytest.raises(SystemExit, match="Only for the demo database"):
         demo_sim.main()
+
+
+def test_demo_tour_moves_through_the_four_phases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BP_DB", str(tmp_path / "tour.db"))
+    db.init_db()
+    conn = db.connect()
+    tour.lounge(conn)
+    assert service.load_config(conn).phase.is_setup and db.get_setting(conn, "demo") == "1"
+    assert sum(t["checked_in"] for t in service.teams(conn).values()) == tour.ARRIVED
+    setup_demo(conn)
+    rng = random.Random(3)
+    tour.play_until(conn, rng, lambda c: service.load_config(c).phase.knockout_reached)
+    assert not tour.final_done(conn)
+    tour.play_until(conn, rng, tour.final_done)
+    tour.lounge(conn)  # a second run starts over from the lounge
+    assert service.load_config(conn).phase.is_setup
+    conn.close()
+
+
+def test_demo_tour_refuses_the_real_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BP_DB", raising=False)
+    monkeypatch.setattr("sys.argv", ["generate_demo_videos"])
+    with pytest.raises(SystemExit, match="scratch database"):
+        tour.main()
 
 
 def test_demo_referee_takes_a_table_from_the_simulator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -124,6 +124,15 @@
 {% macro team_color(t) %}{{ team_colors.get(t.color, "") }}{% endmacro %}
 
 {# Photo if any, else the emoji, else the initial, on the couple's colour. #}
+{# A couple at the venue, with the time it checked in: /arrivi and the profile's lounge. #}
+{% macro arrival_row(t) %}
+<a class="row arrival {{ 'mine' if me and me.id == t.id }}" href="/squadra/{{ t.id }}" style="{{ ('--team: ' ~ team_color(t)) if t.color }}">
+  {{ avatar(t) }}
+  <div class="grow"><div class="title">{{ t.name }}{% if me and me.id == t.id %} <span class="badge you">VOI</span>{% endif %}</div><span class="muted small">{{ players(t) }}{% if t.motto %} · «{{ t.motto }}»{% endif %}</span></div>
+  <span class="pill ok">{{ icon("check") }} {{ t.checked_in_at[11:16] if t.checked_in_at else "arrivata" }}</span>
+</a>
+{% endmacro %}
+
 {% macro avatar(t, size="") %}
 <span class="avatar {{ size }}" style="{{ ('background: ' ~ team_color(t)) if t.color }}">
   {%- if t.photo %}<img src="/foto/{{ t.photo }}" alt="" loading="lazy">{% elif t.emoji %}{{ t.emoji }}{% else %}{{ (t.name.split()|last)[:1]|upper }}{% endif -%}

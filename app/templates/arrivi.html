@@ -14,11 +14,7 @@
 {% if arr.arrived %}
   <div class="list">
     {% for t in arr.arrived %}
-      <a class="row arrival {{ 'mine' if me and me.id == t.id }}" href="/squadra/{{ t.id }}" style="{{ ('--team: ' ~ ui.team_color(t)) if t.color }}">
-        {{ ui.avatar(t) }}
-        <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}{% if t.motto %} · «{{ t.motto }}»{% endif %}</span></div>
-        <span class="pill ok">{{ ui.icon("check") }} {{ t.checked_in_at[11:16] if t.checked_in_at else "arrivata" }}</span>
-      </a>
+      {{ ui.arrival_row(t) }}
     {% endfor %}
   </div>
 {% else %}

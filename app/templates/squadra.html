@@ -140,26 +140,48 @@
     {% if t.checked_in %}
     <div class="banner mt-3">
       <div class="label">Check-in fatto {{ ui.icon("check") }}</div>
-      {{ ui.payment_pill(t, payments) }}
+      <div class="headline">Siete pronti per il torneo!</div>
+      Appena arrivano tutte le coppie partono i gironi e qui compare la vostra prima partita.
+      <div class="mt-2">{{ ui.payment_pill(t, payments) }}</div>
     </div>
     {% endif %}
-    {% if spot %}
-      <div class="card">
-        <div class="label muted small fw-medium" style="text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
-        <div class="headline fw-bold m-0 mt-1 mb-1" style="font-size:1.3rem">Girone {{ spot.group.letter }}{% if spot.table %} · {{ ui.icon("table") }} Tavolo {{ spot.table }}{% endif %}</div>
-        {% if spot.first_time %}<p class="m-0 mb-2">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
-        <div class="list">
-          {% for m in spot.group.teams %}
-            <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
-              {% if m.checked_in %}<span class="pill ok">{{ ui.icon("check") }} arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
-          {% endfor %}
+    {% if arr %}
+      {% set total = arr.arrived|length + arr.expected|length %}
+      {% set lounge_rows = 6 %}
+      <div class="card lounge mt-4 anchor" id="lounge">
+        <div class="section-head">
+          <h2 class="m-0">{{ ui.icon("users") }} Chi c'è già</h2>
+          <span class="pill {{ 'ok' if total and not arr.expected }}">{{ arr.arrived|length }}/{{ total }}</span>
         </div>
-        <p class="muted small m-0 mt-2">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
+        <div class="arrive-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ arr.arrived|length }}">
+          <span style="width: {{ (100 * arr.arrived|length / total)|round|int if total else 0 }}%"></span>
+        </div>
+        <p class="muted small m-0 mb-3">
+          {% if arr.expected %}Ne mancano {{ arr.expected|length }}: intanto fate un giro al bancone e conoscete le altre coppie.
+          {% else %}Ci sono tutte: si parte a momenti.{% endif %}
+        </p>
+        {% if arr.arrived %}
+          <div class="list">
+            {% for a in arr.arrived[:lounge_rows] %}{{ ui.arrival_row(a) }}{% endfor %}
+          </div>
+        {% endif %}
+        <p class="m-0 mt-3"><a class="btn ghost wide" href="/arrivi">{{ ui.icon("eye") }} {{ "Tutte le coppie" if arr.arrived|length > lounge_rows else "Chi è arrivato" }}</a></p>
       </div>
-      <p><a class="btn ghost wide" href="/arrivi">{{ ui.icon("eye") }} Chi è arrivato</a></p>
-      <p><a class="btn ghost wide" href="/gironi">Tutti i gironi</a></p>
-    {% else %}
-      <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
+    {% endif %}
+    {% if spot %}
+      <details class="section" id="girone-provvisorio">
+        <summary>Il vostro girone (provvisorio) · Girone {{ spot.group.letter }}{% if spot.table %} · Tavolo {{ spot.table }}{% endif %}</summary>
+        <div class="body">
+          {% if spot.first_time %}<p class="m-0 mb-2">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
+          <div class="list">
+            {% for m in spot.group.teams %}
+              <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
+                {% if m.checked_in %}<span class="pill ok">{{ ui.icon("check") }} arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
+            {% endfor %}
+          </div>
+          <p class="muted small m-0 mt-2">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in. <a href="/gironi">Tutti i gironi provvisori ›</a></p>
+        </div>
+      </details>
     {% endif %}
   {% endif %}
 {% endif %}
