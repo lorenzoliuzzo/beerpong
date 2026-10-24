@@ -26,7 +26,7 @@ from fastapi import (
     HTTPException,
     Request,
 )
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -40,6 +40,7 @@ BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE / "templates")
 # Changes with the stylesheet, so phones never keep an old copy after a deploy.
 templates.env.globals["static_v"] = hashlib.sha256((BASE / "static" / "style.css").read_bytes()).hexdigest()[:10]
+templates.env.globals["team_colors"] = service.COLORS
 router = APIRouter()
 log = logging.getLogger("beerpong")
 
@@ -257,6 +258,72 @@ def groups_page(
         is_ko_phase=is_ko_phase, current_phase_label=current_phase_label, removed_tables=removed_tables,
         live=True,
     )
+
+
+def photo_dir() -> Path:
+    return db_path().parent / "foto"
+
+
+@router.get("/arrivi")
+def arrivals_page(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    return page(request, db, "arrivi.html", arr=service.arrivals(db), live=True)
+
+
+@router.get("/foto/{name}")
+def team_photo(name: str) -> Response:
+    if not re.fullmatch(r"\d+-[0-9a-f]{12}\.(jpg|png|webp)", name) or not (photo_dir() / name).is_file():
+        raise HTTPException(404)
+    return FileResponse(photo_dir() / name, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@router.get("/io/profilo")
+def look_form(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    t = service.team(db, my_team_id(request)) if my_team_id(request) is not None else None
+    if t is None:
+        return redirect("/checkin")
+    return page(request, db, "profilo.html", t=t, colors=service.COLORS, me_player=my_player(request))
+
+
+@router.post("/io/profilo")
+def look_save(
+    request: Request, emoji: str = Form(""), motto: str = Form(""), colore: str = Form(""),
+    nick1: str = Form(""), nick2: str = Form(""), db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    team_id = my_team_id(request)
+    if team_id is None:
+        return redirect("/checkin")
+    try:
+        service.save_look(db, team_id, emoji, motto, colore, nick1, nick2)
+    except TournamentError as e:
+        flash(request, str(e), "err")
+        return redirect("/io/profilo")
+    flash(request, "Profilo aggiornato ✓")
+    return redirect("/io")
+
+
+@router.post("/io/foto")
+async def photo_upload(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    team_id = my_team_id(request)
+    if team_id is None:
+        return JSONResponse({"error": "Entrate prima nel profilo della coppia."}, status_code=403)
+    # Refuse big bodies before reading them: the phone sends a shrunk JPEG of a few hundred KB at most.
+    if int(request.headers.get("content-length") or 0) > 2 * service.PHOTO_MAX_BYTES:
+        return JSONResponse({"error": "Foto troppo grande."}, status_code=413)
+    form = await request.form()
+    upload = form.get("foto")
+    data = await upload.read() if upload is not None and hasattr(upload, "read") else b""
+    try:
+        name = service.save_photo(db, team_id, data, photo_dir())
+    except TournamentError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return JSONResponse({"ok": True, "url": f"/foto/{name}"})
+
+
+@router.post("/io/foto/togli")
+def photo_remove(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    if my_team_id(request) is not None:
+        service.remove_photo(db, my_team_id(request), photo_dir())
+    return redirect("/io/profilo")
 
 
 @router.get("/regole")
@@ -1086,6 +1153,13 @@ def admin_guest_new_team(
         service.link_guest(db, guest_id, team_id)
 
     return _admin_action(request, create, "Coppia creata.", "/admin/mancanti")
+
+
+@admin.post("/squadre/{team_id}/togli-foto")
+def admin_remove_photo(request: Request, team_id: int, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    return _admin_action(
+        request, lambda: service.remove_photo(db, team_id, photo_dir()), "Foto tolta.", f"/admin/squadre/{team_id}"
+    )
 
 
 @admin.post("/squadre/{team_id}/elimina")

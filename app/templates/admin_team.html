@@ -5,6 +5,15 @@
 <h1>{{ t.name if t else "Nuova coppia" }}</h1>
 {% if guest_team %}<p><span class="pill accent">creata al check-in da un iscritto «solo serata»</span></p>{% endif %}
 {% if t and t.note %}<div class="banner todo">📝 {{ t.note }}</div>{% endif %}
+{% if t and t.photo %}
+  <div class="card" style="display:flex;gap:12px;align-items:center">
+    <img class="team-photo" src="/foto/{{ t.photo }}" alt="Foto di {{ t.name }}">
+    <form method="post" action="/admin/squadre/{{ t.id }}/togli-foto" onsubmit="return confirm('Togliere la foto della coppia?')">
+      <p class="muted small" style="margin-top:0">La foto l'ha messa la coppia dal suo profilo.</p>
+      <button class="ghost small" type="submit">Togli la foto</button>
+    </form>
+  </div>
+{% endif %}
 {% if t and not setup %}<p class="muted small">Torneo in corso: puoi correggere nomi, telefoni e pagamento. Presenza ed eliminazione sono bloccate dopo il sorteggio.</p>{% endif %}
 
 <form method="post" action="{{ '/admin/squadre/' ~ t.id if t else '/admin/squadre/nuova' }}">

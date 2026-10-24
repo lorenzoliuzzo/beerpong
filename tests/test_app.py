@@ -1262,3 +1262,46 @@ def test_the_venue_qr_checks_in_a_couple_already_in_its_profile(client: TestClie
         assert not db_call(service.team, 1)["checked_in"]
         r = phone.get(f"/checkin?k={db_call(get_setting, 'reg_key')}", follow_redirects=False)
         assert r.headers["location"] == "/io" and db_call(service.team, 1)["checked_in"] == 1
+
+
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 200
+
+
+def test_a_couple_personalizes_its_profile(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 1)
+    client.post("/checkin/1", data=checkin_form(t, phone1="333 0000001"))
+    assert "Scegliete una sola emoji" in client.post("/io/profilo", data={"emoji": "abc"}).text
+    assert "Colore non valido" in client.post("/io/profilo", data={"colore": "red;}body{display:none"}).text
+    client.post("/io/profilo", data={"emoji": "🦊", "motto": "  Mai  una gioia ", "colore": "viola", "nick1": "Mano Fredda"})
+    t = db_call(service.team, 1)
+    assert (t["emoji"], t["motto"], t["color"], t["nick1"]) == ("🦊", "Mai una gioia", "viola", "Mano Fredda")
+    page = client.get("/io").text
+    assert "«Mai una gioia»" in page and "«Mano Fredda»" in page and service.COLORS["viola"] in page
+
+    assert "non è una foto" in client.post("/io/foto", files={"foto": ("x.jpg", b"<svg onload=alert(1)>")}).json()["error"]
+    assert "troppo grande" in client.post("/io/foto", files={"foto": ("x.jpg", JPEG * 2000)}).json()["error"]
+    assert client.post("/io/foto", files={"foto": ("x.jpg", JPEG * 4000)}).status_code == 413  # refused unread
+    url = client.post("/io/foto", files={"foto": ("x.jpg", JPEG)}).json()["url"]
+    assert client.get(url).content == JPEG and url in client.get("/io").text
+    old = url
+    url = client.post("/io/foto", files={"foto": ("x.jpg", JPEG)}).json()["url"]
+    assert url != old and client.get(old).status_code == 404  # the old photo is gone
+    assert client.get("/foto/..%2Ftest.db").status_code == 404
+
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/1/togli-foto")
+    assert db_call(service.team, 1)["photo"] == "" and client.get(url).status_code == 404
+
+
+def test_everyone_sees_who_has_arrived(client: TestClient) -> None:
+    import_teams(client, 5)
+    for team_id in (2, 4):
+        client.post(f"/admin/squadre/{team_id}/presente", data={"presente": 1})
+    client.post("/logout")
+    page = client.get("/arrivi").text
+    assert "2/5 coppie" in page and "In arrivo (3)" in page
+    assert page.index("Squadra 3") < page.index("In arrivo")  # arrived: Squadra 3 (id 4) and Squadra 1 (id 2)
+    assert db_call(service.team, 2)["checked_in_at"]

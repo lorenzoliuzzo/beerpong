@@ -1491,3 +1491,16 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 .phones-card .choices { display: flex; gap: 8px; }
 .invite-qr { display: block; margin: 8px auto; background: #fff; padding: 6px; border-radius: 8px; }
 .player-profile-card.me { outline: 2px solid var(--accent); }
+
+/* A couple's own look: avatar (photo, emoji or initial on its colour), nicknames, arrivals */
+.avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+  border-radius: 50%; background: var(--accent-soft); font-size: 1.25rem; font-weight: 800; overflow: hidden; color: var(--accent); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.big { width: 84px; height: 84px; font-size: 2.6rem; }
+.nick { color: var(--muted); font-style: italic; }
+.team-photo { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; }
+.team-profile-hero.colored { border-left: 6px solid var(--team); }
+.tph-motto { margin: 4px 0 0; font-style: italic; }
+.arrive-bar { height: 8px; border-radius: 4px; background: var(--warn-soft); overflow: hidden; margin: 6px 0 14px; }
+.arrive-bar span { display: block; height: 100%; background: var(--ok, #2f9e44); }
+.row.arrival { gap: 10px; border-left: 4px solid var(--team, transparent); }

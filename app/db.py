@@ -28,7 +28,11 @@ CREATE TABLE IF NOT EXISTS teams (
     -- The short questionnaire after check-in: the couple's own guess, a prior for the live odds.
     q_level TEXT, q_aim1 INTEGER, q_aim2 INTEGER, q_goal TEXT, q_at TEXT,
     note TEXT NOT NULL DEFAULT '',
-    grp INTEGER
+    grp INTEGER,
+    checked_in_at TEXT,  -- when the couple arrived at the venue
+    -- How the couple presents itself, set from its own profile.
+    emoji TEXT NOT NULL DEFAULT '', motto TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT '',
+    photo TEXT NOT NULL DEFAULT '', nick1 TEXT NOT NULL DEFAULT '', nick2 TEXT NOT NULL DEFAULT ''
 );
 -- People who registered on the form for the party only: their phone lets them enter as a couple.
 CREATE TABLE IF NOT EXISTS guests (
@@ -205,6 +209,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     hit_columns = {row[1] for row in conn.execute("PRAGMA table_info(cup_hits)")}
     if "player" not in hit_columns:
         conn.execute("ALTER TABLE cup_hits ADD COLUMN player INTEGER CHECK (player IN (1, 2))")
+    if "checked_in_at" not in team_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN checked_in_at TEXT")
+    for column in ("emoji", "motto", "color", "photo", "nick1", "nick2"):
+        if column not in team_columns:
+            conn.execute(f"ALTER TABLE teams ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
     if "referee_player" not in team_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN referee_player INTEGER CHECK (referee_player IN (1, 2))")
 

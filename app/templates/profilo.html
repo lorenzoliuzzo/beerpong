@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Il vostro profilo · {{ t.name }}{% endblock %}
+{% block content %}
+<p><a href="/io">‹ {{ t.name }}</a></p>
+<h1>Il vostro profilo</h1>
+<p class="muted">Come vi vedono gli altri: sui tavoli, in classifica e sulla TV.</p>
+
+<div class="card">
+  <h2 style="margin-top:0">📸 Foto della coppia</h2>
+  <div class="photo-edit">
+    <img id="photo-preview" class="team-photo" src="{{ '/foto/' ~ t.photo if t.photo else '' }}" alt="Foto di {{ t.name }}" {{ 'hidden' if not t.photo }}>
+    <div>
+      <label class="btn ghost" for="photo-input">{{ "Cambia foto" if t.photo else "Scatta o scegli una foto" }}</label>
+      <input id="photo-input" type="file" accept="image/*" hidden>
+      <p class="muted small" id="photo-status">Fatevi un selfie insieme: la rimpiccioliamo noi.</p>
+      {% if t.photo %}<form method="post" action="/io/foto/togli"><button class="link small" type="submit">Togli la foto</button></form>{% endif %}
+    </div>
+  </div>
+</div>
+
+<form class="card" method="post" action="/io/profilo">
+  <label for="emoji">La vostra emoji</label>
+  <div class="emoji-pick">
+    {% for e in ["🍺", "🔥", "🦊", "🐙", "🦄", "🐝", "🎯", "👑", "🚀", "🍀", "🐸", "💀"] %}
+      <button type="button" class="chip {{ 'on' if t.emoji == e }}" data-emoji="{{ e }}">{{ e }}</button>
+    {% endfor %}
+  </div>
+  <input id="emoji" name="emoji" value="{{ t.emoji }}" maxlength="8" placeholder="oppure scrivetene un'altra" autocomplete="off">
+
+  <label for="motto">Motto</label>
+  <input id="motto" name="motto" value="{{ t.motto }}" maxlength="60" placeholder="Es. «Il bicchiere è mezzo vuoto»">
+
+  <label>Colore</label>
+  <div class="color-pick">
+    {% for key, hex in colors.items() %}
+      <label class="swatch" style="--sw: {{ hex }}" title="{{ key }}"><input type="radio" name="colore" value="{{ key }}" {{ 'checked' if t.color == key }}><span></span></label>
+    {% endfor %}
+    <label class="swatch none" title="Nessuno"><input type="radio" name="colore" value="" {{ 'checked' if not t.color }}><span>✕</span></label>
+  </div>
+
+  <label for="nick1">Soprannome di {{ t.p1 }}{% if me_player == 1 %} (tu){% endif %}</label>
+  <input id="nick1" name="nick1" value="{{ t.nick1 }}" maxlength="20" placeholder="Es. Mano Fredda">
+  <label for="nick2">Soprannome di {{ t.p2 }}{% if me_player == 2 %} (tu){% endif %}</label>
+  <input id="nick2" name="nick2" value="{{ t.nick2 }}" maxlength="20" placeholder="Es. Il Cecchino">
+
+  <button class="wide" type="submit">Salva</button>
+</form>
+
+<style>
+  .photo-edit { display:flex; gap:12px; align-items:center; }
+  .emoji-pick { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+  .emoji-pick .chip { font-size:1.3rem; padding:4px 8px; }
+  .color-pick { display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 10px; }
+  .swatch input { position:absolute; opacity:0; }
+  .swatch span { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%;
+    background:var(--sw); border:3px solid transparent; cursor:pointer; color:var(--muted); }
+  .swatch.none span { background:var(--surface, #fff); border-color:var(--line, #ddd); }
+  .swatch input:checked + span { border-color:var(--text); box-shadow:0 0 0 2px var(--bg, #fff) inset; }
+</style>
+<script>
+  document.querySelectorAll("[data-emoji]").forEach((b) => b.addEventListener("click", () => {
+    document.getElementById("emoji").value = b.dataset.emoji;
+    document.querySelectorAll("[data-emoji]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+
+  // The photo is shrunk here, on the phone: a few hundred KB travel instead of a 5 MB original.
+  const input = document.getElementById("photo-input"), status = document.getElementById("photo-status");
+  input.addEventListener("change", async () => {
+    const file = input.files[0];
+    if (!file) return;
+    status.textContent = "Carico la foto…";
+    try {
+      const img = await createImageBitmap(file, { imageOrientation: "from-image" });
+      const scale = Math.min(1, 600 / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.8));
+      const body = new FormData();
+      body.append("foto", blob, "foto.jpg");
+      const r = await fetch("/io/foto", { method: "POST", body, credentials: "same-origin" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Errore");
+      const preview = document.getElementById("photo-preview");
+      preview.src = data.url;
+      preview.hidden = false;
+      status.textContent = "Foto salvata ✓";
+    } catch (e) {
+      status.textContent = e.message && e.message !== "Errore" ? e.message : "Non riesco a leggere la foto: provatene un'altra.";
+    }
+  });
+</script>
+{% endblock %}

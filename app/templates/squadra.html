@@ -5,9 +5,10 @@
 {% set t = dash.team %}
 
 <!-- TEAM PROFILE HERO -->
-<div class="team-profile-hero">
+<div class="team-profile-hero {{ 'colored' if t.color }}" style="{{ ('--team: ' ~ ui.team_color(t)) if t.color }}">
   <div class="tph-top">
-    <div>
+    {{ ui.avatar(t, "big") }}
+    <div style="flex:1">
       <div class="tph-badges">
         {% if profile and profile.grp_name %}
           <a href="/gironi?g={{ t.grp }}" class="pill ok">{{ profile.grp_name }}</a>
@@ -27,9 +28,13 @@
       </div>
       <h1 style="margin:6px 0 2px">{{ t.name }}</h1>
       <p class="muted" style="margin:0;font-size:1rem">👥 {{ ui.players(t) }}</p>
+      {% if t.motto %}<p class="tph-motto">«{{ t.motto }}»</p>{% endif %}
     </div>
     {% if own %}
-      <span class="badge" title="Il vostro profilo">★ VOI</span>
+      <div style="text-align:right">
+        <span class="badge" title="Il vostro profilo">★ VOI</span>
+        <a class="btn small ghost" style="margin-top:6px" href="/io/profilo">✏️ Personalizza</a>
+      </div>
     {% endif %}
   </div>
 
@@ -145,7 +150,8 @@
         </div>
         <p class="muted small" style="margin:8px 0 0">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
       </div>
-      <p><a class="btn ghost wide" href="/gironi">Tutti i gironi e le presenze</a></p>
+      <p><a class="btn ghost wide" href="/arrivi">👀 Chi è arrivato</a></p>
+      <p><a class="btn ghost wide" href="/gironi">Tutti i gironi</a></p>
     {% else %}
       <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
     {% endif %}

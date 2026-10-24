@@ -394,7 +394,10 @@ def admin_check_in(db: sqlite3.Connection, team_id: int, present: bool) -> None:
     if present and t is not None and not (t["p1"] and t["p2"]):
         raise TournamentError(f"«{t['name']}» non ha ancora entrambi i giocatori: completa la coppia prima.")
     with db:
-        db.execute("UPDATE teams SET checked_in = ? WHERE id = ?", (int(present), team_id))
+        db.execute(
+            "UPDATE teams SET checked_in = ?, checked_in_at = ? WHERE id = ?",
+            (int(present), datetime.now().isoformat(timespec="minutes") if present else None, team_id),
+        )
 
 
 def set_paid(db: sqlite3.Connection, team_id: int, paid: bool) -> None:
@@ -891,7 +894,7 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
     def name(r: sqlite3.Row, side: int) -> str:
         team = r[f"team{side}"]
         if team is not None:
-            return team_rows[team]["name"]
+            return display_name(team_rows[team])
         if r["bye"]:
             return "Riposo"
         if r["stage"] == "ko" and r["round"] > 1:
@@ -2289,3 +2292,74 @@ def access_message(info: TournamentInfo, t: sqlite3.Row, url: str) -> str:
         "Da lì attivate le notifiche, rispondete a due domande e invitate il compagno. "
         "Alla serata inquadrate il QR all'ingresso per segnarvi presenti.",
     ])
+
+
+# --- How a couple presents itself ------------------------------------------------
+
+# A fixed palette: the colour goes into the page's CSS, so it is never free text.
+COLORS = {
+    "arancio": "#d9480f", "rosso": "#e03131", "rosa": "#d6336c", "viola": "#7048e8",
+    "blu": "#1c7ed6", "verde": "#2f9e44", "giallo": "#f08c00", "grigio": "#495057",
+}
+PHOTO_MAX_BYTES = 300_000
+PHOTO_TYPES = {b"\xff\xd8\xff": "jpg", b"\x89PNG": "png", b"RIFF": "webp"}
+
+
+def display_name(t: sqlite3.Row) -> str:
+    return f"{t['emoji']} {t['name']}" if t["emoji"] else t["name"]
+
+
+def save_look(
+    db: sqlite3.Connection, team_id: int, emoji: str, motto: str, color: str, nick1: str, nick2: str
+) -> None:
+    emoji, motto, nick1, nick2 = emoji.strip(), " ".join(motto.split()), nick1.strip(), nick2.strip()
+    if len(emoji) > 8 or any(c.isascii() and c.isalnum() for c in emoji):
+        raise TournamentError("Scegliete una sola emoji.")
+    if len(motto) > 60:
+        raise TournamentError("Il motto è troppo lungo: massimo 60 caratteri.")
+    if color and color not in COLORS:
+        raise TournamentError("Colore non valido.")
+    if len(nick1) > 20 or len(nick2) > 20:
+        raise TournamentError("I soprannomi possono avere al massimo 20 caratteri.")
+    with db:
+        db.execute(
+            "UPDATE teams SET emoji = ?, motto = ?, color = ?, nick1 = ?, nick2 = ? WHERE id = ?",
+            (emoji, motto, color, nick1, nick2, team_id),
+        )
+
+
+def save_photo(db: sqlite3.Connection, team_id: int, data: bytes, photo_dir: Path) -> str:
+    """The couple's photo, already shrunk on the phone: only small real images are kept."""
+    if not data or len(data) > PHOTO_MAX_BYTES:
+        raise TournamentError("Foto troppo grande: riprovate, il telefono la rimpicciolisce da solo.")
+    ext = next((e for magic, e in PHOTO_TYPES.items() if data.startswith(magic)), None)
+    if ext is None or (ext == "webp" and data[8:12] != b"WEBP"):
+        raise TournamentError("Il file non è una foto.")
+    photo_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{team_id}-{secrets.token_hex(6)}.{ext}"  # a new name: phones never show a cached old photo
+    (photo_dir / name).write_bytes(data)
+    remove_photo(db, team_id, photo_dir)
+    with db:
+        db.execute("UPDATE teams SET photo = ? WHERE id = ?", (name, team_id))
+    return name
+
+
+def remove_photo(db: sqlite3.Connection, team_id: int, photo_dir: Path) -> None:
+    t = team(db, team_id)
+    if t is not None and t["photo"]:
+        (photo_dir / t["photo"]).unlink(missing_ok=True)
+        with db:
+            db.execute("UPDATE teams SET photo = '' WHERE id = ?", (team_id,))
+
+
+@dataclass
+class Arrivals:
+    arrived: list[sqlite3.Row]  # latest first
+    expected: list[sqlite3.Row]
+
+
+def arrivals(db: sqlite3.Connection) -> Arrivals:
+    """Who is already at the venue, among the couples with a place."""
+    placed = registration(db).placed
+    arrived = sorted((t for t in placed if t["checked_in"]), key=lambda t: t["checked_in_at"] or "", reverse=True)
+    return Arrivals(arrived, sorted((t for t in placed if not t["checked_in"]), key=lambda t: t["name"].casefold()))
