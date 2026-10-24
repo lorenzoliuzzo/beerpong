@@ -51,15 +51,6 @@
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
     </div>
   {% endif %}
-
-  {% if dash.to_split and me and me.id == t.id %}
-    <div class="banner warm" style="margin-top:10px;margin-bottom:0">
-      <div class="label">Bicchieri individuali da dividere</div>
-      {% for m in dash.to_split %}
-        <p style="margin:4px 0"><a class="btn small" href="/canestri/{{ m.id }}">Dividi bicchieri di {{ m.n1 }} – {{ m.n2 }} ({{ m.s1 }}–{{ m.s2 }})</a></p>
-      {% endfor %}
-    </div>
-  {% endif %}
 </div>
 
 {% if own %}

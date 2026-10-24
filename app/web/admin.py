@@ -32,7 +32,6 @@ def admin_home(request: Request, vista: str = "", db: sqlite3.Connection = Depen
         vista = "preparazione" if cfg.phase.is_setup else "serata"
     pending_groups = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
     views = service.matches(db)
-    missing_splits = sum(1 for m in views for s in (1, 2) if m.split_missing(s))
     playable = [m for m in views if not m.bye and m.t1 is not None and m.t2 is not None]
     tables = service.table_views(db, all_matches=views) if cfg.phase.in_play else []
     return page(
@@ -40,7 +39,7 @@ def admin_home(request: Request, vista: str = "", db: sqlite3.Connection = Depen
         push_subs=push.subscriber_count(db),
         answered=sum(1 for t in service.teams(db).values() if t["q_at"]),
         solo=service.unassigned_guests(db),
-        admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups, missing_splits=missing_splits,
+        admin_pin=get_setting(db, "admin_pin"), pending_groups=pending_groups,
         checkin_url=checkin_url(request, db), tables=tables,
         played=sum(m.done for m in playable), total=sum(1 for m in views if not m.bye),
         info=service.load_tournament(db), reg=service.registration(db),

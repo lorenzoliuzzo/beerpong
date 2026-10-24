@@ -35,10 +35,8 @@
       {% elif mine_side and not m.done %}
         <span class="muted small">🧑‍⚖️ Il risultato lo segna l'arbitro</span>
       {% endif %}
-      {% if sides and (m.split_missing(sides[0]) or (sides|length > 1 and m.split_missing(sides[1]))) %}
-        <a class="btn small" href="/canestri/{{ m.id }}">Dividi i bicchieri</a>
-      {% elif sides %}
-        <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica bicchieri</a>
+      {% if sides %}
+        <a class="btn small ghost" href="/canestri/{{ m.id }}">Chi ha centrato</a>
       {% endif %}
       {% if ref_ok and m.mode.by_shots and not m.done %}
         <a class="btn small" href="/segna/{{ m.id }}">🧑‍⚖️ Segna i tiri</a>

@@ -109,8 +109,6 @@ async def result_save(request: Request, match_id: int, background: BackgroundTas
     if m.stage == "group" and get_phase(db) is Phase.KNOCKOUT:
         msg += ". Gironi conclusi: tabellone generato!"
     flash(request, msg)
-    if m.side(my_team_id(request)):
-        return redirect(f"/canestri/{match_id}")
     return redirect(table_page(request, m, db))
 
 

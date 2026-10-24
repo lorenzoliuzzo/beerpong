@@ -18,11 +18,6 @@
     {% elif nm %}Prossima partita verso le {{ nm.time }}{{ ui.countdown(nm) }}{% if nm.field %} · Tavolo {{ nm.field }}{% endif %}
     {% endif %}
   </a>
-  {% if dash.to_split %}
-    <a class="banner todo" href="/canestri/{{ dash.to_split[0].id }}">
-      Dividete i bicchieri tra {{ t.p1 }} e {{ t.p2 }} ({{ dash.to_split|length }} partit{{ 'a' if dash.to_split|length == 1 else 'e' }}) →
-    </a>
-  {% endif %}
 {% endif %}
 
 {% if cfg.phase.is_setup and not dash %}

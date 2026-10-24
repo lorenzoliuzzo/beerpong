@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Dividi i bicchieri</h1>
+<h1>Chi ha centrato</h1>
 <p class="muted">{{ m.label }} · {{ m.n1 }} {{ m.s1 }}–{{ m.s2 }} {{ m.n2 }}</p>
 {% for side in sides %}
   {% set team = T[m.t1 if side == 1 else m.t2] %}

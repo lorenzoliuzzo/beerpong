@@ -47,7 +47,6 @@
 <div class="summary">
   <a href="#torneo" class="tile {{ 'ok' if played == total }}"><div class="big">{{ played }}/{{ total }}</div><span class="muted small">partite</span></a>
   <a href="#torneo" class="tile {{ 'ok' if not late }}"><div class="big">{{ late|length }}</div><span class="muted small">tavoli in ritardo</span></a>
-  <a href="#torneo" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">bicchieri da dividere</span></a>
   <a href="#notifiche" class="tile ok"><div class="big">{{ push_subs[0] }}</div><span class="muted small">telefoni avvisati</span></a>
 </div>
 {% endif %}
@@ -188,7 +187,6 @@
       <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} tavoli.</p>
     {% else %}
       {% if cfg.phase == Phase.GROUPS %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
-      {% if missing_splits %}<p class="muted small">{{ missing_splits }} punteggi non ancora divisi tra i giocatori.</p>{% endif %}
       {% if tables %}
         <div class="list regia">
           {% for tv in tables %}

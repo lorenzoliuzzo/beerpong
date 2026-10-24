@@ -344,7 +344,8 @@ def test_team_splits_cups_for_player_ranking(client: TestClient) -> None:
 
     with TestClient(client.app) as phone:  # the partner, invited from the phone that checked in
         phone.get(f"/entra/{db_call(service.invite_token, m.t1, 2)}")
-        assert "Dividete i bicchieri" in phone.get("/").text
+        assert "Dividete i bicchieri" not in phone.get("/").text  # no nag: the split is optional
+        assert f'href="/canestri/{m.id}"' in phone.get("/io").text
         phone.post(f"/canestri/{m.id}", data={"side": 2, "cup1": "1"})  # not their side
         assert db_call(service.match, m.id).split2 is None
         assert "Indica chi ha centrato" in phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1"}).text
