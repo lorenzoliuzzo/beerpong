@@ -363,10 +363,13 @@ def _team_page(request: Request, db: sqlite3.Connection, team_id: int, vs: str |
     h2h = service.head_to_head(db, team_id, other) if other and other != team_id else None
     rivals = [t for t in service.teams(db).values() if t["checked_in"] and t["id"] != team_id]
     spot = None
+    arr = None
     if own and get_phase(db).is_setup:
         spot = service.provisional_spot(db, team_id, datetime.now())
+        arr = service.arrivals(db)
     return page(
         request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db), own=own, spot=spot,
+        arr=arr,
         thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
         me_player=my_player(request) if own else None, checkin_ok=request.session.get("checkin_ok", False),
         devices=service.team_devices(db, team_id) if own else None,

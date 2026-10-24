@@ -125,7 +125,7 @@ def arrival(
             return redirect("/io")
         if not service.venue_code_ok(db, codice):
             record_failure(request, "players")
-            flash(request, "Codice sbagliato: è il numero di 4 cifre sotto il QR all'ingresso e sulla TV.", "err")
+            flash(request, "Codice sbagliato: trova la parola d'ordine di 4 cifre dell'admin o chiedi alle coppie al bancone! 🕵️‍♂️", "err")
             return redirect("/io")
         request.session["checkin_ok"] = True
     arrive(request, db, t, {player, 3 - player} if compagno else {player})

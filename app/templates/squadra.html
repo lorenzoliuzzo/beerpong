@@ -75,13 +75,13 @@
       {% if not t["arrived" ~ me_player ~ "_at"] %}
         <form method="post" action="/io/arrivo">
           {% if not checkin_ok %}
-            <p class="muted small">Inquadra il QR all'ingresso, oppure scrivi il codice di 4 cifre che trovi sotto il QR e sulla TV.</p>
-            <input name="codice" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required aria-label="Codice della serata" autocomplete="off">
+            <p class="muted small">Inquadra il QR all'ingresso, oppure trova la <strong>parola d'ordine di 4 cifre</strong>: gira a voce tra i tavoli, chiedila all'admin o alle coppie con la birra in mano! 🕵️‍♂️</p>
+            <input name="codice" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="Es. 1234" required aria-label="Codice della serata" autocomplete="off">
           {% endif %}
           {% if not t["arrived" ~ mate ~ "_at"] %}
             <label class="small" style="margin:6px 0"><input type="checkbox" name="compagno" value="1"> Anche {{ t["p" ~ mate] }} è qui con me (se non ha il telefono)</label>
           {% endif %}
-          <button class="wide" type="submit">🍺 Sono arrivato/a</button>
+          <button class="wide" type="submit">🍺 Entra nella mischia</button>
         </form>
       {% else %}
         <p class="small">Manca {{ t["p" ~ mate] }}: segna il suo arrivo dal suo telefono, oppure, se non ce l'ha, confermalo tu.</p>
@@ -147,29 +147,69 @@
   </div>
   {% if cfg.phase.is_setup %}
     {% if t.checked_in %}
-    <div class="banner" style="margin-top:12px">
+    <div class="banner ok" style="margin-top:12px">
       <div class="label">Check-in fatto ✓</div>
+      <div class="headline">Siete pronti per il torneo! 🍺</div>
+      <p style="margin:4px 0 0">Mettetevi comodi nella Lounge: appena arrivano tutte le coppie partiranno i gironi e il programma delle partite.</p>
       {{ ui.payment_pill(t, payments) }}
     </div>
     {% endif %}
-    {% if spot %}
-      <div class="card">
-        <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
-        <div class="headline" style="font-size:1.3rem;font-weight:900;margin:4px 0">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
-        {% if spot.first_time %}<p style="margin:0 0 8px">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
-        <div class="list">
-          {% for m in spot.group.teams %}
-            <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
-              {% if m.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
-          {% endfor %}
+
+    {% if arr %}
+      {% set total_arr = arr.arrived|length + arr.expected|length %}
+      <div class="card lounge-card" style="margin-top:14px">
+        <div class="slim-head" style="margin-bottom:8px">
+          <div>
+            <h2 style="margin:0;font-size:1.15rem">🍻 Lounge di attesa</h2>
+            <span class="muted small">Le altre coppie presenti al locale</span>
+          </div>
+          <span class="pill {{ 'ok' if total_arr and not arr.expected }}">{{ arr.arrived|length }}/{{ total_arr }}</span>
         </div>
-        <p class="muted small" style="margin:8px 0 0">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
+        <div class="arrive-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ total_arr }}" aria-valuenow="{{ arr.arrived|length }}">
+          <span style="width: {{ (100 * arr.arrived|length / total_arr)|round|int if total_arr else 0 }}%"></span>
+        </div>
+        <p class="muted small" style="margin:0 0 10px">
+          {% if arr.expected %}
+            Mancano <strong>{{ arr.expected|length }}</strong> coppie all'appello prima del via. Fai un giro al bancone e conosci le altre coppie! 🍻
+          {% else %}
+            Tutte le coppie sono arrivate! Il torneo sta per iniziare.
+          {% endif %}
+        </p>
+        {% if arr.arrived %}
+          <div class="list" style="margin-bottom:8px">
+            {% for at in arr.arrived %}
+              <div class="row {{ 'mine' if at.id == t.id }}">
+                {{ ui.avatar(at) }}
+                <div class="grow">
+                  <div class="title">{{ at.name }} {% if at.id == t.id %}<span class="badge">VOI</span>{% endif %}</div>
+                  <span class="muted small">{{ ui.players(at) }}</span>
+                </div>
+                <span class="pill ok">✓ {{ at.checked_in_at[11:16] if at.checked_in_at else "presente" }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <p style="margin:8px 0 0"><a class="btn ghost wide" href="/arrivi">👀 Chi è arrivato (dettagli completi)</a></p>
       </div>
-      <p><a class="btn ghost wide" href="/arrivi">👀 Chi è arrivato</a></p>
-      <p><a class="btn ghost wide" href="/gironi">Tutti i gironi</a></p>
-    {% else %}
-      <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
     {% endif %}
+
+    <details class="card" style="margin-top:14px" id="anteprima-girone">
+      <summary style="font-weight:700;cursor:pointer">🔮 Anteprima provvisoria (si svela al via)</summary>
+      <div style="margin-top:10px">
+        {% if spot %}
+          <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Girone {{ spot.group.letter }} · 🏓 Tavolo {{ spot.table }}</div>
+          {% if spot.first_time %}<p class="small" style="margin:4px 0 8px">Stima prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
+          <div class="list">
+            {% for m in spot.group.teams %}
+              <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
+                {% if m.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted small" style="margin:0">Il sorteggio definitivo avviene appena tutte le coppie sono presenti.</p>
+        {% endif %}
+      </div>
+    </details>
   {% endif %}
 {% endif %}
 
