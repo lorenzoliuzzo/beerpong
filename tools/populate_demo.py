@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import random
 import sqlite3
-import time
 from datetime import datetime, timedelta
 
 from app import db, service
@@ -66,7 +65,6 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
 
     rng = random.Random(12345)
     finished_count = 0
-    now_ts = time.time() - 1800
 
     for field_no, queue in sorted(by_table.items()):
         n_done = completed_per_table.get(field_no, 2)

@@ -222,6 +222,13 @@
     });
   });
 
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = "Link copiato ✓"; }
+    catch (_) { prompt("Copia il link:", btn.dataset.copy); }
+  });
+
   // Global synchronized tournament clock ticker
   (() => {
     let clockOffset = null;

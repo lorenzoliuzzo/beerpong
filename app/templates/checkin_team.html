@@ -19,7 +19,7 @@
 
 {% elif not allowed and not mine %}
   <h1>{{ t.name }}</h1>
-  <div class="card">Per fare il check-in scansionate il <strong>QR code sul tavolo</strong>.</div>
+  <div class="card">Il check-in si fa alla serata: inquadrate il <strong>QR all'ingresso</strong>. Se avete già pagato, <a href="/checkin">entrate con il vostro numero</a>.</div>
 
 {% else %}
   <h1>{{ "I vostri dati" if t.checked_in else "Check-in" }}</h1>

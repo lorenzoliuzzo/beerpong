@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import random
 import re
 import secrets
@@ -10,6 +11,8 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer, URLSafeTimedSerializer
 
 from . import bracket, planning
 from .db import get_setting, random_key, set_setting
@@ -1976,13 +1979,14 @@ def provisional_spot(db: sqlite3.Connection, team_id: int, now: datetime) -> Pro
 
 
 def board_groups(db: sqlite3.Connection) -> tuple[list[BoardGroup], bool]:
-    """Groups for the board and whether they are provisional (every registered couple, as if confirmed)."""
+    """Groups for the board and whether they are provisional (every couple with a place, as if confirmed)."""
     rows = teams(db)
     if get_setting(db, "phase") == "setup":
-        if len(rows) < MIN_TEAMS:
+        placed = [t["id"] for t in registration(db).placed]  # the waiting list has no group yet
+        if len(placed) < MIN_TEAMS:
             return [], True
         groups = draw_groups(
-            list(rows), int(get_setting(db, "board_seed")), int(get_setting(db, "fields")), _organizers(db)
+            placed, int(get_setting(db, "board_seed")), int(get_setting(db, "fields")), _organizers(db)
         )
         return [BoardGroup(chr(65 + i), [rows[t] for t in g], None) for i, g in enumerate(groups)], True
     tables = group_tables(db)
@@ -2178,3 +2182,110 @@ def payment_message(info: TournamentInfo, t: sqlite3.Row) -> str:
     if info.pay_info:
         lines.append(info.pay_info)
     return "\n".join(lines)
+
+
+# --- The phones of a couple ---------------------------------------------------
+
+INVITE_MAX_AGE_S = 12 * 3600
+
+
+def player_for_phone(t: sqlite3.Row, phone: str) -> int | None:
+    """Which player of the couple a phone number belongs to: phone1 is player 1's, phone2 player 2's."""
+    for player in (1, 2):
+        if t[f"phone{player}"] and _same_phone(t[f"phone{player}"], phone):
+            return player
+    return None
+
+
+def register_device(db: sqlite3.Connection, device: str, team_id: int, player: int | None) -> None:
+    with db:
+        db.execute(
+            "INSERT INTO devices(device, team_id, player, seen_at) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(device) DO UPDATE SET team_id = excluded.team_id, player = excluded.player,"
+            " seen_at = excluded.seen_at",
+            (device, team_id, player, datetime.now().isoformat(timespec="minutes")),
+        )
+
+
+def forget_device(db: sqlite3.Connection, device: str) -> None:
+    with db:
+        db.execute("DELETE FROM devices WHERE device = ?", (device,))
+
+
+def team_devices(db: sqlite3.Connection, team_id: int) -> dict[int, int]:
+    """{player: phones} for the players of a couple who entered on their own phone."""
+    counts = {1: 0, 2: 0}
+    for r in db.execute("SELECT player, COUNT(*) FROM devices WHERE team_id = ? AND player IS NOT NULL GROUP BY player", (team_id,)):
+        counts[r[0]] = r[1]
+    return counts
+
+
+def _invites(db: sqlite3.Connection) -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(get_setting(db, "secret"), salt="invito-compagno")
+
+
+def invite_token(db: sqlite3.Connection, team_id: int, player: int) -> str:
+    """A link for one player's partner: it enters the couple as that player, no phone number needed."""
+    return _invites(db).dumps({"t": team_id, "p": player})
+
+
+def read_invite(db: sqlite3.Connection, token: str) -> tuple[int, int]:
+    try:
+        data = _invites(db).loads(token, max_age=INVITE_MAX_AGE_S)
+    except SignatureExpired:
+        raise TournamentError("L'invito è scaduto: chiedete al compagno di mostrarvi di nuovo il QR.") from None
+    except BadSignature:
+        raise TournamentError("Invito non valido.") from None
+    if team(db, data["t"]) is None or data["p"] not in (1, 2):
+        raise TournamentError("Questa coppia non esiste più.")
+    return data["t"], data["p"]
+
+
+# --- Entering before the night, checking in at the venue ------------------------
+
+
+def may_enter_early(t: sqlite3.Row) -> bool:
+    """A couple with a confirmed place may open its profile from home; being present is a separate step."""
+    return bool(t["paid"] or t["organizer"] or t["checked_in"])
+
+
+def _access(db: sqlite3.Connection) -> URLSafeSerializer:
+    return URLSafeSerializer(get_setting(db, "secret"), salt="accesso-coppia")
+
+
+def access_token(db: sqlite3.Connection, team_id: int) -> str:
+    """The couple's personal link, sent once the payment is in: it stays valid for this tournament."""
+    return _access(db).dumps(team_id)
+
+
+def read_access(db: sqlite3.Connection, token: str) -> sqlite3.Row:
+    try:
+        team_id = _access(db).loads(token)
+    except BadSignature:
+        raise TournamentError("Link di accesso non valido: entrate con il vostro numero.") from None
+    t = team(db, team_id)
+    if t is None:
+        raise TournamentError("Questa coppia non è iscritta al torneo in corso.")
+    if not may_enter_early(t):
+        raise TournamentError("Il vostro posto si conferma con il pagamento: appena arriva vi scriviamo.")
+    return t
+
+
+def venue_code(db: sqlite3.Connection) -> str:
+    """Four digits printed under the check-in QR and shown on the TV: typing them proves you are at the venue.
+    They follow the check-in key, so a new key (Admin → Accessi) changes them too."""
+    digest = hashlib.sha256(get_setting(db, "reg_key").encode()).hexdigest()
+    return f"{int(digest, 16) % 10000:04d}"
+
+
+def venue_code_ok(db: sqlite3.Connection, code: str) -> bool:
+    return secrets.compare_digest(code.strip(), venue_code(db))
+
+
+def access_message(info: TournamentInfo, t: sqlite3.Row, url: str) -> str:
+    return "\n".join([
+        f"Pagamento ricevuto ✓ «{t['name']}» è iscritta al {info.title}!",
+        f"Questo è il vostro accesso personale: {url}",
+        "Da lì attivate le notifiche, rispondete a due domande e invitate il compagno. "
+        "Alla serata inquadrate il QR all'ingresso per segnarvi presenti.",
+    ])

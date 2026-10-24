@@ -135,6 +135,21 @@
         {% endfor %}
       </div>
     {% endif %}
+    {% set to_welcome = reg.confirmed|rejectattr("organizer")|list %}
+    {% if to_welcome %}
+      <details>
+        <summary><strong>Confermate ({{ to_welcome|length }})</strong>: manda a ognuna il suo link di accesso</summary>
+        <div class="list">
+          {% for t in to_welcome %}
+            <div class="row">
+              <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+              {% if t.phone1 %}<a class="btn small" target="_blank" rel="noopener"
+                 href="https://wa.me/{{ wa_number(t.phone1) }}?text={{ access_message(info, t)|urlencode }}">💬 Manda accesso</a>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
     {% if reg.waiting %}
       <h3>Lista d'attesa ({{ reg.waiting|length }})</h3>
       <p class="muted small">Oltre i {{ reg.target }} posti, in ordine di iscrizione: entrano se una coppia rinuncia (eliminala dalla scheda) o se aumenti i posti.</p>

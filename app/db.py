@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS push_subs (
     auth TEXT NOT NULL,
     team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL
 );
+-- The phones that entered a couple, each tied to the player using it when known (they can invite the partner).
+CREATE TABLE IF NOT EXISTS devices (
+    device TEXT PRIMARY KEY,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    player INTEGER CHECK (player IN (1, 2)),
+    seen_at TEXT NOT NULL
+);
 -- Match notices already sent ("now" / "next"), so each goes out once.
 CREATE TABLE IF NOT EXISTS push_sent (
     match_id INTEGER NOT NULL,

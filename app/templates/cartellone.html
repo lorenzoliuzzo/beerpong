@@ -18,7 +18,11 @@
     {% if cfg.phase in ("setup", "groups") %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
   </div>
   <div class="board-clock" id="board-clock"></div>
-  <div class="board-qr"><img src="/qr-sito.svg" alt="QR del sito"><span>Segui dal telefono</span></div>
+  {% if checkin_qr %}
+    <div class="board-qr"><img src="/admin/qr.svg" alt="QR di check-in"><span>Check-in · codice <strong>{{ venue_code }}</strong></span></div>
+  {% else %}
+    <div class="board-qr"><img src="/qr-sito.svg" alt="QR del sito"><span>Segui dal telefono</span></div>
+  {% endif %}
 </header>
 
 {% if progress %}<div class="board-steps">{{ ui.progress(progress) }}</div>{% endif %}

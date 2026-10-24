@@ -5,7 +5,7 @@
 {% if cfg.phase != "setup" %}
   <div class="card">Il torneo è già iniziato: parlate con l'organizzazione.</div>
 {% elif not allowed %}
-  <div class="card">Per fare il check-in scansionate il <strong>QR code sul tavolo</strong>.</div>
+  <div class="card">Si fa alla serata: inquadrate il <strong>QR all'ingresso</strong>.</div>
 {% else %}
   <p class="muted">Per chi si è iscritto al form come «solo serata» e vuole giocare: serve il numero di telefono che avete lasciato nel form.</p>
   <form method="post" action="/checkin/nuova">

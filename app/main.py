@@ -92,6 +92,27 @@ def my_team_id(request: Request) -> int | None:
     return request.session.get("team")
 
 
+def my_player(request: Request) -> int | None:
+    """Which of the two players holds this phone, once known."""
+    return request.session.get("player")
+
+
+def device_id(request: Request) -> str:
+    if "device" not in request.session:
+        request.session["device"] = secrets.token_hex(8)
+    return request.session["device"]
+
+
+def enter_team(request: Request, db: sqlite3.Connection, team_id: int, player: int | None = None) -> None:
+    """This phone now belongs to the couple, and to one of its players when we know which."""
+    request.session["team"] = team_id
+    if player is None:
+        request.session.pop("player", None)
+    else:
+        request.session["player"] = player
+    service.register_device(db, device_id(request), team_id, player)
+
+
 def split_sides(request: Request, m: service.MatchView) -> list[int]:
     if not m.done or m.bye:
         return []
@@ -311,6 +332,9 @@ def board(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Respons
         rounds=service.board_bracket(db, len(groups)), progress=service.tournament_progress(db),
         thirds=planning.bracket_plan(len(groups))[1] - 2 * len(groups) if groups else 0,
         final=ko[-1][1][0] if ko else None, site=public_site_url(request, db), live=True,
+        # The TV the organizers open shows the check-in QR while couples arrive: one QR at the venue.
+        checkin_qr=is_admin(request) and get_setting(db, "phase") == "setup",
+        venue_code=service.venue_code(db) if is_admin(request) else None,
     )
 
 
@@ -402,6 +426,9 @@ def _team_page(request: Request, db: sqlite3.Connection, team_id: int, vs: str |
     return page(
         request, db, "squadra.html", dash=dash, profile=profile, T=service.teams(db), own=own, spot=spot,
         thirds=service.thirds_needed(db), h2h=h2h, other=other, rivals=rivals, live=True,
+        me_player=my_player(request) if own else None,
+        devices=service.team_devices(db, team_id) if own else None,
+        invite=invite_url(request, db) if own else None,
     )
 
 
@@ -430,8 +457,14 @@ def team_page(request: Request, team_id: int, vs: str | None = None, db: sqlite3
 @router.get("/checkin")
 def checkin_list(request: Request, k: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
     if k:
-        if service.checkin_key_ok(db, k):
-            request.session["checkin_ok"] = True
+        if not service.checkin_key_ok(db, k):
+            return redirect("/checkin")
+        request.session["checkin_ok"] = True
+        # Already in the profile (link after the payment): the QR at the venue is the check-in itself.
+        t = service.team(db, my_team_id(request)) if my_team_id(request) is not None else None
+        if t is not None:
+            arrive(request, db, t)
+            return redirect("/io")
         return redirect("/checkin")
     return page(
         request, db, "checkin.html", teams=service.teams(db), allowed=request.session.get("checkin_ok", False)
@@ -463,19 +496,65 @@ def checkin_phone(
         if get_setting(db, "phase") != "setup":
             flash(request, f"Il torneo è già iniziato e «{t['name']}» non ha fatto il check-in: parlate con l'organizzazione.", "err")
             return redirect("/checkin")
-        if not request.session.get("checkin_ok"):
-            flash(request, "Per il check-in scansionate il QR code sul tavolo.", "err")
+        if request.session.get("checkin_ok"):
+            if not arrive(request, db, t):
+                return redirect("/checkin")
+        elif service.may_enter_early(t):
+            flash(request, f"Ciao {t['name']}! Alla serata inquadrate il QR all'ingresso, o scrivete nel profilo il codice della serata: vi segna presenti.")
+        else:
+            flash(request, "Il vostro posto si conferma con il pagamento: appena arriva vi mandiamo il link per entrare.", "err")
             return redirect("/checkin")
-        try:
-            service.admin_check_in(db, t["id"], True)
-        except TournamentError as e:
-            flash(request, f"{e} Parlate con l'organizzazione.", "err")
-            return redirect("/checkin")
-        flash(request, f"Check-in fatto ✓ Benvenuti, {t['name']}!")
     else:
         flash(request, f"Bentornati, {t['name']}!")
-    request.session["team"] = t["id"]
+    enter_team(request, db, t["id"], service.player_for_phone(t, phone))
     return redirect("/io" if t["q_at"] else "/questionario")
+
+
+def arrive(request: Request, db: sqlite3.Connection, t: sqlite3.Row) -> bool:
+    """The couple is at the venue: present for the draw. False (with the reason flashed) when it cannot be."""
+    if t["checked_in"]:
+        flash(request, f"Bentornati, {t['name']}!")
+        return True
+    if get_setting(db, "phase") != "setup":
+        flash(request, f"Il torneo è già iniziato e «{t['name']}» non ha fatto il check-in: parlate con l'organizzazione.", "err")
+        return False
+    try:
+        service.admin_check_in(db, t["id"], True)
+    except TournamentError as e:
+        flash(request, f"{e} Parlate con l'organizzazione.", "err")
+        return False
+    flash(request, f"Check-in fatto ✓ Benvenuti, {t['name']}!")
+    return True
+
+
+@router.post("/io/arrivati")
+def arrived_with_code(request: Request, codice: str = Form(""), db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """For a phone already in the profile: the four digits under the QR at the venue mark the couple present."""
+    t = service.team(db, my_team_id(request)) if my_team_id(request) is not None else None
+    if t is None:
+        return redirect("/checkin")
+    if _throttled(request):
+        flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
+    elif service.venue_code_ok(db, codice):
+        request.session["checkin_ok"] = True
+        arrive(request, db, t)
+    else:
+        _record_failure(request)
+        flash(request, "Codice sbagliato: è il numero di 4 cifre sotto il QR all'ingresso e sulla TV.", "err")
+    return redirect("/io")
+
+
+@router.get("/accesso/{token}")
+def personal_access(request: Request, token: str, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    """The link sent with the payment confirmation: it opens the couple's profile as its first player."""
+    try:
+        t = service.read_access(db, token)
+    except TournamentError as e:
+        flash(request, str(e), "err")
+        return redirect("/checkin")
+    enter_team(request, db, t["id"], 1)
+    flash(request, f"Ciao {t['p1']}! Questo telefono ora è il tuo in «{t['name']}». Alla serata inquadrate il QR all'ingresso, o scrivete nel profilo il codice della serata: vi segna presenti.")
+    return redirect("/io")
 
 
 @router.get("/questionario")
@@ -517,7 +596,7 @@ def demo_as_couple(request: Request, db: sqlite3.Connection = Depends(get_db)) -
     team_id = secrets.choice(pool)
     request.session.pop("role", None)
     request.session.pop("field", None)
-    request.session["team"] = team_id
+    enter_team(request, db, team_id)
     flash(request, f"Siete «{service.team(db, team_id)['name']}»: attivate le notifiche, tra poco tocca a voi!")
     return redirect("/io")
 
@@ -548,7 +627,7 @@ def guest_team_save(
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     if not request.session.get("checkin_ok"):
-        flash(request, "Per fare il check-in scansiona il QR code sul tavolo.", "err")
+        flash(request, "Si fa alla serata: inquadrate il QR all'ingresso.", "err")
         return redirect("/checkin/nuova")
     if _throttled(request):
         flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
@@ -559,7 +638,7 @@ def guest_team_save(
         _record_failure(request)
         flash(request, str(e), "err")
         return redirect("/checkin/nuova")
-    request.session["team"] = team_id
+    enter_team(request, db, team_id, 1)  # the guest who fills the form is the first player
     flash(request, "Check-in fatto! Siete in gara.")
     return redirect("/io")
 
@@ -589,7 +668,7 @@ def checkin_save(
         raise HTTPException(404)
     # Re-editing your own check-in is fine; checking in someone else needs the QR on the table.
     if not request.session.get("checkin_ok") and my_team_id(request) != team_id:
-        flash(request, "Per fare il check-in scansiona il QR code sul tavolo.", "err")
+        flash(request, "Si fa alla serata: inquadrate il QR all'ingresso.", "err")
         return redirect(f"/checkin/{team_id}")
     if t["checked_in"] and my_team_id(request) != team_id:
         flash(request, "Questa coppia ha già fatto il check-in: entra con il vostro numero di telefono.", "err")
@@ -599,7 +678,7 @@ def checkin_save(
     except TournamentError as e:
         flash(request, str(e), "err")
         return redirect(f"/checkin/{team_id}")
-    request.session["team"] = team_id
+    enter_team(request, db, team_id)
     flash(request, "Check-in fatto! Ci vediamo al tavolo.")
     return redirect("/io")
 
@@ -618,15 +697,58 @@ def checkin_join(
         _record_failure(request)
         flash(request, "Il numero non corrisponde a quelli lasciati al check-in.", "err")
         return redirect(f"/checkin/{team_id}")
-    request.session["team"] = team_id
+    enter_team(request, db, team_id, service.player_for_phone(t, phone))
     flash(request, f"Benvenuto in «{t['name']}»!")
     return redirect("/io")
 
 
 @router.post("/esci-squadra")
-def leave_team(request: Request) -> Response:
+def leave_team(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
     request.session.pop("team", None)
+    request.session.pop("player", None)
+    service.forget_device(db, device_id(request))
     return redirect("/")
+
+
+@router.post("/io/chi-sono")
+def choose_player(request: Request, giocatore: int = Form(...), db: sqlite3.Connection = Depends(get_db)) -> Response:
+    team_id = my_team_id(request)
+    if team_id is None or giocatore not in (1, 2):
+        return redirect("/io")
+    enter_team(request, db, team_id, giocatore)
+    return redirect("/io")
+
+
+def invite_url(request: Request, db: sqlite3.Connection) -> str | None:
+    """The link this player hands the partner, so the partner enters as themselves."""
+    team_id, player = my_team_id(request), my_player(request)
+    if team_id is None or player is None:
+        return None
+    return f"{public_site_url(request, db)}/entra/{service.invite_token(db, team_id, 3 - player)}"
+
+
+@router.get("/io/invito.svg")
+def invite_qr(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    url = invite_url(request, db)
+    if url is None:
+        raise HTTPException(404)
+    img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, border=2)
+    buf = io.BytesIO()
+    img.save(buf)
+    return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/entra/{token}")
+def accept_invite(request: Request, token: str, db: sqlite3.Connection = Depends(get_db)) -> Response:
+    try:
+        team_id, player = service.read_invite(db, token)
+    except TournamentError as e:
+        flash(request, str(e), "err")
+        return redirect("/checkin")
+    enter_team(request, db, team_id, player)
+    t = service.team(db, team_id)
+    flash(request, f"Ciao {t[f'p{player}']}! Siete in «{t['name']}»: questo telefono ora è il tuo.")
+    return redirect("/io")
 
 
 # --- Player cup split ------------------------------------------------------
@@ -777,12 +899,15 @@ def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
         played=sum(m.done for m in playable), total=sum(1 for m in views if not m.bye),
         info=service.load_tournament(db), reg=service.registration(db),
         pay_code=service.pay_code, wa_number=service.whatsapp_number, pay_message=service.payment_message,
+        access_message=lambda info, t: service.access_message(
+            info, t, f"{public_site_url(request, db)}/accesso/{service.access_token(db, t['id'])}"
+        ),
     )
 
 
 @admin.get("/qr")
 def admin_qr(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
-    return page(request, db, "qr.html", url=checkin_url(request, db))
+    return page(request, db, "qr.html", url=checkin_url(request, db), code=service.venue_code(db))
 
 
 @admin.get("/qr.svg")

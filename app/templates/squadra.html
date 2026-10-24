@@ -56,6 +56,19 @@
   {% endif %}
 </div>
 
+{% if own %}
+  {% if cfg.phase == "setup" and not t.checked_in %}
+    <form class="card arrive" method="post" action="/io/arrivati">
+      <h2 style="margin:0 0 4px">Siete arrivati alla serata?</h2>
+      <p class="muted small">Inquadrate il QR all'ingresso, oppure scrivete qui il codice di 4 cifre che trovate sotto il QR e sulla TV: vi segniamo presenti per il sorteggio.</p>
+      <div style="display:flex;gap:8px">
+        <input name="codice" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required aria-label="Codice della serata" autocomplete="off">
+        <button type="submit">Siamo qui</button>
+      </div>
+    </form>
+  {% endif %}
+{% endif %}
+
 <!-- BIRRA BEVUTA LIVE (COPPIA E TORNEO) -->
 {% if profile %}
   <div class="stats-grid" style="margin-top:12px">
@@ -75,16 +88,50 @@
 {% if own and not t.q_at %}
   <a class="banner todo" href="/questionario">
     <div class="label">📋 Due domande veloci</div>
-    Diteci quanto mirate bene: serve alle probabilità durante le partite →
+    Diteci quanto mirate bene: poi lo confrontiamo con quello che fate al tavolo →
   </a>
 {% endif %}
 
 {% if own %}
+  <div class="card phones-card">
+    {% if me_player %}
+      <div class="section-head" style="margin:0 0 6px"><h2 style="margin:0">Ciao {{ t["p" ~ me_player] }}! 👋</h2>
+        <form method="post" action="/io/chi-sono"><input type="hidden" name="giocatore" value="{{ 3 - me_player }}">
+          <button class="link small" type="submit">Non sei {{ t["p" ~ me_player] }}?</button></form></div>
+    {% else %}
+      <h2 style="margin:0 0 6px">Chi sta usando questo telefono?</h2>
+      <div class="choices">
+        {% for i in (1, 2) %}
+          <form method="post" action="/io/chi-sono"><input type="hidden" name="giocatore" value="{{ i }}">
+            <button class="ghost" type="submit">Sono {{ t["p" ~ i] }}</button></form>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div class="phones">
+      {% for i in (1, 2) %}
+        <span class="pill {{ 'ok' if devices[i] }}">{{ t["p" ~ i] }} · {{ "📱 collegato" if devices[i] else "non ancora" }}</span>
+      {% endfor %}
+    </div>
+    {% if invite and not devices[3 - me_player] %}
+      <details class="invite" open>
+        <summary><strong>Invita {{ t["p" ~ (3 - me_player)] }}</strong> sul suo telefono</summary>
+        <p class="muted small">Fategli inquadrare il QR, oppure mandategli il link: entra direttamente come {{ t["p" ~ (3 - me_player)] }}, senza numero. Vale 12 ore.</p>
+        <img class="invite-qr" src="/io/invito.svg" alt="QR per {{ t['p' ~ (3 - me_player)] }}" width="200" height="200">
+        <a class="btn wide" href="https://wa.me/?text={{ ('Entra in «' ~ t.name ~ '» al torneo: ' ~ invite)|urlencode }}" target="_blank" rel="noopener">💬 Manda il link su WhatsApp</a>
+        <button class="link small" type="button" data-copy="{{ invite }}">Copia il link</button>
+      </details>
+    {% elif invite %}
+      <details class="invite"><summary class="small">Mostra di nuovo il QR per {{ t["p" ~ (3 - me_player)] }}</summary>
+        <img class="invite-qr" src="/io/invito.svg" alt="QR per {{ t['p' ~ (3 - me_player)] }}" width="200" height="200"></details>
+    {% endif %}
+  </div>
   {% if cfg.phase == "setup" %}
+    {% if t.checked_in %}
     <div class="banner" style="margin-top:12px">
       <div class="label">Check-in fatto ✓</div>
       {{ ui.payment_pill(t, payments) }}
     </div>
+    {% endif %}
     {% if spot %}
       <div class="card">
         <div class="label muted small" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
@@ -246,10 +293,10 @@
   </div>
   <div class="players-profile-grid">
     {% for p in profile.players %}
-      <div class="player-profile-card">
+      <div class="player-profile-card {{ 'me' if p.index == me_player }}">
         <div class="ppc-head">
           <div>
-            <span class="muted small">Giocatore {{ p.index }}</span>
+            <span class="muted small">{{ "Tu" if p.index == me_player else "Giocatore " ~ p.index }}</span>
             <h3 style="margin:2px 0 0">{{ p.name }}</h3>
           </div>
           <div class="ppc-ranks">

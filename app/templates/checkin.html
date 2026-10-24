@@ -4,7 +4,7 @@
 {% set setup = cfg.phase == "setup" %}
 <h1>{{ "Check-in" if setup and allowed else "Entra nel vostro profilo" }}</h1>
 {% if setup and not allowed %}
-  <p class="muted">Per il <strong>check-in</strong> scansionate il QR code sul tavolo. Se il compagno l'ha già fatto, entrate qui con il vostro numero.</p>
+  <p class="muted">Avete pagato? Entrate nel profilo con il vostro numero, anche da casa. Alla serata inquadrate il <strong>QR all'ingresso</strong>: vi segna presenti.</p>
 {% endif %}
 <form class="card" method="post" action="/checkin/accedi">
   <label for="phone"><strong>Il vostro numero di telefono</strong></label>

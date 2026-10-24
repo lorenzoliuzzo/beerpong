@@ -1,7 +1,6 @@
 import random
 import sqlite3
 import threading
-import time
 from collections.abc import Iterator
 from contextlib import closing
 from datetime import datetime, timedelta
@@ -11,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app import live, service, tracking
+from app import live, service
 from app.db import connect, get_setting, init_db
 from app.main import create_app, get_db
 
@@ -396,7 +395,7 @@ def test_guest_from_party_list_enters_as_couple(client: TestClient) -> None:
     client.post("/logout")
 
     form = {"phone1": "+39 333 0000101", "name": "Pinte Pazze", "p1": "Ottavia", "p2": "Fulvio", "phone2": "", "payment": "online"}
-    assert "scansiona il QR" in client.post("/checkin/nuova", data=form).text
+    assert "Si fa alla serata" in client.post("/checkin/nuova", data=form).text
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     assert "non risulta tra gli iscritti" in client.post("/checkin/nuova", data={**form, "phone1": "3330000000"}).text
     r = client.post("/checkin/nuova", data=form)
@@ -931,9 +930,9 @@ def test_qr_then_phone_checks_in_and_opens_the_profile(client: TestClient) -> No
     client.post("/logout")
     ids = {t["name"]: t["id"] for t in db_call(service.teams).values()}
 
-    # without the QR: no check-in, only a way back in for couples already present
+    # without the QR: no check-in, and no way in before the payment
     r = client.post("/checkin/accedi", data={"phone": "333 111 0003"})
-    assert "scansionate il QR code" in r.text and not db_call(service.team, ids["Lontre"])["checked_in"]
+    assert "si conferma con il pagamento" in r.text and not db_call(service.team, ids["Lontre"])["checked_in"]
 
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     r = client.post("/checkin/accedi", data={"phone": "+39 333 111 0003"}, follow_redirects=False)
@@ -1141,6 +1140,8 @@ def test_payments_are_confirmed_from_a_pasted_statement(client: TestClient) -> N
     assert len(reg.placed) == 4 and [t["id"] for t in reg.waiting] == ids[4:]  # 4 places, form order
     page = client.get("/admin").text
     assert service.pay_code(ids[0]) in page and "wa.me/393330000000?text=" in page and "Lista d'attesa (2)" in page
+    groups, _ = db_call(service.board_groups)
+    assert sorted(t["id"] for g in groups for t in g.teams) == ids[:4]  # the waiting list is not drawn
 
     statement = "\n".join([
         "Data;Descrizione;Importo",
@@ -1170,3 +1171,94 @@ def test_new_tournament_archives_the_old_one_and_starts_empty(client: TestClient
     (archived,) = (tmp_path / "archivio").glob("torneo-*.db")
     with closing(sqlite3.connect(archived)) as old:
         assert old.execute("SELECT COUNT(*) FROM teams").fetchone()[0] == 8
+
+
+def test_each_player_gets_their_own_phone_and_invites_the_partner(client: TestClient) -> None:
+    import re
+
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 2)
+    client.post("/checkin/2", data=checkin_form(t, phone1="333 0000001", phone2="347 0000002"))
+    page = client.get("/io").text
+    assert "Chi sta usando questo telefono?" in page and "/io/invito.svg" not in page  # filled the form: who?
+    page = client.post("/io/chi-sono", data={"giocatore": 1}).text
+    assert f"Ciao {t['p1']}!" in page and f"{t['p1']} · 📱 collegato" in page and f"{t['p2']} · non ancora" in page
+    assert client.get("/io/invito.svg").headers["content-type"].startswith("image/svg+xml")
+    invite = re.search(r'data-copy="([^"]+)"', page).group(1)
+    assert "/entra/" in invite
+
+    with TestClient(client.app) as partner:
+        page = partner.get(invite[invite.index("/entra/"):]).text
+        assert f"Ciao {t['p2']}!" in page and "questo telefono ora è il tuo" in page
+        assert f"{t['p1']} · 📱 collegato" in page and f"{t['p2']} · 📱 collegato" in page
+        assert "Invita" not in page.split("Mostra di nuovo il QR")[0].split('class="card phones-card"')[1]  # both in
+        partner.post("/esci-squadra")
+    assert db_call(service.team_devices, 2) == {1: 1, 2: 0}
+
+    with TestClient(client.app) as stranger:
+        token = invite[invite.index("/entra/") + 7:]
+        assert "Invito non valido" in stranger.get(f"/entra/{token[:-2]}xx").text
+        assert stranger.get("/io/invito.svg").status_code == 404
+
+
+def test_the_phone_number_tells_which_player_logs_in(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 3)
+    client.post("/checkin/3", data=checkin_form(t, phone1="333 0000003", phone2="347 0000004"))
+    client.post("/esci-squadra")
+    with TestClient(client.app) as phone:
+        phone.post("/checkin/accedi", data={"phone": "347 0000004"})
+        page = phone.get("/io").text
+        assert f"Ciao {t['p2']}!" in page
+
+    monkeypatch.setattr(service, "INVITE_MAX_AGE_S", -1)
+    token = db_call(service.invite_token, 3, 1)
+    with TestClient(client.app) as late:
+        assert "invito è scaduto" in late.get(f"/entra/{token}").text
+
+
+def test_paid_couples_enter_from_home_and_check_in_at_the_venue(client: TestClient) -> None:
+    import re
+    from urllib.parse import unquote
+
+    login(client, ADMIN_PIN)
+    client.post("/admin/torneo", data=TOURNAMENT)
+    client.post("/admin/squadre/importa", data={"testo": "Gufi; Ada; Bice; 3331110001\nLontre; Ciro; Dora; 3331110003"})
+    ids = {t["name"]: t["id"] for t in db_call(service.teams).values()}
+    client.post("/admin/pagamenti/estratto", data={"estratto": f"Satispay {service.pay_code(ids['Gufi'])} 12,50"})
+    admin = client.get("/admin").text
+    assert "Confermate (1)" in admin and "Manda accesso" in admin
+    link = re.search(r"/accesso/[\w.\-]+", unquote(admin)).group(0)
+    client.post("/logout")
+    tv = client.get("/cartellone").text
+    assert "/qr-sito.svg" in tv and "/admin/qr.svg" not in tv  # from home: no check-in QR on the board
+
+    with TestClient(client.app) as home:
+        page = home.get(link).text
+        assert "Ciao Ada!" in page and "Siete arrivati alla serata?" in page
+        assert not db_call(service.team, ids["Gufi"])["checked_in"]
+        wrong = "1111" if db_call(service.venue_code) == "0000" else "0000"
+        assert "Codice sbagliato" in home.post("/io/arrivati", data={"codice": wrong}).text
+        page = home.post("/io/arrivati", data={"codice": db_call(service.venue_code)}).text
+        assert "Check-in fatto ✓" in page and db_call(service.team, ids["Gufi"])["checked_in"] == 1
+
+    with TestClient(client.app) as other:
+        assert "non valido" in other.get(link[:-3] + "xyz").text
+        assert "si conferma con il pagamento" in other.get(f"/accesso/{db_call(service.access_token, ids['Lontre'])}").text
+
+
+def test_the_venue_qr_checks_in_a_couple_already_in_its_profile(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/admin/squadre/1/pagato", data={"pagato": 1})
+    tv = client.get("/cartellone").text
+    assert "/admin/qr.svg" in tv and db_call(service.venue_code) in tv  # the organizers' TV: one QR at the venue
+    client.post("/logout")
+    with TestClient(client.app) as phone:
+        phone.get(f"/accesso/{db_call(service.access_token, 1)}")
+        assert not db_call(service.team, 1)["checked_in"]
+        r = phone.get(f"/checkin?k={db_call(get_setting, 'reg_key')}", follow_redirects=False)
+        assert r.headers["location"] == "/io" and db_call(service.team, 1)["checked_in"] == 1

@@ -1485,3 +1485,9 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 .admin-steps .done a { background: var(--ok-soft); }
 .admin-steps .now a { outline: 2px solid var(--accent, #d9480f); }
 @media (max-width: 480px) { .admin-steps { grid-template-columns: 1fr 1fr; } }
+
+/* Profile: which players of the couple are on their own phone, and the invite for the partner */
+.phones-card .phones { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.phones-card .choices { display: flex; gap: 8px; }
+.invite-qr { display: block; margin: 8px auto; background: #fff; padding: 6px; border-radius: 8px; }
+.player-profile-card.me { outline: 2px solid var(--accent); }
