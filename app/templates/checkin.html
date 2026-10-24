@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block content %}
-{% set setup = cfg.phase == "setup" %}
+{% set setup = cfg.phase.is_setup %}
 <h1>{{ "Check-in" if setup and allowed else "Entra nel vostro profilo" }}</h1>
 {% if setup and not allowed %}
-  <p class="muted">Per il <strong>check-in</strong> scansionate il QR code sul tavolo. Se il compagno l'ha già fatto, entrate qui con il vostro numero.</p>
+  <p class="muted">Avete pagato? Entra nel profilo della coppia con il tuo numero, anche da casa. Alla serata inquadra il <strong>QR all'ingresso</strong>: ti segna arrivato/a.</p>
 {% endif %}
 <form class="card" method="post" action="/checkin/accedi">
-  <label for="phone"><strong>Il vostro numero di telefono</strong></label>
+  <label for="phone"><strong>Il tuo numero di telefono</strong></label>
   <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="333 123 4567" autofocus>
-  <p class="muted small">Quello lasciato all'iscrizione: va bene anche il numero del compagno.{% if setup and allowed %} Vi segniamo presenti ed entrate nel vostro profilo.{% endif %}</p>
-  <button class="wide" type="submit">{{ "Fai il check-in" if setup and allowed else "Entra" }}</button>
+  <p class="muted small">Quello lasciato all'iscrizione: l'app sa chi sei. Vale per il primo telefono della coppia; l'altro entra con il QR «Invita» dal profilo del compagno.{% if setup and allowed %} Ti segniamo arrivato/a: la coppia è presente quando ci siete tutti e due.{% endif %}</p>
+  <button class="wide" type="submit">{{ "Sono arrivato/a" if setup and allowed else "Entra" }}</button>
 </form>
 
 <details class="section">
@@ -18,7 +18,7 @@
   <div class="body">
     <p class="muted small">Cercate la vostra coppia e toccatela{% if setup and allowed %}: potete controllare e correggere i vostri dati{% endif %}. Altrimenti chiedete allo staff.</p>
     <div class="search" style="top:0">
-      <input type="search" placeholder="Cerca squadra o giocatore" data-filter="#teams" autocomplete="off" aria-label="Cerca">
+      <input type="search" placeholder="Cerca coppia o giocatore" data-filter="#teams" autocomplete="off" aria-label="Cerca">
     </div>
     <div class="list" id="teams">
       {% for t in teams.values() if setup or t.checked_in %}
@@ -37,7 +37,7 @@
 {% if setup and allowed %}
   <a class="banner" href="/checkin/nuova">
     <div class="label">Iscritti «solo serata»?</div>
-    Se siete in due e volete giocare, entrate con il numero lasciato nel form →
+    Se siete in due e volete giocare, entra con il numero che hai lasciato nel form →
   </a>
 {% endif %}
 {% endblock %}

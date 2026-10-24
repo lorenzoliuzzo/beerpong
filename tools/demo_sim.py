@@ -34,6 +34,7 @@ def _finish(conn: sqlite3.Connection, m: service.MatchView, st: object, rng: ran
     winner = rng.choice([1, 2]) if m.stage == "ko" and s1 == s2 else None  # overtime, decided by a coin
     service.record_result(conn, m.id, s1, s2, winner)
     tracking.apply_live_splits(conn, m.id)
+    tracking.save_shot_hits(conn, m.id)
 
 
 def tick(conn: sqlite3.Connection, rng: random.Random, now: float) -> int:

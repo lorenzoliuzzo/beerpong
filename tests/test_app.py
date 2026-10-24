@@ -1,16 +1,19 @@
 import random
+import re
+import sqlite3
 import threading
 import time
 from collections.abc import Iterator
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main as app_main
+from app.web import common as web_common
 from app import live, service, tracking
-from app.db import connect, get_setting, init_db
+from app.db import connect, get_setting, init_db, set_setting
 from app.main import create_app, get_db
 
 ADMIN_PIN = "123456"
@@ -20,11 +23,10 @@ ADMIN_PIN = "123456"
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("BP_ADMIN_PIN", ADMIN_PIN)
-    app_main._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
-    app_main._report_times.clear()
+    web_common._failures.clear()  # the login/phone throttle is per process: each test starts unthrottled
     with TestClient(create_app()) as c:
         yield c
-    app_main._failures.clear()
+    web_common._failures.clear()
 
 
 def db_call(fn, *args):
@@ -35,9 +37,29 @@ def db_call(fn, *args):
         db.close()
 
 
+def record(c: TestClient, match_id: int, s1: int, s2: int, winner: int | str | None = None, **kw):
+    data: dict = {"c1": [str(i) for i in range(1, s1 + 1)], "c2": [str(i) for i in range(1, s2 + 1)]}
+    if winner is not None:
+        data["vincitore"] = str(winner)
+    return c.post(f"/risultato/{match_id}", data=data, **kw)
+
+
 def login(c: TestClient, pin: str) -> None:
     r = c.post("/login", data={"pin": pin}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] != "/login"
+
+
+def referee_login(c: TestClient, field: int) -> None:
+    """Table referees have no PIN: a player of an organizer couple on that table referees it from their profile."""
+    views = db_call(service.matches)
+    playing = {t for m in views if m.playing for t in (m.t1, m.t2)}
+    on_table = {t for m in views if m.stage == "group" and m.field == field for t in (m.t1, m.t2)}
+    t = next(t for t in db_call(service.teams).values() if t["id"] in on_table - playing)
+    phone = f"333777{field:04d}"
+    db_call(lambda db: (db.execute("UPDATE teams SET organizer = 1, referee_player = 1, phone1 = ? WHERE id = ?",
+                                   (phone, t["id"])), db.commit()))
+    c.post("/logout")
+    c.post("/checkin/accedi", data={"phone": phone})
 
 
 def import_teams(c: TestClient, n: int) -> None:
@@ -46,8 +68,27 @@ def import_teams(c: TestClient, n: int) -> None:
     c.post("/admin/squadre/importa", data={"testo": "\n".join(f"Squadra {i}; Ada {i}; Bruno {i}" for i in range(n))})
 
 
+def check_in(
+    c: TestClient, team_id: int, phone1: str = "+39 333 1234567", phone2: str = "", both: bool = True, **details: str
+):
+    """A player of a couple registered with these numbers scans the venue QR and enters with their own number;
+    with both, they confirm the partner is there too. Name or players can be overridden for the couple."""
+    def register(db) -> None:
+        values = {"phone1": service.normalize_phone(phone1), "phone2": service.normalize_phone(phone2), **details}
+        db.execute(f"UPDATE teams SET {', '.join(f'{k} = ?' for k in values)} WHERE id = ?", (*values.values(), team_id))
+        db.commit()
+
+    db_call(register)
+    c.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    r = c.post("/checkin/accedi", data={"phone": phone1})
+    return c.post("/io/arrivo", data={"compagno": "1"}) if both else r
+
+
 def checkin_form(t, **overrides) -> dict:
-    form = {"name": t["name"], "p1": t["p1"], "p2": t["p2"], "phone1": "+39 333 1234567", "phone2": "", "payment": "contanti"}
+    form = {
+        "name": t["name"], "p1": t["p1"], "p2": t["p2"], "phone1": "+39 333 1234567", "phone2": "", "payment": "contanti",
+        "io": "1", "insieme": "1",
+    }
     return {**form, **overrides}
 
 
@@ -62,11 +103,8 @@ def setup_tournament(c: TestClient, n_teams: int, fields: int = 3) -> None:
 def play_all(c: TestClient, stage: str, rng: random.Random) -> None:
     ids = [m.id for m in db_call(service.matches) if m.stage == stage and not m.done and m.t1 and m.t2]
     for mid in ids:
-        r = c.post(
-            f"/partita/{mid}",
-            data={"s1": rng.randint(0, 10), "s2": rng.randint(0, 10), "vincitore": "1"},
-            follow_redirects=False,
-        )
+        cups = db_call(service.cups_in_play, mid)
+        r = record(c, mid, rng.randint(0, cups), rng.randint(0, cups), "1", follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"].startswith("/arbitro"), r.headers
 
 
@@ -104,8 +142,8 @@ def test_navigation_tabs_structure(client: TestClient) -> None:
     client.post("/logout")
     r = client.get("/")
     assert r.status_code == 200
-    # 3 tabs only: Squadra, Tavoli, Classifica; Live tab is removed; staff reach admin from the header
-    for tab in ('href="/io"', ">Squadra", ">Tavoli", ">Classifica"):
+    # 3 tabs only: Coppia, Tavoli, Classifica; Live tab is removed; staff reach admin from the header
+    for tab in ('href="/io"', ">Coppia", ">Tavoli", ">Classifica"):
         assert tab in r.text
     assert ">Live</a>" not in r.text
     assert 'class="staff" href="/login">Staff' in r.text and ">Admin\n" not in r.text
@@ -137,7 +175,7 @@ def test_asynchronous_tables_and_group_mapping(client: TestClient) -> None:
     t1_first = t_views[0].current
     t1_second = t_views[0].next_match
     assert t1_first is not None and t1_second is not None
-    client.post(f"/partita/{t1_first.id}", data={"s1": 10, "s2": 6})
+    record(client, t1_first.id, 10, 6)
 
     now_ms, next_ms = db_call(lambda db: service.live(service.matches(db)))
     now_by_field = {m.field: m for m in now_ms}
@@ -152,18 +190,19 @@ def test_phase_transition_and_team_profile(client: TestClient) -> None:
     rng = random.Random(77)
     setup_tournament(client, 8, fields=2)
     r_profile = client.get("/squadra/1")
-    assert r_profile.status_code == 200
-    assert "compariranno dopo la prima partita" in r_profile.text and "Posizionamento nei Ranking" not in r_profile.text
+    assert r_profile.status_code == 200 and "📊 Statistiche" not in r_profile.text  # nothing to show yet
+    r_stats = client.get("/squadra/1/statistiche")
+    assert "compariranno dopo la prima partita" in r_stats.text and "Posizionamento nei Ranking" not in r_stats.text
 
     # Finish all group matches -> /gironi (Tavoli) now shows the active knockout round directly
     play_all(client, "group", rng)
-    r_profile = client.get("/squadra/1").text
+    assert 'href="/squadra/1/statistiche"' in client.get("/squadra/1").text  # stats live on their own page
+    r_profile = client.get("/squadra/1/statistiche").text
     assert "Posizionamento nei Ranking" in r_profile and "Statistiche Personali Giocatori" in r_profile
     assert "Litri bevuti" in r_profile and "Scontri diretti" not in r_profile
     r_gironi = client.get("/gironi", follow_redirects=False)
     assert r_gironi.status_code == 200 and "Semifinali" in r_gironi.text
     assert client.get("/gironi?archivio=1").status_code == 200
-
 
 
 def test_admin_and_qr_require_login(client: TestClient) -> None:
@@ -187,44 +226,43 @@ def test_import_accepts_optional_phones(client: TestClient) -> None:
     assert "Riga 1" in r.text
 
 
-def test_checkin_needs_qr_key_and_mandatory_answers(client: TestClient) -> None:
+def test_arriving_needs_the_venue_qr_and_the_profile_fixes_the_details(client: TestClient) -> None:
     import_teams(client, 4)
+    client.post("/admin/squadre/1/pagato", data={"pagato": 1})
     client.post("/logout")
-    t = db_call(service.team, 1)
+    db_call(lambda db: (db.execute("UPDATE teams SET phone1 = '3331234567' WHERE id = 1"), db.commit()))
 
-    client.post("/checkin/1", data=checkin_form(t))
-    assert not db_call(service.team, 1)["checked_in"]
-
+    client.post("/checkin/accedi", data={"phone": "333 1234567"})  # paid: in from home, not arrived
+    assert not db_call(service.team, 1)["arrived1_at"]
     client.get("/checkin?k=sbagliata")
-    client.post("/checkin/1", data=checkin_form(t))
-    assert not db_call(service.team, 1)["checked_in"]
+    assert not db_call(service.team, 1)["arrived1_at"]
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")  # the QR, scanned while in the profile
+    assert db_call(service.team, 1)["arrived1_at"]
 
-    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    assert "Telefono (obbligatorio)" in client.get("/checkin/1").text
-    assert "telefono valido" in client.post("/checkin/1", data=checkin_form(t, phone1="12")).text
-    assert "domanda sul ticket" in client.post("/checkin/1", data=checkin_form(t, payment="")).text
-
-    r = client.post("/checkin/1", data=checkin_form(t, name="Le Spugne", payment="cassa"))
-    assert "Check-in fatto" in r.text and "Le Spugne" in r.text
+    t = db_call(service.team, 1)
+    details = {"name": t["name"], "p1": t["p1"], "p2": t["p2"], "phone1": "333 1234567", "phone2": ""}
+    assert "non è valido" in client.post("/io/coppia", data={**details, "phone2": "12"}).text
+    assert "almeno un numero" in client.post("/io/coppia", data={**details, "phone1": ""}).text
+    assert "Dati della coppia aggiornati" in client.post("/io/coppia", data={**details, "name": "Le Spugne", "phone2": "347 7654321"}).text
     row = db_call(service.team, 1)
-    assert (row["checked_in"], row["payment"], row["paid"], row["phone1"]) == (1, "cassa", 0, "+393331234567")
+    assert (row["name"], row["phone2"]) == ("Le Spugne", "3477654321")
 
 
-def test_partner_joins_with_phone(client: TestClient) -> None:
+def test_partner_enters_from_the_list_with_their_own_number(client: TestClient) -> None:
     import_teams(client, 4)
-    client.post("/logout")
-    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    client.post("/checkin/2", data=checkin_form(db_call(service.team, 2), phone2="347 9876543"))
+    check_in(client, 2, phone2="347 9876543")
+    t = db_call(service.team, 2)
 
     with TestClient(client.app) as partner:
         page = partner.get("/checkin/2").text
-        assert "già fatto il check-in" in page
-        assert "non corrisponde" in partner.post("/checkin/2/entra", data={"phone": "000 0000000"}).text
-        # Someone who is not on the team cannot overwrite the check-in.
-        partner.post("/checkin/2", data=checkin_form(db_call(service.team, 2), name="Hacker"))
+        assert "Il tuo numero di telefono" in page and "Chi sei" not in page
+        assert "Numero non trovato" in partner.post("/checkin/accedi", data={"phone": "000 0000000", "team_id": 2}).text
+        # The couple's details are only edited from inside the profile.
+        assert partner.post("/io/coppia", data={"name": "Hacker", "p1": "a", "p2": "b", "phone1": "3330000000"}, follow_redirects=False).headers["location"] == "/checkin"
         assert db_call(service.team, 2)["name"] == "Squadra 1"
-        r = partner.post("/checkin/2/entra", data={"phone": "+39 347 987 6543"})
-        assert "Benvenuto" in r.text and "Squadra 1" in r.text
+        # The couple is already open on player 1's phone: a number alone no longer opens it, the invite does.
+        assert "già aperta su un altro telefono" in partner.post("/checkin/accedi", data={"phone": "+39 347 987 6543", "team_id": 2}).text
+        assert f"Ciao {t['p2']}!" in partner.get(f"/entra/{db_call(service.invite_token, 2, 2)}").text
 
 
 def test_start_uses_only_present_teams_and_admin_sees_missing(client: TestClient) -> None:
@@ -243,7 +281,7 @@ def test_start_uses_only_present_teams_and_admin_sees_missing(client: TestClient
 def test_payment_verification(client: TestClient) -> None:
     import_teams(client, 4)
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    client.post("/checkin/1", data=checkin_form(db_call(service.team, 1), payment="online"))
+    check_in(client, 1)
     # Tickets are paid by bank transfer before the night: every registered couple counts, arrived or not.
     page = client.get("/admin").text
     assert '<div class="big">0/4</div><span class="muted small">pagate</span>' in page
@@ -283,7 +321,7 @@ def test_full_tournament(client: TestClient, n_teams: int) -> None:
     assert sum(s.cups_for for s in db_call(service.team_ranking)) == total
 
     for path in ["/", "/programma", "/classifiche", "/classifiche?vista=coppie", "/tabellone",
-                 "/squadra/1?vs=2", "/programma?team=3", "/arbitro"]:
+                 "/squadra/1?vs=2", "/programma?team=3"]:
         assert client.get(path).status_code == 200, path
     assert "Campioni" in client.get("/").text
 
@@ -297,53 +335,38 @@ def test_team_splits_cups_for_player_ranking(client: TestClient) -> None:
         with TestClient(client.app) as phone:
             phone.get(f"/checkin?k={key}")
             phones[t["id"]] = f"33300000{t['id']:02d}"
-            phone.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=phones[t["id"]]))
+            check_in(phone, t["id"], phone1=phones[t["id"]])
     login(client, ADMIN_PIN)
     client.post("/admin/avvia")
     m = db_call(service.matches)[0]
-    client.post(f"/partita/{m.id}", data={"s1": 7, "s2": 4})
+    record(client, m.id, 5, 4)
     team1 = db_call(service.team, m.t1)
 
-    with TestClient(client.app) as phone:
-        phone.post(f"/checkin/{m.t1}/entra", data={"phone": phones[m.t1]})
-        assert "Dividete i canestri" in phone.get("/").text
-        phone.post(f"/canestri/{m.id}", data={"side": 2, "primo": 1})
+    with TestClient(client.app) as phone:  # the partner, invited from the phone that checked in
+        phone.get(f"/entra/{db_call(service.invite_token, m.t1, 2)}")
+        assert "Dividete i bicchieri" in phone.get("/").text
+        phone.post(f"/canestri/{m.id}", data={"side": 2, "cup1": "1"})  # not their side
         assert db_call(service.match, m.id).split2 is None
-        assert "tra 0 e 7" in phone.post(f"/canestri/{m.id}", data={"side": 1, "primo": 8}).text
-        phone.post(f"/canestri/{m.id}", data={"side": 1, "primo": 5})
+        assert "Indica chi ha centrato" in phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1"}).text
+        phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1", "cup2": "1", "cup3": "2", "cup4": "1", "cup5": "2"})
 
     view = db_call(service.match, m.id)
-    assert view.split1 == (5, 2) and view.split2 is None
+    assert view.split1 == (3, 2) and view.split2 is None
     top = db_call(service.scorers)[:2]
-    assert [(s.player, s.cups) for s in top] == [(team1["p1"], 5), (team1["p2"], 2)]
+    assert [(s.player, s.cups) for s in top] == [(team1["p1"], 3), (team1["p2"], 2)]
 
-    client.post(f"/partita/{m.id}", data={"s1": 6, "s2": 4})
+    record(client, m.id, 4, 4)  # cup 5 was not sunk after all: the other cups keep their player
+    assert db_call(service.match, m.id).split1 == (3, 1)
+    record(client, m.id, 6, 4)  # two more cups nobody has claimed yet
     assert db_call(service.match, m.id).split1 is None
-
-
-def test_referee_only_edits_own_field(client: TestClient) -> None:
-    setup_tournament(client, 10, fields=2)
-    pin = db_call(service.referee_pin, 1)
-    views = db_call(service.matches)
-    own = next(m for m in views if m.field == 1)
-    other = next(m for m in views if m.field == 2)
-
-    client.post("/logout")
-    login(client, pin)
-    data = {"s1": 5, "s2": 1}
-    assert client.post(f"/partita/{other.id}", data=data, follow_redirects=False).headers["location"] == "/login"
-    assert client.post(f"/partita/{own.id}", data=data, follow_redirects=False).headers["location"] == "/arbitro"
-    assert client.get("/admin", follow_redirects=False).status_code == 303
-    m = db_call(service.match, own.id)
-    assert (m.s1, m.s2, m.winner) == (5, 1, m.t1)
 
 
 def test_knockout_tie_requires_winner(client: TestClient) -> None:
     setup_tournament(client, 8, fields=4)
     play_all(client, "group", random.Random(1))
     semi = next(m for m in db_call(service.matches) if m.stage == "ko")
-    assert "overtime" in client.post(f"/partita/{semi.id}", data={"s1": 4, "s2": 4}).text
-    client.post(f"/partita/{semi.id}", data={"s1": 4, "s2": 4, "vincitore": "2"})
+    assert "overtime" in record(client, semi.id, 4, 4).text
+    record(client, semi.id, 4, 4, "2")
     final = next(m for m in db_call(service.matches) if m.label == "Finale")
     assert final.t1 == semi.t2
 
@@ -353,10 +376,10 @@ def test_reopen_groups_until_knockout_played(client: TestClient) -> None:
     play_all(client, "group", random.Random(2))
     last_group = [m for m in db_call(service.matches) if m.stage == "group"][-1]
 
-    assert "Gironi chiusi" in client.post(f"/partita/{last_group.id}", data={"s1": 9, "s2": 0}).text
+    assert "Gironi chiusi" in record(client, last_group.id, 9, 0).text
     client.post("/admin/riapri")
     assert db_call(get_setting, "phase") == "groups"
-    client.post(f"/partita/{last_group.id}", data={"s1": 9, "s2": 0})
+    record(client, last_group.id, 9, 0)
     assert db_call(get_setting, "phase") == "knockout"
 
     play_all(client, "ko", random.Random(3))
@@ -366,7 +389,7 @@ def test_reopen_groups_until_knockout_played(client: TestClient) -> None:
 def test_shift_schedule_moves_only_pending(client: TestClient) -> None:
     setup_tournament(client, 8, fields=1)
     first, second = db_call(service.matches)[:2]
-    client.post(f"/partita/{first.id}", data={"s1": 2, "s2": 0})
+    record(client, first.id, 2, 0)
     client.post("/admin/sposta", data={"minuti": 15})
     after = {m.id: m.time for m in db_call(service.matches)}
     assert after[first.id] == first.time
@@ -382,9 +405,12 @@ def test_partial_couple_completes_at_checkin(client: TestClient) -> None:
     assert "entrambi i giocatori" in client.post(f"/admin/squadre/{partial['id']}/presente", data={"presente": 1}).text
     assert not db_call(service.team, partial["id"])["checked_in"]
 
-    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    assert "Servono nome" in client.post(f"/checkin/{partial['id']}", data=checkin_form(partial)).text
-    client.post(f"/checkin/{partial['id']}", data=checkin_form(partial, p2="Dario"))
+    page = check_in(client, partial["id"], phone1="333 0005555", both=False).text
+    assert "Manca il nome del compagno" in page and not db_call(service.team, partial["id"])["arrived1_at"]
+    details = {"name": partial["name"], "p1": partial["p1"], "phone1": "333 0005555"}
+    assert "Servono nome" in client.post("/io/coppia", data=details).text
+    client.post("/io/coppia", data={**details, "p2": "Dario"})
+    client.post("/io/arrivo", data={"compagno": "1"})
     row = db_call(service.team, partial["id"])
     assert (row["p2"], row["checked_in"]) == ("Dario", 1)
 
@@ -393,7 +419,7 @@ def test_admin_adds_partial_couple_without_team_name(client: TestClient) -> None
     login(client, ADMIN_PIN)
     client.post("/admin/squadre/nuova", data={"name": "", "p1": "Elena", "p2": "", "phone1": ""})
     (t,) = db_call(service.teams).values()
-    assert (t["name"], t["p2"]) == ("Squadra di Elena", "")
+    assert (t["name"], t["p2"]) == ("Coppia di Elena", "")
 
 
 def test_guest_from_party_list_enters_as_couple(client: TestClient) -> None:
@@ -406,12 +432,15 @@ def test_guest_from_party_list_enters_as_couple(client: TestClient) -> None:
     assert "1 coppie e 1 iscritti solo serata" in r.text
     client.post("/logout")
 
-    form = {"phone1": "+39 333 0000101", "name": "Pinte Pazze", "p1": "Ottavia", "p2": "Fulvio", "phone2": "", "payment": "online"}
-    assert "scansiona il QR" in client.post("/checkin/nuova", data=form).text
+    form = {
+        "phone1": "+39 333 0000101", "name": "Pinte Pazze", "p1": "Ottavia", "p2": "Fulvio", "phone2": "",
+        "payment": "online", "insieme": "1",
+    }
+    assert "Si fa alla serata" in client.post("/checkin/nuova", data=form).text
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     assert "non risulta tra gli iscritti" in client.post("/checkin/nuova", data={**form, "phone1": "3330000000"}).text
     r = client.post("/checkin/nuova", data=form)
-    assert "Siete in gara" in r.text and "Pinte Pazze" in r.text
+    assert "Check-in fatto ✓ «Pinte Pazze» è al completo" in r.text
     t = next(t for t in db_call(service.teams).values() if t["name"] == "Pinte Pazze")
     assert (t["checked_in"], t["phone1"], t["payment"]) == (1, "3330000101", "online")
 
@@ -746,7 +775,7 @@ def test_shared_tables_never_show_a_couple_twice(client: TestClient) -> None:
         now, _ = db_call(lambda db: service.live(service.matches(db)))
         playing = [t for m in now for t in (m.t1, m.t2)]
         assert len(playing) == len(set(playing))
-        client.post(f"/partita/{min(now, key=lambda m: m.field).id}", data={"s1": 10, "s2": 4})
+        record(client, min(now, key=lambda m: m.field).id, 10, 4)
 
 
 def test_31_couples_on_4_tables_balance_the_queues(client: TestClient) -> None:
@@ -805,8 +834,7 @@ def test_player_journey_checkin_then_group_presence(client: TestClient) -> None:
                                              "start_time": "21:30"})
     client.post("/logout")
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    me = db_call(service.team, 1)
-    client.post("/checkin/1", data=checkin_form(me, phone1=f"+39 333 000 {1:04d}"))
+    check_in(client, 1, phone1=f"+39 333 000 {1:04d}")
 
     assert "★ Squadra 0 · il vostro profilo" in client.get("/").text
     home = client.get("/io").text
@@ -825,7 +853,7 @@ def test_profile_stays_short_without_the_table_queue(client: TestClient) -> None
     client.post("/admin/impostazioni", data={"title": "T", "fields": 4, "group_min": 5, "ko_min": 6, "buffer_min": 1})
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     for t in sorted(db_call(service.teams).values(), key=lambda t: t["id"] == 1):  # couple 1 last: its session stays
-        client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
+        check_in(client, t["id"], phone1=f"+39 333 000 {t['id']:04d}")
     client.post("/admin/avvia")
     home = client.get("/io").text
     field = next(m.field for m in db_call(service.matches) if m.side(1))
@@ -837,7 +865,7 @@ def test_rankings_are_stats_only(client: TestClient) -> None:
     import_teams(client, 8)
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     for t in sorted(db_call(service.teams).values(), key=lambda t: t["id"] == 1):
-        client.post(f"/checkin/{t['id']}", data=checkin_form(t, phone1=f"+39 333 000 {t['id']:04d}"))
+        check_in(client, t["id"], phone1=f"+39 333 000 {t['id']:04d}")
     client.post("/admin/avvia")
     page = client.get("/classifiche").text
     assert 'href="/classifiche?vista=gironi" class="on">Gironi' in page
@@ -854,9 +882,7 @@ def test_profile_page_logged_out_and_own_team_redirect(client: TestClient) -> No
     import_teams(client, 4)
     client.post("/logout")
     assert "Entrate nel profilo della vostra coppia" in client.get("/io").text
-    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    r = client.post("/checkin/1", data=checkin_form(db_call(service.team, 1)), follow_redirects=False)
-    assert r.headers["location"] == "/io"
+    check_in(client, 1)
     assert client.get("/squadra/1", follow_redirects=False).headers["location"] == "/io"
     page = client.get("/io").text
     assert "★ VOI" in page and "Non siete voi? Esci" in page and "Modifica i vostri dati" in page
@@ -871,7 +897,7 @@ def test_knockout_waits_for_the_other_tables(client: TestClient) -> None:
     ko = [m for m in db_call(service.matches) if m.stage == "ko"]
     before = {m.id: m.time for m in ko}
     first = next(m for m in ko if m.t1 and m.t2 and not m.done)
-    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 2})
+    record(client, first.id, 10, 2)
     after = {m.id: m.time for m in db_call(service.matches) if m.stage == "ko"}
     assert {k: v for k, v in after.items() if k != first.id} == {k: v for k, v in before.items() if k != first.id}
     now, upcoming = db_call(lambda db: service.live(service.matches(db)))
@@ -890,8 +916,7 @@ def test_odd_query_values_and_quotes_in_names(client: TestClient) -> None:
     assert client.get("/gironi?tavolo=%C2%B2&g=%C2%B2").status_code == 200
     client.post("/logout")
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    t = db_call(service.team, 1)
-    client.post("/checkin/1", data=checkin_form(t, name="L'Orso"))
+    check_in(client, 1, name="L'Orso")
     page = client.get("/io").text
     assert "confirm(\"Uscire dal profilo di L\\u0027Orso" in page and "di L'Orso su" not in page
 
@@ -908,7 +933,7 @@ def test_shared_tables_views_never_show_a_couple_twice(client: TestClient) -> No
     setup_tournament(client, 5, fields=2)
     for _ in range(2):
         first = next(m for m in db_call(service.matches) if m.field == 1 and not m.done)
-        client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 4})
+        record(client, first.id, 10, 4)
         current = [tv.current for tv in db_call(service.table_views) if tv.current]
         playing = [t for m in current for t in (m.t1, m.t2)]
         assert len(playing) == len(set(playing))
@@ -942,20 +967,24 @@ def test_qr_then_phone_checks_in_and_opens_the_profile(client: TestClient) -> No
     client.post("/logout")
     ids = {t["name"]: t["id"] for t in db_call(service.teams).values()}
 
-    # without the QR: no check-in, only a way back in for couples already present
+    # without the QR: no check-in, and no way in before the payment
     r = client.post("/checkin/accedi", data={"phone": "333 111 0003"})
-    assert "scansionate il QR code" in r.text and not db_call(service.team, ids["Lontre"])["checked_in"]
+    assert "si conferma con il pagamento" in r.text and not db_call(service.team, ids["Lontre"])["checked_in"]
 
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    # each player arrives on their own: the couple is present once both have
     r = client.post("/checkin/accedi", data={"phone": "+39 333 111 0003"}, follow_redirects=False)
-    assert r.headers["location"] == "/questionario" and db_call(service.team, ids["Lontre"])["checked_in"] == 1
-    assert "Check-in fatto ✓ Benvenuti, Lontre!" in client.get("/questionario").text
+    lontre = db_call(service.team, ids["Lontre"])
+    assert r.headers["location"] == "/io" and lontre["arrived1_at"] and not lontre["checked_in"]  # no quiz in the way
+    assert "Ci sei ✓ Manca Dora" in client.get("/io").text
+    client.post("/io/arrivo", data={"compagno": "1"})  # Dora has no phone: Ciro confirms her
+    assert db_call(service.team, ids["Lontre"])["checked_in"] == 1
 
     # the partner's number works too; a number in two couples asks which one
     r = client.post("/checkin/accedi", data={"phone": "3331110001"})
     assert "Quale coppia?" in r.text and "Gufi" in r.text and "Castori" in r.text
     client.post("/checkin/accedi", data={"phone": "3331110001", "team_id": ids["Castori"]})
-    assert db_call(service.team, ids["Castori"])["checked_in"] == 1 and not db_call(service.team, ids["Gufi"])["checked_in"]
+    assert db_call(service.team, ids["Castori"])["arrived1_at"] and not db_call(service.team, ids["Gufi"])["arrived1_at"]
 
     # a party-only guest goes to the couple form; an unknown number gets a hint
     assert client.post("/checkin/accedi", data={"phone": "3339990000"}, follow_redirects=False).headers["location"] == "/checkin/nuova"
@@ -970,16 +999,17 @@ def test_phone_login_after_the_start(client: TestClient) -> None:
     client.post("/admin/avvia")
     client.post("/logout")
     with TestClient(client.app) as phone:
-        assert "Bentornati, S0!" in phone.post("/checkin/accedi", data={"phone": "3331110000"}).text
+        assert "Bentornato/a, " in phone.post("/checkin/accedi", data={"phone": "3331110000"}).text
         assert "Il torneo è già iniziato" in phone.post("/checkin/accedi", data={"phone": "3331110004"}).text
 
 
 def test_wrong_numbers_are_throttled(client: TestClient) -> None:
     import_teams(client, 4)
     client.post("/logout")
-    for _ in range(8):
+    for _ in range(web_common.ATTEMPT_MAX_FAILURES):
         client.post("/checkin/accedi", data={"phone": "3330000000"})
     assert "Troppi tentativi" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text
+    login(client, ADMIN_PIN)  # the crowd's typos do not lock the admin out
 
 
 def test_admin_control_room_during_the_groups(client: TestClient) -> None:
@@ -988,18 +1018,404 @@ def test_admin_control_room_during_the_groups(client: TestClient) -> None:
     assert page.index('id="torneo"') < page.index('id="coppie"')  # the tournament comes first once it runs
     assert '<span class="muted small">partite</span>' in page and "tavoli in ritardo" in page
     current = [m for m in db_call(service.matches) if m.playing]
-    assert len(current) == 4 and all(f'href="/arbitro?campo={m.field}">Arbitra</a>' in page for m in current)
+    assert len(current) == 4 and all(f'href="/risultato/{m.id}">Risultato</a>' in page for m in current)
 
-    referee = client.get("/arbitro").text
-    assert referee.count("▶ Segna la partita") == 4  # one card per table, the scoring has its own page
     m = current[0]
-    form = client.get(f"/partita/{m.id}").text
+    form = client.get(f"/risultato/{m.id}").text
     assert f"{m.n1} <span class=\"muted\">vs</span> {m.n2}" in form and f"‹ Tavolo {m.field}" in form
 
 
-def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
+def test_the_referee_couples_matches_are_spaced_out_on_its_table() -> None:
+    from app import planning
+
+    groups = [[1, 2, 3, 4], [5, 6, 7, 8]]  # both on one table: 12 matches, the referee couple 1 plays 3
+    for ref in (1, 6):
+        queue = planning.build_table_queues(groups, 1, frozenset({ref}))[1]
+        assert len(queue) == 12
+        spots = [i for i, f in enumerate(queue) if ref in (f.team1, f.team2)]
+        assert len(spots) == 3 and min(b - a for a, b in zip(spots, spots[1:])) >= 3
+        assert all({a.team1, a.team2}.isdisjoint({b.team1, b.team2}) for a, b in zip(queue, queue[1:]))
+
+
+def test_questionnaire_after_check_in_sets_the_couples_prior(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    check_in(client, 1, phone1="+39 333 000 0001")
+    assert "Due domande veloci" in client.get("/io").text  # not answered yet: the profile reminds them
+    assert db_call(lambda db: service.prior_rate(service.team(db, 1))) is None
+
+    assert "Rispondi a tutte" in client.post("/questionario", data={"livello": "x", "mira1": 3, "mira2": 3, "obiettivo": "quarti"}).text
+    r = client.post("/questionario", data={"livello": "spesso", "mira1": 6, "mira2": 4, "obiettivo": "quarti"}, follow_redirects=False)
+    assert r.headers["location"] == "/io"
+    prior = db_call(lambda db: service.prior_rate(service.team(db, 1)))
+    assert prior == pytest.approx((0.5 + 0.36) / 2)
+    assert "Due domande veloci" not in client.get("/io").text
+    # the prior moves the expected hit rate, and real shots soon outweigh it
+    assert live.hit_rate(0, 0, prior) == pytest.approx(prior) and live.hit_rate(0, 0) == pytest.approx(0.3)
+    assert abs(live.hit_rate(40, 100, prior) - 0.4) < abs(live.hit_rate(0, 0, prior) - 0.4)
+
+    # a couple already answered goes straight to its profile at the next login
+    client.post("/esci-squadra")
+    assert client.post("/checkin/accedi", data={"phone": "3330000001"}, follow_redirects=False).headers["location"] == "/io"
+
+
+def test_stylesheet_link_changes_with_the_file(client: TestClient) -> None:
+    import hashlib
+
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "style.css").read_bytes()
+    assert f'/static/style.css?v={hashlib.sha256(css).hexdigest()[:10]}"' in client.get("/").text
+
+
+def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    record(client, m.id, 3, 0)
+    assert "Dove centrano" in client.get(f"/squadra/{m.t1}/statistiche").text  # the couple's rack, before the players split it
+    client.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1", "cup2": "2", "cup3": "1"})
+    profile = client.get(f"/squadra/{m.t1}/statistiche").text
+    assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
+    assert 'title="1 colpo (' in profile and "<i>#" not in profile
+
+
+def test_knockout_timetable_per_table_is_announced_during_the_groups(client: TestClient) -> None:
+    setup_tournament(client, 16, fields=4)
+    plan = db_call(service.planned_knockout)
+    assert plan[-1].label == "Finale" and plan[-1].field == 1 and plan[-1].n1.startswith("Vincente semifinale")
+    assert all("(1° " in p.n1 or "(2° " in p.n1 for p in plan if p.label == plan[0].label)  # who would play now
+    assert "Dopo i gironi al Tavolo 1" in client.get("/gironi?tavolo=1").text
+    page = client.get("/tabellone?vista=tavoli").text
+    assert "Per tavolo" in page and "Tavolo 4" in page and "Vincente semifinale 1" in page
+
+    play_all(client, "group", random.Random(3))
+    real = [m for m in db_call(service.matches) if m.stage == "ko" and not m.bye]
+    assert [(m.label, m.field) for m in real] == [(p.label, p.field) for p in plan]  # the same tables, in order
+    # The times start from when the groups really ended, a minute from now.
+    first = datetime.fromisoformat(real[0].start_iso)
+    assert timedelta(0) < first - datetime.now() <= timedelta(minutes=1)
+    assert db_call(service.planned_knockout) == []
+    assert "Vincente semifinale 2" in client.get("/tabellone?vista=tavoli").text
+
+
+def test_secondary_tables_removed_as_knockout_advances(client: TestClient) -> None:
+    rng = random.Random(11)
+    setup_tournament(client, 16, fields=4)
+    assert [tv.field for tv in db_call(service.table_views)] == [1, 2, 3, 4]
+    assert [tv.kind for tv in db_call(service.table_views)] == ["Principale", "Principale", "Secondario", "Secondario"]
+
+    play_all(client, "group", rng)
+    # Quarterfinals (4 matches) use all 4 tables; finish them to enter Semifinals (2 matches on main tables 1 & 2)
+    qf_ids = [m.id for m in db_call(service.matches) if m.stage == "ko" and m.round == 1 and not m.done]
+    for mid in qf_ids:
+        record(client, mid, 6, 3)
+    t_views = db_call(service.table_views)
+    assert [tv.field for tv in t_views] == [1, 2] and all(tv.is_main for tv in t_views)
+    page = client.get("/gironi").text
+    assert "Tavolo 3, Tavolo 4 sono stati rimossi" in page
+
+
+def test_salvezza_when_last_target_cup_is_hit_starts_overtime_immediately() -> None:
+    # Side 1 has 1 cup left ({6}), Side 2 has 1 cup left ({6}) before Side 1 clears Side 2's rack:
+    seq = [
+        (1, 1, 1), (1, 2, 2), (2, 1, 1), (2, 2, 2),
+        (1, 1, 3), (1, 2, 4), (2, 1, 3), (2, 2, 4),
+        (1, 1, 5), (1, 2, 0), (2, 1, 5), (2, 2, 0),
+        (1, 1, 6),  # clears Side 2's rack -> Side 2 enters salvezza against Side 1's single remaining cup {6}
+        (2, 1, 6),  # Side 2's 1st player hits Side 1's last cup {6} -> overtime must start immediately
+    ]
+    reports = [live.Report(i, live.REFEREE, "shot", s, p, c, 100.0 + i) for i, (s, p, c) in enumerate(seq, 1)]
+    st = live.replay(reports, 6, 1, salvezza=True)
+    assert st.phase == "overtime" and st.racks[1].cups == {1, 2, 3} and st.racks[2].cups == {1, 2, 3}
+
+
+def test_couples_enter_their_own_result_with_cup_positions(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=4)
+    m = next(x for x in db_call(service.matches) if x.playing)
+    db_call(lambda db: db.execute("UPDATE teams SET phone1 = '3330009999' WHERE id = ?", (m.t1,)) and db.commit())
+    client.post("/logout")
+    with TestClient(client.app) as outsider:
+        assert outsider.get(f"/risultato/{m.id}", follow_redirects=False).status_code == 303
+    with TestClient(client.app) as phone:
+        phone.post("/checkin/accedi", data={"phone": "3330009999"})
+        assert f'href="/risultato/{m.id}"' in phone.get("/io").text
+        assert 'name="c1" value="6"' in phone.get(f"/risultato/{m.id}").text
+        phone.post(f"/risultato/{m.id}", data={"c1": ["1", "4", "6"], "c2": ["2"]})
+    done = db_call(service.match, m.id)
+    assert done.done and (done.s1, done.s2, done.winner) == (3, 1, m.t1)
+    cups = db_call(lambda db: sorted(tuple(r) for r in db.execute("SELECT side, cup FROM cup_hits WHERE match_id = ?", (m.id,))))
+    assert cups == [(1, 1), (1, 4), (1, 6), (2, 2)]
+
+
+TOURNAMENT = {
+    "title": "Beer Pong d'autunno", "date": "2026-11-21", "start_time": "21:00", "target_teams": 4, "fields": 2,
+    "fee": "12,50", "rules": "6 bicchieri per lato.\nSi passa in due.", "form_url": "https://forms.gle/abc",
+    "pay_info": "Satispay al 333 0000000",
+}
+
+
+def test_admin_creates_the_tournament_and_shares_its_page(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    assert "da creare" in client.get("/admin").text
+    assert "Scegli la data" in client.post("/admin/torneo", data={**TOURNAMENT, "date": ""}).text
+    assert "https://" in client.post("/admin/torneo", data={**TOURNAMENT, "form_url": "javascript:alert(1)"}).text
+    assert "Quota non valida" in client.post("/admin/torneo", data={**TOURNAMENT, "fee": "dieci"}).text
+    assert "Torneo salvato" in client.post("/admin/torneo", data=TOURNAMENT).text
+    info = db_call(service.load_tournament)
+    assert (info.title, info.target_teams, info.fields, info.fee) == ("Beer Pong d'autunno", 4, 2, "12,50")
+    assert "21/11 · 4 coppie" in client.get("/admin").text
+
+    client.post("/logout")
+    public = client.get("/regole").text
+    assert "21/11/2026" in public and "12,50 €" in public and 'href="https://forms.gle/abc"' in public
+    assert "Si passa in due." in public and "0/4" in public
+
+
+def test_payments_are_confirmed_from_a_pasted_statement(client: TestClient) -> None:
+    login(client, ADMIN_PIN)
+    client.post("/admin/torneo", data=TOURNAMENT)
+    client.post("/admin/squadre/importa", data={"testo": "\n".join(
+        f"Squadra {i}; Ada {i}; Bruno {i}; 33300000{i:02d}" for i in range(6)
+    )})
+    ids = sorted(db_call(service.teams))
+    reg = db_call(service.registration)
+    assert len(reg.placed) == 4 and [t["id"] for t in reg.waiting] == ids[4:]  # 4 places, form order
+    page = client.get("/admin").text
+    assert service.pay_code(ids[0]) in page and "wa.me/393330000000?text=" in page and "Lista d'attesa (2)" in page
+    groups, _ = db_call(service.board_groups)
+    assert sorted(t["id"] for g in groups for t in g.teams) == ids[:4]  # the waiting list is not drawn
+
+    statement = "\n".join([
+        "Data;Descrizione;Importo",
+        f"24/10/2026;Satispay da Ada 0 - causale {service.pay_code(ids[0]).lower()};12,50",
+        f"24/10/2026;Bonifico BP-{ids[1]};12,50",
+        "24/10/2026;Satispay da +39 333 000 0002;12,50",  # no code, but the couple's phone
+        "24/10/2026;Satispay da sconosciuto;12,50",
+    ])
+    flash = client.post("/admin/pagamenti/estratto", data={"estratto": statement}).text
+    assert "3 pagamenti confermati" in flash and "sconosciuto" in flash
+    assert [t["paid"] for t in db_call(service.registration).placed] == [1, 1, 1, 0]
+    assert '<div class="big">3/4</div><span class="muted small">pagate</span>' in client.get("/admin").text  # places only
+    assert "1 già confermati" in client.post("/admin/pagamenti/estratto", data={"estratto": f"BP{ids[0]}"}).text
+
+
+def test_new_tournament_archives_the_old_one_and_starts_empty(client: TestClient, tmp_path: Path) -> None:
+    setup_tournament(client, 8, fields=2)
+    client.post("/admin/torneo", data=TOURNAMENT)
+    pin = db_call(lambda db: get_setting(db, "admin_pin"))
+    assert "scrivi NUOVO" in client.post("/admin/torneo/nuovo", data={"conferma": "si"}).text
+    assert db_call(service.teams)
+
+    page = client.post("/admin/torneo/nuovo", data={"conferma": "nuovo"}).text
+    assert "Torneo precedente archiviato in torneo-" in page and "Crea il torneo" in page
+    assert not db_call(service.teams) and not db_call(service.matches)
+    assert db_call(lambda db: (get_setting(db, "phase"), get_setting(db, "admin_pin"))) == ("setup", pin)
+    (archived,) = (tmp_path / "archivio").glob("torneo-*.db")
+    with closing(sqlite3.connect(archived)) as old:
+        assert old.execute("SELECT COUNT(*) FROM teams").fetchone()[0] == 8
+
+
+def test_each_player_gets_their_own_phone_and_invites_the_partner(client: TestClient) -> None:
+    import re
+
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 2)
+    check_in(client, 2, phone1="333 0000001", phone2="347 0000002", both=False)
+    page = client.get("/io").text
+    assert "Chi sta usando" not in page  # the number said who
+    assert f"Ciao {t['p1']}!" in page and f"{t['p1']} · 📱 collegato" in page and f"{t['p2']} · non ancora" in page
+    assert client.get("/io/invito.svg").headers["content-type"].startswith("image/svg+xml")
+    invite = re.search(r'data-copy="([^"]+)"', page).group(1)
+    assert "/entra/" in invite
+
+    with TestClient(client.app) as partner:
+        page = partner.get(invite[invite.index("/entra/"):]).text
+        assert f"Ciao {t['p2']}!" in page and "questo telefono ora è il tuo" in page
+        assert f"{t['p1']} · 📱 collegato" in page and f"{t['p2']} · 📱 collegato" in page
+        assert "Invita" not in page.split("Mostra di nuovo il QR")[0].split('class="card phones-card"')[1]  # both in
+        partner.post("/esci-squadra")
+    assert db_call(service.team_devices, 2) == {1: 1, 2: 0}
+
+    with TestClient(client.app) as stranger:
+        token = invite[invite.index("/entra/") + 7:]
+        assert "Invito non valido" in stranger.get(f"/entra/{token[:-2]}xx").text
+        assert stranger.get("/io/invito.svg").status_code == 404
+
+
+def test_the_phone_number_tells_which_player_logs_in(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 3)
+    check_in(client, 3, phone1="333 0000003", phone2="347 0000004")
+    client.post("/esci-squadra")
+    with TestClient(client.app) as phone:
+        phone.post("/checkin/accedi", data={"phone": "347 0000004"})
+        page = phone.get("/io").text
+        assert f"Ciao {t['p2']}!" in page
+
+    monkeypatch.setattr(service.access, "INVITE_MAX_AGE_S", -1)
+    token = db_call(service.invite_token, 3, 1)
+    with TestClient(client.app) as late:
+        assert "invito è scaduto" in late.get(f"/entra/{token}").text
+
+
+def test_paid_couples_enter_from_home_and_check_in_at_the_venue(client: TestClient) -> None:
+    import re
+    from urllib.parse import unquote
+
+    login(client, ADMIN_PIN)
+    client.post("/admin/torneo", data=TOURNAMENT)
+    client.post("/admin/squadre/importa", data={"testo": "Gufi; Ada; Bice; 3331110001\nLontre; Ciro; Dora; 3331110003"})
+    ids = {t["name"]: t["id"] for t in db_call(service.teams).values()}
+    client.post("/admin/pagamenti/estratto", data={"estratto": f"Satispay {service.pay_code(ids['Gufi'])} 12,50"})
+    admin = client.get("/admin").text
+    assert "Confermate (1)" in admin and "💬 Ada" in admin
+    link = re.search(r"/accesso/[\w.\-]+", unquote(admin)).group(0)
+    client.post("/logout")
+    tv = client.get("/cartellone").text
+    assert "/qr-sito.svg" in tv and "/admin/qr.svg" not in tv  # from home: no check-in QR on the board
+
+    with TestClient(client.app) as home:
+        page = home.get(link).text
+        assert "Ciao Ada!" in page and "Arrivo alla serata" in page
+        assert not db_call(service.team, ids["Gufi"])["checked_in"]
+        wrong = "1111" if db_call(service.venue_code) == "0000" else "0000"
+        assert "Codice sbagliato" in home.post("/io/arrivo", data={"codice": wrong}).text
+        page = home.post("/io/arrivo", data={"codice": db_call(service.venue_code)}).text
+        assert "Ci sei ✓ Manca Bice" in page and not db_call(service.team, ids["Gufi"])["checked_in"]
+        page = home.post("/io/arrivo", data={"compagno": "1"}).text  # the code was typed once on this phone
+        assert "Check-in fatto ✓" in page and db_call(service.team, ids["Gufi"])["checked_in"] == 1
+
+    with TestClient(client.app) as other:
+        assert "non valido" in other.get(link[:-3] + "xyz").text
+        assert "si conferma con il pagamento" in other.get(f"/accesso/{db_call(service.access_token, ids['Lontre'], 1)}").text
+
+
+def test_the_venue_qr_checks_in_a_couple_already_in_its_profile(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/admin/squadre/1/pagato", data={"pagato": 1})
+    tv = client.get("/cartellone").text
+    assert "/admin/qr.svg" in tv and db_call(service.venue_code) in tv  # the organizers' TV: one QR at the venue
+    client.post("/logout")
+    with TestClient(client.app) as phone:
+        phone.get(f"/accesso/{db_call(service.access_token, 1, 1)}")
+        assert not db_call(service.team, 1)["checked_in"]
+        r = phone.get(f"/checkin?k={db_call(get_setting, 'reg_key')}", follow_redirects=False)
+        assert r.headers["location"] == "/io" and db_call(service.team, 1)["arrived1_at"]
+        assert not db_call(service.team, 1)["checked_in"]  # the partner has not arrived yet
+
+
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 200
+
+
+def test_a_couple_personalizes_its_profile(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/logout")
+    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+    t = db_call(service.team, 1)
+    check_in(client, 1, phone1="333 0000001")
+    assert "Scegliete una sola emoji" in client.post("/io/profilo", data={"emoji": "abc"}).text
+    assert "Colore non valido" in client.post("/io/profilo", data={"colore": "red;}body{display:none"}).text
+    client.post("/io/profilo", data={"emoji": "🦊", "motto": "  Mai  una gioia ", "colore": "viola", "nick1": "Mano Fredda"})
+    t = db_call(service.team, 1)
+    assert (t["emoji"], t["motto"], t["color"], t["nick1"]) == ("🦊", "Mai una gioia", "viola", "Mano Fredda")
+    page = client.get("/io").text
+    assert "«Mai una gioia»" in page and "«Mano Fredda»" in page and service.COLORS["viola"] in page
+
+    assert "non è una foto" in client.post("/io/foto", files={"foto": ("x.jpg", b"<svg onload=alert(1)>")}).json()["error"]
+    assert "troppo grande" in client.post("/io/foto", files={"foto": ("x.jpg", JPEG * 2000)}).json()["error"]
+    assert client.post("/io/foto", files={"foto": ("x.jpg", JPEG * 4000)}).status_code == 413  # refused unread
+    url = client.post("/io/foto", files={"foto": ("x.jpg", JPEG)}).json()["url"]
+    assert client.get(url).content == JPEG and url in client.get("/io").text
+    old = url
+    url = client.post("/io/foto", files={"foto": ("x.jpg", JPEG)}).json()["url"]
+    assert url != old and client.get(old).status_code == 404  # the old photo is gone
+    assert client.get("/foto/..%2Ftest.db").status_code == 404
+
+    login(client, ADMIN_PIN)
+    client.post("/admin/squadre/1/togli-foto")
+    assert db_call(service.team, 1)["photo"] == "" and client.get(url).status_code == 404
+
+
+def test_everyone_sees_who_has_arrived(client: TestClient) -> None:
+    import_teams(client, 5)
+    for team_id in (2, 4):
+        client.post(f"/admin/squadre/{team_id}/presente", data={"presente": 1})
+    client.post("/logout")
+    page = client.get("/arrivi").text
+    assert "2/5 coppie" in page and "In arrivo (3)" in page
+    assert page.index("Squadra 3") < page.index("In arrivo")  # arrived: Squadra 3 (id 4) and Squadra 1 (id 2)
+    assert db_call(service.team, 2)["checked_in_at"]
+
+
+def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/admin/squadre/1/pagato", data={"pagato": 1})
+    client.post("/logout")
+    key = db_call(get_setting, "reg_key")
+    t = db_call(service.team, 1)
+    db_call(lambda db: db.execute("UPDATE teams SET phone1 = '3330000001', phone2 = '3470000002' WHERE id = 1") and db.commit())
+
+    with TestClient(client.app) as first, TestClient(client.app) as second:
+        first.get(f"/checkin?k={key}")
+        first.post("/checkin/accedi", data={"phone": "3330000001"})
+        assert f"{t['p2']} ✓" not in client.get("/arrivi").text and f"{t['p1']} ✓ · manca {t['p2']}" in client.get("/arrivi").text
+        page = first.get("/io").text
+        assert f"La prima birra di {t['p1']}" in page and f"La prima birra di {t['p2']}" not in page
+        assert not db_call(service.team, 1)["checked_in"]
+
+        second.get(f"/checkin?k={key}")
+        assert "già aperta su un altro telefono" in second.post("/checkin/accedi", data={"phone": "347 000 0002"}).text
+        second.get(f"/entra/{db_call(service.invite_token, 1, 2)}")  # the partner comes in with the invite
+        assert "è al completo" in second.post("/io/arrivo").text
+        assert db_call(service.team, 1)["checked_in"] == 1
+
+        page = second.get("/io").text
+        assert "PRIMA BIRRA" in page and "Ritirata · lo tocca il bancone" in page  # shown as often as needed
+        assert "PRIMA BIRRA" in second.get("/io").text and not db_call(service.team, 1)["beer2_at"]
+        page = second.post("/io/birra", data={"giocatore": 2}).text  # the bar marks it collected
+        assert 'id="birra2"' not in page and f"Prima birra di {t['p2']} ritirata alle" in page
+        assert "già stata ritirata" in second.post("/io/birra", data={"giocatore": 2}).text
+        assert f"La prima birra di {t['p1']}" in page  # the partner's is still to collect
+
+
+def test_the_desk_marks_both_players_arrived(client: TestClient) -> None:
+    import_teams(client, 4)
+    client.post("/admin/squadre/2/presente", data={"presente": 1})
+    t = db_call(service.team, 2)
+    assert t["checked_in"] == 1 and t["arrived1_at"] and t["arrived2_at"]
+    client.post("/admin/squadre/2/presente", data={"presente": 0})
+    t = db_call(service.team, 2)
+    assert (t["checked_in"], t["arrived1_at"], t["arrived2_at"]) == (0, None, None)
+
+
+def shot_by_shot() -> None:
+    """The tournament scored by a referee, shot by shot (the tests below come from that mode)."""
+    db_call(lambda db: (set_setting(db, "scoring", "tiri"), db.commit()))
+
+
+def test_referee_only_edits_own_field(client: TestClient) -> None:
+    shot_by_shot()
+    setup_tournament(client, 10, fields=2)
+    views = db_call(service.matches)
+    own = next(m for m in views if m.field == 1)
+    other = next(m for m in views if m.field == 2)
+
+    referee_login(client, 1)
+    data = {"s1": 5, "s2": 1}
+    assert client.post(f"/partita/{other.id}", data=data, follow_redirects=False).headers["location"] == "/login"
+    assert client.post(f"/partita/{own.id}", data=data, follow_redirects=False).headers["location"] == "/arbitro"
+    assert client.get("/admin", follow_redirects=False).status_code == 303
+    m = db_call(service.match, own.id)
+    assert (m.s1, m.s2, m.winner) == (5, 1, m.t1)
+
+
+def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
+    shot_by_shot()
+    setup_tournament(client, 8, fields=2)
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     overview = client.get("/arbitro").text
     assert f'href="/segna/{m.id}"' in overview and "▶ Segna la partita" in overview
@@ -1029,8 +1445,9 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
 
 
 def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -> None:
+    shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
 
     client.post(f"/partita/{m.id}/inizia", data={"primo": 2})
@@ -1084,8 +1501,9 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
 
 
 def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
+    shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     page = client.get(f"/segna/{m.id}").text
@@ -1106,8 +1524,9 @@ def test_referee_taps_are_safe_to_repeat(client: TestClient) -> None:
 
 
 def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient) -> None:
+    shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     db_call(lambda db: service.start_match(db, m.id, time.time() - 6 * 60, 1))
     db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
@@ -1116,6 +1535,7 @@ def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient)
 
 
 def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestClient) -> None:
+    shot_by_shot()
     login(client, ADMIN_PIN)
     client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(8))})
     client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 7, "buffer_min": 1})
@@ -1143,21 +1563,10 @@ def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestC
         assert db_call(service.match, other.id).started_at is None
 
 
-def test_the_referee_couples_matches_are_spaced_out_on_its_table() -> None:
-    from app import planning
-
-    groups = [[1, 2, 3, 4], [5, 6, 7, 8]]  # both on one table: 12 matches, the referee couple 1 plays 3
-    for ref in (1, 6):
-        queue = planning.build_table_queues(groups, 1, frozenset({ref}))[1]
-        assert len(queue) == 12
-        spots = [i for i, f in enumerate(queue) if ref in (f.team1, f.team2)]
-        assert len(spots) == 3 and min(b - a for a, b in zip(spots, spots[1:])) >= 3
-        assert all({a.team1, a.team2}.isdisjoint({b.team1, b.team2}) for a, b in zip(queue, queue[1:]))
-
-
 def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
+    shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     for n, (pl, cup) in enumerate([(1, 1), (2, 4)]):
@@ -1175,40 +1584,10 @@ def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
     assert db_call(lambda db: tracking.state(db, m.id)).racks[2].cups == {2, 3, 5, 6}
 
 
-def test_questionnaire_after_check_in_sets_the_couples_prior(client: TestClient) -> None:
-    import_teams(client, 4)
-    client.post("/logout")
-    client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    t = db_call(service.team, 1)
-    client.post("/checkin/1", data=checkin_form(t, phone1="+39 333 000 0001"))
-    assert "Due domande veloci" in client.get("/io").text  # not answered yet: the profile reminds them
-    assert db_call(lambda db: service.prior_rate(service.team(db, 1))) is None
-
-    assert "Rispondi a tutte" in client.post("/questionario", data={"livello": "x", "mira1": 3, "mira2": 3, "obiettivo": "quarti"}).text
-    r = client.post("/questionario", data={"livello": "spesso", "mira1": 6, "mira2": 4, "obiettivo": "quarti"}, follow_redirects=False)
-    assert r.headers["location"] == "/io"
-    prior = db_call(lambda db: service.prior_rate(service.team(db, 1)))
-    assert prior == pytest.approx((0.5 + 0.36) / 2)
-    assert "Due domande veloci" not in client.get("/io").text
-    # the prior moves the expected hit rate, and real shots soon outweigh it
-    assert live.hit_rate(0, 0, prior) == pytest.approx(prior) and live.hit_rate(0, 0) == pytest.approx(0.3)
-    assert abs(live.hit_rate(40, 100, prior) - 0.4) < abs(live.hit_rate(0, 0, prior) - 0.4)
-
-    # a couple already answered goes straight to its profile at the next login
-    client.post("/esci-squadra")
-    assert client.post("/checkin/accedi", data={"phone": "3330000001"}, follow_redirects=False).headers["location"] == "/io"
-
-
-def test_stylesheet_link_changes_with_the_file(client: TestClient) -> None:
-    import hashlib
-
-    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "style.css").read_bytes()
-    assert f'/static/style.css?v={hashlib.sha256(css).hexdigest()[:10]}"' in client.get("/").text
-
-
 def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient) -> None:
+    shot_by_shot()
     setup_tournament(client, 8, fields=2)
-    login(client, db_call(service.referee_pin, 1))
+    referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     page = client.get(f"/segna/{m.id}").text
@@ -1229,48 +1608,15 @@ def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient)
     assert "Tiro non valido" in client.post(f"/partita/{m.id}/tiro", data={"giocatore": 2, "bicchiere": "x", "n": 1}).text
 
 
-def test_heatmaps_show_where_couples_hit(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=2)
-    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
-    db_call(lambda db: service.start_match(db, m.id, time.time() - 60, 1))
-    for n, (pl, cup) in enumerate([(1, 4), (2, 5), (1, 0), (2, 0), (1, 6), (2, 0)]):
-        db_call(lambda db: tracking.referee_shot(db, m.id, pl, cup, time.time() - 50 + n, n))
-    client.post(f"/partita/{m.id}", data={"s1": 3, "s2": 0})  # the profile's statistics start after a match
-    shots = client.get("/classifiche?vista=tiri").text
-    assert "Il più colpito, cerchiato" in shots and "heat-cup h7" in shots and "heat-cup h7 top" in shots
-    profile = client.get(f"/squadra/{m.t1}").text
-    assert "Dove centrano" in profile and profile.count('class="heatmap-fig compact"') == 2
-    assert 'title="1 colpo (' in profile and "<i>#" not in profile
-
-
-def test_knockout_timetable_per_table_is_announced_during_the_groups(client: TestClient) -> None:
-    setup_tournament(client, 16, fields=4)
-    plan = db_call(service.planned_knockout)
-    assert plan[-1].label == "Finale" and plan[-1].field == 1 and plan[-1].n1.startswith("Vincente semifinale")
-    assert all("(1° " in p.n1 or "(2° " in p.n1 for p in plan if p.label == plan[0].label)  # who would play now
-    assert "Dopo i gironi al Tavolo 1" in client.get("/gironi?tavolo=1").text
-    page = client.get("/tabellone?vista=tavoli").text
-    assert "Per tavolo" in page and "Tavolo 4" in page and "Vincente semifinale 1" in page
-
-    play_all(client, "group", random.Random(3))
-    real = [m for m in db_call(service.matches) if m.stage == "ko" and not m.bye]
-    assert [(m.label, m.field) for m in real] == [(p.label, p.field) for p in plan]  # the same tables, in order
-    # The times start from when the groups really ended, a minute from now.
-    first = datetime.fromisoformat(real[0].start_iso)
-    assert timedelta(0) < first - datetime.now() <= timedelta(minutes=1)
-    assert db_call(service.planned_knockout) == []
-    assert "Vincente semifinale 2" in client.get("/tabellone?vista=tavoli").text
-
-
 def test_volunteer_referee_and_live_beer_liters(client: TestClient) -> None:
+    shot_by_shot()
     setup_tournament(client, 8, fields=2)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post("/logout")
 
     # A non-playing spectator or couple can volunteer to referee the match and record every shot
     home_html = client.get("/gironi").text
-    assert f'action="/partita/{m.id}/arbitra"' not in home_html  # no referee: the couples enter the result
-    return
+    assert f'action="/partita/{m.id}/arbitra"' in home_html
     r = client.post(f"/partita/{m.id}/arbitra", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == f"/segna/{m.id}"
     assert client.get(f"/segna/{m.id}").status_code == 200
@@ -1283,55 +1629,97 @@ def test_volunteer_referee_and_live_beer_liters(client: TestClient) -> None:
     assert t_cups == 2 and t_liters == 0.33
     assert by_team[m.t2] == (0.33, 2)
     sq_html = client.get(f"/squadra/{m.t2}").text
-    assert "0,33 L" in sq_html and "Per fase" in sq_html and "Partite fatte" in sq_html
+    assert "Per fase" in sq_html and "Partite fatte" in sq_html
+    assert "0,33 L" in client.get(f"/squadra/{m.t2}/statistiche").text
     assert "Scontri diretti" not in sq_html
 
 
-def test_secondary_tables_removed_as_knockout_advances(client: TestClient) -> None:
-    rng = random.Random(11)
-    setup_tournament(client, 16, fields=4)
-    assert [tv.field for tv in db_call(service.table_views)] == [1, 2, 3, 4]
-    assert [tv.kind for tv in db_call(service.table_views)] == ["Principale", "Principale", "Secondario", "Secondario"]
-
-    play_all(client, "group", rng)
-    # Quarterfinals (4 matches) use all 4 tables; finish them to enter Semifinals (2 matches on main tables 1 & 2)
-    qf_ids = [m.id for m in db_call(service.matches) if m.stage == "ko" and m.round == 1 and not m.done]
-    for mid in qf_ids:
-        client.post(f"/partita/{mid}", data={"s1": 6, "s2": 3})
-    t_views = db_call(service.table_views)
-    assert [tv.field for tv in t_views] == [1, 2] and all(tv.is_main for tv in t_views)
-    page = client.get("/gironi").text
-    assert "Tavolo 3, Tavolo 4 sono stati rimossi" in page
+def set_scoring(scoring: str, referees: str = "volontari") -> None:
+    db_call(lambda db: (set_setting(db, "scoring", scoring), set_setting(db, "referees", referees), db.commit()))
 
 
-def test_salvezza_when_last_target_cup_is_hit_starts_overtime_immediately() -> None:
-    # Side 1 has 1 cup left ({6}), Side 2 has 1 cup left ({6}) before Side 1 clears Side 2's rack:
-    seq = [
-        (1, 1, 1), (1, 2, 2), (2, 1, 1), (2, 2, 2),
-        (1, 1, 3), (1, 2, 4), (2, 1, 3), (2, 2, 4),
-        (1, 1, 5), (1, 2, 0), (2, 1, 5), (2, 2, 0),
-        (1, 1, 6),  # clears Side 2's rack -> Side 2 enters salvezza against Side 1's single remaining cup {6}
-        (2, 1, 6),  # Side 2's 1st player hits Side 1's last cup {6} -> overtime must start immediately
-    ]
-    reports = [live.Report(i, live.REFEREE, "shot", s, p, c, 100.0 + i) for i, (s, p, c) in enumerate(seq, 1)]
-    st = live.replay(reports, 6, 1, salvezza=True)
-    assert st.phase == "overtime" and st.racks[1].cups == {1, 2, 3} and st.racks[2].cups == {1, 2, 3}
+def test_couples_score_by_default_and_need_no_referee(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    referee_login(client, 1)
+    assert client.get(f"/segna/{m.id}", follow_redirects=False).headers["location"] == "/login"
+    assert f'action="/partita/{m.id}/arbitra"' not in client.get("/gironi").text
 
 
-
-def test_couples_enter_their_own_result_with_cup_positions(client: TestClient) -> None:
-    setup_tournament(client, 8, fields=4)
-    m = next(x for x in db_call(service.matches) if x.playing)
-    db_call(lambda db: db.execute("UPDATE teams SET phone1 = '3330009999' WHERE id = ?", (m.t1,)) and db.commit())
+def test_a_referee_enters_the_final_result_with_its_cups(client: TestClient) -> None:
+    set_scoring("risultato", referees="organizzatori")
+    setup_tournament(client, 8, fields=2)
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post("/logout")
-    with TestClient(client.app) as outsider:
-        assert outsider.get(f"/risultato/{m.id}", follow_redirects=False).status_code == 303
-    with TestClient(client.app) as phone:
-        phone.post("/checkin/accedi", data={"phone": "3330009999"})
-        assert f'href="/risultato/{m.id}"' in phone.get("/io").text
-        assert 'name="c1" value="6"' in phone.get(f"/risultato/{m.id}").text
-        phone.post(f"/risultato/{m.id}", data={"c1": ["1", "4", "6"], "c2": ["2"]})
+
+    with TestClient(client.app) as couple:
+        couple.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
+        db_call(lambda db: (db.execute("UPDATE teams SET phone1 = '3330009191' WHERE id = ?", (m.t1,)), db.commit()))
+        couple.post("/checkin/accedi", data={"phone": "3330009191"})
+        assert "Il risultato lo segna l" in couple.get("/gironi").text
+        assert "lo inserisce l" in couple.get(f"/risultato/{m.id}").text  # not the couple's job here
+        couple.post(f"/risultato/{m.id}", data={"c1": ["1", "2"], "c2": ["1"]})
+        assert not db_call(service.match, m.id).done
+
+    with TestClient(client.app) as referee:
+        referee_login(referee, 1)
+        assert referee.get(f"/segna/{m.id}", follow_redirects=False).headers["location"] == f"/risultato/{m.id}"
+        r = referee.post(f"/risultato/{m.id}", data={"c1": ["1", "2", "3"], "c2": ["4"]}, follow_redirects=False)
+        assert r.headers["location"] == "/arbitro"
+        shot = referee.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": 1}, follow_redirects=False)
+        assert shot.headers["location"] == "/login"  # no shots in a match scored by its final result
     done = db_call(service.match, m.id)
-    assert done.done and (done.s1, done.s2, done.winner) == (3, 1, m.t1)
-    cups = db_call(lambda db: sorted(tuple(r) for r in db.execute("SELECT side, cup FROM cup_hits WHERE match_id = ?", (m.id,))))
-    assert cups == [(1, 1), (1, 4), (1, 6), (2, 2)]
+    assert (done.s1, done.s2) == (3, 1) and db_call(service.cup_hits, m.id)[1] == {1: None, 2: None, 3: None}
+
+    # volunteers are off when only organizers referee
+    assert "/arbitra" not in client.get("/gironi").text
+
+
+def test_one_match_can_be_scored_shot_by_shot(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
+    other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
+    assert "Modalità di questa partita" in client.get(f"/risultato/{m.id}").text
+    client.post(f"/admin/partita/{m.id}/modalita", data={"modalita": "tiri"})
+    assert db_call(service.match, m.id).mode == "tiri" and db_call(service.match, other.id).mode == "coppie"
+
+    client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
+    assert "già iniziata" in client.post(f"/admin/partita/{m.id}/modalita", data={"modalita": ""}).text
+    for n, (pl, cup) in enumerate([(1, 1), (2, 2), (1, 0), (2, 5)]):
+        client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": cup, "n": n})
+    assert db_call(service.match, m.id).live_score == (2, 1)  # turns: both players of side 1, then of side 2
+    assert client.post(f"/partita/{m.id}", data={"s1": 2, "s2": 1}).status_code == 200
+    hits = db_call(service.cup_hits, m.id)
+    assert hits == {1: {1: 1, 2: 2}, 2: {5: 2}}  # from the referee's shots, with who sank each
+    assert 'href="/classifiche?vista=tiri"' in client.get("/classifiche").text
+
+
+def test_every_css_variable_used_is_defined() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    sources = [app_dir / "static" / "style.css", *sorted((app_dir / "templates").glob("*.html"))]
+    text = "\n".join(p.read_text() for p in sources)
+    defined = set(re.findall(r"(--[\w-]+)\s*:", text))
+    used = set(re.findall(r"var\((--[\w-]+)", text))
+    assert used - defined == set()
+
+
+def test_only_the_admin_has_a_pin(client: TestClient) -> None:
+    db_call(lambda db: (set_setting(db, "ref_pin_1", "654321"), set_setting(db, "referees", "pin"), db.commit()))
+    init_db()  # an older database: its table PINs go, and "PIN only" becomes "organizers only"
+    assert db_call(lambda db: db.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'ref_pin_%'").fetchone()[0]) == 0
+    assert db_call(get_setting, "referees") == "organizzatori"
+    r = client.post("/login", data={"pin": "654321"}, follow_redirects=False)
+    assert r.headers["location"] == "/login"
+    login(client, ADMIN_PIN)
+    page = client.get("/admin").text
+    assert "Arbitro tavolo" not in page and "Mostra il PIN admin" in page
+
+
+def test_reset_needs_the_word_and_sits_in_the_danger_zone(client: TestClient) -> None:
+    setup_tournament(client, 8, fields=2)
+    page = client.get("/admin").text
+    assert page.index('id="pericolo"') > page.index('id="impostazioni"')  # last, after the routine sections
+    client.post("/admin/annulla", data={"conferma": "si"})
+    assert db_call(get_setting, "phase") == "groups" and db_call(service.matches)
+    client.post("/admin/annulla", data={"conferma": "ANNULLA"})
+    assert db_call(get_setting, "phase") == "setup" and not db_call(service.matches)

@@ -11,14 +11,18 @@
     <div class="board-title">🍺 {{ cfg.title }}</div>
     <div class="board-sub">
       {% if provisional %}Si comincia alle {{ cfg.start_time }} · arrivate {{ groups|map(attribute="teams")|sum(start=[])|selectattr("checked_in")|list|length }} coppie su {{ groups|map(attribute="teams")|map("length")|sum }}
-      {% elif cfg.phase == "groups" %}Fase a gironi
-      {% elif cfg.phase == "knockout" %}Eliminazione diretta
+      {% elif cfg.phase == Phase.GROUPS %}Fase a gironi
+      {% elif cfg.phase == Phase.KNOCKOUT %}Eliminazione diretta
       {% else %}Torneo concluso{% endif %}
     </div>
-    {% if cfg.phase in ("setup", "groups") %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
+    {% if not cfg.phase.knockout_reached %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
   </div>
   <div class="board-clock" id="board-clock"></div>
-  <div class="board-qr"><img src="/qr-sito.svg" alt="QR del sito"><span>Segui dal telefono</span></div>
+  {% if checkin_qr %}
+    <div class="board-qr"><img src="/admin/qr.svg" alt="QR di check-in"><span>Check-in · codice <strong>{{ venue_code }}</strong></span></div>
+  {% else %}
+    <div class="board-qr"><img src="/qr-sito.svg" alt="QR del sito"><span>Segui dal telefono</span></div>
+  {% endif %}
 </header>
 
 {% if progress %}<div class="board-steps">{{ ui.progress(progress) }}</div>{% endif %}
@@ -45,7 +49,7 @@
 
 {% macro bracket_tree() %}
   <section class="board-bracket">
-    <div class="board-h">Tabellone{% if not ko_started %} <span class="hint">{{ "anteprima: se i gironi finissero adesso" if cfg.phase == "groups" else "si riempie alla fine dei gironi" }}</span>{% endif %}</div>
+    <div class="board-h">Tabellone{% if not ko_started %} <span class="hint">{{ "anteprima: se i gironi finissero adesso" if cfg.phase == Phase.GROUPS else "si riempie alla fine dei gironi" }}</span>{% endif %}</div>
     <div class="tree">
       {% for r in rounds %}
         <div class="tcol">
@@ -81,7 +85,7 @@
             {% if g.table %}<span class="gcount">{{ g.table.matches|selectattr("done")|list|length }}/{{ g.table.matches|length }}</span>
             {% else %}<span class="gcount">{{ g.teams|selectattr("checked_in")|list|length }}/{{ g.teams|length }} arrivate</span>{% endif %}</div>
           {% if g.table %}
-            <div class="grow head"><span>#</span><span>Squadra</span><span>G</span><span>DB</span><span>Pt</span></div>
+            <div class="grow head"><span>#</span><span>Coppia</span><span>G</span><span>DB</span><span>Pt</span></div>
             {% for r in g.table.rows %}
               <div class="grow {{ 'q' if loop.index <= 2 else ('q3' if loop.index == 3 and thirds) }}">
                 <span>{{ loop.index }}</span><span class="n">{{ g.teams[loop.index0].name }}</span>

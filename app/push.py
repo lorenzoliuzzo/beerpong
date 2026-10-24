@@ -19,7 +19,7 @@ from py_vapid import Vapid
 from pywebpush import WebPushException, webpush
 
 from . import service
-from .db import connect, get_setting, set_setting
+from .db import connect, get_phase, get_setting, set_setting
 
 log = logging.getLogger("beerpong.push")
 
@@ -126,7 +126,7 @@ def _claim(db: sqlite3.Connection, match_id: int, kind: str) -> bool:
 
 def due(db: sqlite3.Connection) -> list[Delivery]:
     """Notices for the couples whose match just went on a table or is up next there."""
-    if get_setting(db, "phase") not in ("groups", "knockout") or not _subs(db):
+    if not get_phase(db).in_play or not _subs(db):
         return []
     now, upcoming = service.live(service.matches(db))
     out: list[Delivery] = []
@@ -139,7 +139,7 @@ def due(db: sqlite3.Connection) -> list[Delivery]:
                     message = Message(f"🔥 Tocca a voi! Tavolo {m.field}", f"{m.label} contro {rival}: andate al tavolo.")
                 else:
                     message = Message(f"📣 Preparatevi: Tavolo {m.field}", f"Siete i prossimi contro {rival} (~{m.time}).")
-                out += _deliveries(_subs(db, {team}), Message(message.title, message.body, f"/live/{m.id}"))
+                out += _deliveries(_subs(db, {team}), Message(message.title, message.body, "/io"))
     return out
 
 

@@ -17,9 +17,9 @@
 <body {% if live %}data-live{% endif %} data-server-ts="{{ server_ts }}"{% if demo and (role or me) %} data-demo-role="1"{% endif %} class="{% block body_class %}{% endblock %}">
 {% if demo %}
 <div class="demo-bar">
-  <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">squadre inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
+  <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">coppie inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
   <form method="post" action="/demo/coppia"><button class="small {{ 'ghost' if me and not role }}" type="submit">Coppia</button></form>
-  <form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>
+  {% if cfg.scoring.needs_referee %}<form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>{% endif %}
   <form method="post" action="/demo/admin"><button class="small {{ 'ghost' if role == 'admin' }}" type="submit">Admin</button></form>
   <button class="small ghost demo-help" type="button" data-demo-guide aria-label="Come funziona la demo">?</button>
 </div>
@@ -27,11 +27,13 @@
 <div class="demo-guide" id="demo-guide" hidden>
   <div class="demo-guide-card">
     <h2 style="margin-top:0">Come vuoi provare la demo?</h2>
-    <p class="muted small">Le squadre sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
+    <p class="muted small">Le coppie sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
     <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
-      <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: squadra, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
+      <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: coppia, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
+    {% if cfg.scoring.needs_referee %}
     <form method="post" action="/demo/arbitro" class="demo-role"><button type="submit">
       <strong>🧑‍⚖️ Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
+    {% endif %}
     <form method="post" action="/demo/admin" class="demo-role"><button type="submit">
       <strong>📋 Da organizzatore</strong><span>La regia: coppie, pagamenti, tavoli in tempo reale, notifiche a tutti.</span></button></form>
     <button class="link" type="button" data-demo-close>Guardo e basta</button>
@@ -61,7 +63,7 @@
 
 {% block tabbar %}
 {% set tabs = [
-  ("/io", me.name|truncate(12, True, "…", 0) if me else "Squadra", '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.4 6.6 19.4l1.2-6L3.3 9.3l6.1-.7z"/>'),
+  ("/io", me.name|truncate(12, True, "…", 0) if me else "Coppia", '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.4 6.6 19.4l1.2-6L3.3 9.3l6.1-.7z"/>'),
   ("/gironi", "Tavoli", '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
   ("/classifiche", "Classifica", '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
 ] %}
@@ -88,16 +90,28 @@
   });
 
   // Live pages: swap <main> in place instead of reloading, so the scroll position stays put.
+  // Sections the reader opened or closed keep that state across the swap (some start open, like the invite).
   if (document.body.hasAttribute("data-live")) {
+    const detailsKeys = (main) => {
+      const seen = {};
+      return [...main.querySelectorAll("details")].map((d) => {
+        const base = d.id || d.className;
+        seen[base] = (seen[base] || 0) + 1;
+        return [base + ":" + seen[base], d];
+      });
+    };
     const refresh = async () => {
       const a = document.activeElement;
-      if (document.hidden || (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) || document.querySelector("main details[open]")) return;
+      if (document.hidden || (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName))) return;
       try {
         const r = await fetch(location.href, { cache: "no-store", credentials: "same-origin" });
         if (!r.ok || r.redirected) return;
         const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
         const current = document.querySelector("main");
-        if (fresh && fresh.innerHTML !== current.innerHTML) {
+        if (!fresh) return;
+        const open = new Map(detailsKeys(current).map(([k, d]) => [k, d.open]));
+        for (const [k, d] of detailsKeys(fresh)) if (open.has(k)) d.open = open.get(k);
+        if (fresh.innerHTML !== current.innerHTML) {
           current.replaceWith(fresh);
           document.dispatchEvent(new Event("bp:refresh"));
         }
@@ -224,6 +238,13 @@
     document.querySelectorAll(sel + " > .row").forEach((row) => {
       row.hidden = q && !row.textContent.toLowerCase().includes(q);
     });
+  });
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = "Link copiato ✓"; }
+    catch (_) { prompt("Copia il link:", btn.dataset.copy); }
   });
 
   // Global synchronized tournament clock ticker

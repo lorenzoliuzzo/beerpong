@@ -2,7 +2,7 @@
 {% block title %}Due domande · {{ cfg.title }}{% endblock %}
 {% block content %}
 <h1>📋 Due domande veloci</h1>
-<p class="muted">Servono a stimare le vostre probabilità durante le partite: poi contano i tiri veri.</p>
+<p class="muted">Ci dite quanto mirate bene: a fine serata vediamo se avevate ragione.</p>
 <form method="post" action="/questionario">
   <div class="card">
     <p class="ref-q" style="text-align:left"><strong>Quanto spesso giocate a beer pong?</strong></p>
@@ -30,5 +30,6 @@
   </div>
   <button class="wide" type="submit">Fatto</button>
 </form>
+<p style="text-align:center"><a href="/io">Non ora</a></p>
 <p style="text-align:center;margin-top:12px"><a href="/io">Salta per ora</a></p>
 {% endblock %}

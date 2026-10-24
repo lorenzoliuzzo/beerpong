@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from pywebpush import WebPushException
 
 from app import push, service
-from app.db import get_setting
 from tests.test_app import (  # noqa: F401
     ADMIN_PIN,
-    checkin_form,
+    record,
+    check_in,
     client,
     db_call,
     import_teams,
@@ -48,9 +48,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, dict]]]:
 
 
 def join_as(c: TestClient, team_id: int, sub: int) -> None:
-    c.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
-    t = db_call(service.team, team_id)
-    c.post(f"/checkin/{team_id}", data=checkin_form(t, phone1=f"+39 333 000 {team_id:04d}"))
+    check_in(c, team_id, phone1=f"+39 333 000 {team_id:04d}")
     assert c.post("/push/iscrivi", json=fake_sub(sub)).json() == {"ok": True}
 
 
@@ -84,15 +82,15 @@ def test_start_sends_first_match_then_turn_notices_once(client: TestClient, sent
 
     sent.clear()
     first = next(m for m in db_call(service.matches) if m.field == 1)
-    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 3})
+    record(client, first.id, 6, 3)
     now, _ = db_call(lambda db: service.live(service.matches(db)))
     on_table_1 = next(m for m in now if m.field == 1)
     expected_now = {f"https://fcm.googleapis.com/fcm/send/{t}" for t in (on_table_1.t1, on_table_1.t2)}
     assert {e for e, m in sent if m["title"] == "🔥 Tocca a voi! Tavolo 1"} == expected_now
-    assert all(m["url"].startswith("/live/") for _, m in sent)
+    assert all(m["url"] == "/io" for _, m in sent)
 
     sent.clear()
-    client.post(f"/partita/{first.id}", data={"s1": 10, "s2": 4})  # a correction changes nobody's turn
+    record(client, first.id, 6, 4)  # a correction changes nobody's turn
     assert sent == []
 
 

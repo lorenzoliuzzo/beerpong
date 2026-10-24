@@ -1,0 +1,34 @@
+<!-- @dsCard height=300 -->
+<style>
+  html, body { margin: 0; background: var(--bg); }
+  .cover { position: relative; width: 960px; height: 300px; overflow: hidden; background: var(--bg); font-family: var(--font-sans); }
+  .cover svg { position: absolute; left: 0; top: 0; }
+  .accent { fill: var(--accent); }
+  .ink { fill: var(--board-bg); }
+  [data-theme="dark"] .ink { fill: var(--line); }
+  .beer { fill: var(--beer); }
+  .t1 { fill: var(--t1); }
+  .cup { fill: var(--beer); }
+  .name { position: absolute; left: 40px; bottom: 64px; max-width: 440px; margin: 0; font-size: 96px; line-height: .95; font-weight: 900; letter-spacing: -.02em; color: var(--text); }
+  .tag { position: absolute; left: 40px; bottom: 32px; max-width: 440px; margin: 0; font-size: 14px; color: var(--muted); }
+</style>
+<div class="cover">
+  <!--
+    blocks: accent 176x300 slab, board-bg (dark: line) 304x208 field, beer 200x92, t1 104x92
+    arrangement: one tall orange slab bleeding top and bottom, a dark table beside it, two satellites below
+    pattern: literal motif, the 10-cup rack of the final (apex toward the shooter) as beer discs, because the app draws this rack in every live and referee view
+    scales: discs 36px at a 44px pitch (cup-sm-ish + space-2 gap), corners square like the cards' edges at this scale, discs rx = half
+  -->
+  <svg width="960" height="300" viewBox="0 0 960 300" aria-hidden="true">
+    <rect class="accent" x="480" y="0" width="176" height="300"/>
+    <rect class="ink" x="656" y="0" width="304" height="208"/>
+    <rect class="beer" x="656" y="208" width="200" height="92"/>
+    <rect class="t1" x="856" y="208" width="104" height="92"/>
+    <circle class="cup" cx="742" cy="40" r="18"/><circle class="cup" cx="786" cy="40" r="18"/><circle class="cup" cx="830" cy="40" r="18"/><circle class="cup" cx="874" cy="40" r="18"/>
+    <circle class="cup" cx="764" cy="84" r="18"/><circle class="cup" cx="808" cy="84" r="18"/><circle class="cup" cx="852" cy="84" r="18"/>
+    <circle class="cup" cx="786" cy="128" r="18"/><circle class="cup" cx="830" cy="128" r="18"/>
+    <circle class="cup" cx="808" cy="172" r="18"/>
+  </svg>
+  <h1 class="name">Beer<br>Pong</h1>
+  <p class="tag">Six cups a side, a phone in every hand.</p>
+</div>

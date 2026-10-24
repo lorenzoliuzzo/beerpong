@@ -37,7 +37,7 @@
   {% endfor %}
 
   <a class="btn ghost wide" href="/admin/gironi?base={{ base }}">🔀 Rimescola</a>
-  {% if present_only and cfg.phase == "setup" %}
+  {% if present_only and cfg.phase.is_setup %}
     <form method="post" action="/admin/avvia"
           onsubmit="return confirm('Partire con questi gironi? Le coppie non presenti resteranno fuori.')">
       <input type="hidden" name="seed" value="{{ p.seed }}">

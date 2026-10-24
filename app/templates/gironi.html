@@ -10,7 +10,7 @@
   {% set nm = dash.next_match %}
   <a class="banner {{ 'hot' if dash.status == 'now' else ('warm' if dash.status == 'next' else ('gold' if dash.champion else 'todo')) }}" href="/io">
     <div class="label">★ {{ t.name }} · il vostro profilo →</div>
-    {% if cfg.phase == "setup" %}Check-in fatto ✓ Girone, tavolo e prima partita sono nel profilo.
+    {% if cfg.phase.is_setup %}Check-in fatto ✓ Girone, tavolo e prima partita sono nel profilo.
     {% elif dash.champion %}<div class="headline">🏆 Campioni!</div>
     {% elif dash.status == "now" %}<div class="headline">🔥 Tocca a voi · Tavolo {{ nm.field }}</div>
     {% elif dash.status == "next" %}<div class="headline">📣 Preparatevi · Tavolo {{ nm.field }}</div>{{ ui.countdown(nm) }}
@@ -20,15 +20,16 @@
   </a>
   {% if dash.to_split %}
     <a class="banner todo" href="/canestri/{{ dash.to_split[0].id }}">
-      Dividete i canestri tra {{ t.p1 }} e {{ t.p2 }} ({{ dash.to_split|length }} partit{{ 'a' if dash.to_split|length == 1 else 'e' }}) →
+      Dividete i bicchieri tra {{ t.p1 }} e {{ t.p2 }} ({{ dash.to_split|length }} partit{{ 'a' if dash.to_split|length == 1 else 'e' }}) →
     </a>
   {% endif %}
 {% endif %}
 
-{% if cfg.phase == "setup" and not dash %}
+{% if cfg.phase.is_setup and not dash %}
   <div class="page-head">
     <h1>Benvenuti! 🍻</h1>
-    <p>Appena arrivate, fate il <strong>check-in</strong> scansionando il QR code sul tavolo.</p>
+    <p>Alla serata inquadrate il <strong>QR all'ingresso</strong>: vi segna presenti.</p>
+    <p><a class="btn small ghost" href="/arrivi">👀 Chi è arrivato</a></p>
   </div>
   {% if overview %}
   <div class="stats-grid">
@@ -51,7 +52,7 @@
   {% endif %}
   <p><a class="btn ghost wide" href="/checkin">Il tuo compagno ha già fatto il check-in? Entra qui</a></p>
 
-{% elif cfg.phase == "finished" and final %}
+{% elif cfg.phase == Phase.FINISHED and final %}
   <div class="banner gold" style="text-align:center">
     <div class="label">Campioni del Torneo</div>
     <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
@@ -62,7 +63,7 @@
 <div class="slim-head">
   <div>
     <h1 style="margin:0">Tavoli</h1>
-    {% if cfg.phase != "setup" %}
+    {% if cfg.phase.started %}
       <span class="muted small">Fase attiva: <strong>{{ current_phase_label }}</strong></span>
     {% endif %}
   </div>
@@ -77,12 +78,12 @@
 
 {{ ui.progress(progress) }}
 
-{% if cfg.phase in ("groups", "knockout", "finished") %}
+{% if cfg.phase.started %}
   <div class="stats-grid" style="margin-bottom:12px">
     <div class="stat-box">
       <span class="lbl">Litri bevuti</span>
       <div class="val">{{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L 🍺</div>
-      <span class="sub">1 L a squadra / gara</span>
+      <span class="sub">1 L a coppia / gara</span>
     </div>
     <div class="stat-box">
       <span class="lbl">Bicchieri</span>
@@ -97,7 +98,7 @@
   </div>
 {% endif %}
 
-{% if cfg.phase == "setup" %}
+{% if cfg.phase.is_setup %}
   <a class="btn ghost wide" href="/programma" style="margin:0 0 12px">📅 Programma delle partite · si comincia alle {{ cfg.start_time }}</a>
 {% endif %}
 
@@ -108,7 +109,7 @@
   </p>
 {% endif %}
 
-{% if table_views and cfg.phase != "setup" %}
+{% if table_views and cfg.phase.started %}
   <!-- SWITCH PRINCIPALE DELLA FASE CORRENTE: TAVOLI vs GRUPPI DELLA FASE -->
   <nav class="segmented" style="margin-bottom:12px">
     <a href="/gironi?sez=tavoli"
@@ -298,7 +299,7 @@
             </div>
             <div class="table-wrap" style="margin-bottom:10px">
               <table>
-                <tr><th>Squadra</th><th>Origine</th><th>Esito ({{ tv.phase_label|replace(" di finale", "") }})</th></tr>
+                <tr><th>Coppia</th><th>Origine</th><th>Esito ({{ tv.phase_label|replace(" di finale", "") }})</th></tr>
                 {% for m in tv.phase_matches %}
                   {% for side, tid, tname in [(1, m.t1, m.n1), (2, m.t2, m.n2)] %}
                     <tr class="{{ 'q' if m.done and m.winner == tid }} {{ 'mine' if me and tid == me.id }}">
@@ -360,9 +361,9 @@
 
         <input type="search"
                id="team-group-search"
-               placeholder="🔍 Cerca squadra o giocatore…"
+               placeholder="🔍 Cerca coppia o giocatore…"
                oninput="searchTeamInGroups(this.value)"
-               aria-label="Cerca squadra nei gironi"
+               aria-label="Cerca coppia nei gironi"
                style="margin-top:6px">
       </div>
 
@@ -404,7 +405,7 @@
         {% endfor %}
       </div>
 
-      {% if projection and cfg.phase == "groups" %}
+      {% if projection and cfg.phase == Phase.GROUPS %}
         <details class="section" style="margin-top:16px">
           <summary>🔮 Accoppiamenti Ottavi (simulazione live)</summary>
           <div class="body">
@@ -465,7 +466,7 @@
 
 <div class="foot">
   {% if me %}
-    <form method="post" action="/esci-squadra" onsubmit="return confirm('Scollegare questo telefono dalla squadra?')"><button class="link" type="submit">Scollega telefono</button></form> ·
+    <form method="post" action="/esci-squadra" onsubmit="return confirm('Scollegare questo telefono dalla coppia?')"><button class="link" type="submit">Scollega telefono</button></form> ·
   {% endif %}
   {% if role %}
     {{ "Admin" if role == "admin" else "Arbitro tavolo " ~ my_field }} ·

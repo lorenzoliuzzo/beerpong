@@ -45,13 +45,13 @@
           <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
         </form>
       {% else %}
-        {% if st.phase == "salvezza" %}
+        {% if st.phase == LivePhase.SALVEZZA %}
           <div class="ref-phase salvezza">🛟 <strong>Tiro della salvezza</strong>: {{ team[rv.turn_side].name }}, un tiro a testa.<br>
-            <span class="small">Se segnano almeno un canestro si va all'overtime, se no vince {{ team[3 - rv.turn_side].name }}.</span></div>
-        {% elif st.phase == "overtime" %}
+            <span class="small">Se segnano almeno un bicchiere si va all'overtime, se no vince {{ team[3 - rv.turn_side].name }}.</span></div>
+        {% elif st.phase == LivePhase.OVERTIME %}
           <div class="ref-phase overtime">⚔️ <strong>Overtime</strong> · {{ st.rack_cups }} bicchieri a testa</div>
         {% endif %}
-        {% if m.duration and st.phase == "play" %}
+        {% if m.duration and st.phase == LivePhase.PLAY %}
           <form method="post" action="/partita/{{ m.id }}" class="ref-win ref-timeout" hidden>
             <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
             {% if m.stage == "ko" and st.side_hits(1) == st.side_hits(2) %}

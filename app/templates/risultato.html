@@ -6,7 +6,7 @@
 <p class="muted" style="margin-top:0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.done %} · <strong>già inserito {{ m.s1 }}–{{ m.s2 }}</strong>, puoi correggerlo{% endif %}</p>
 
 <form method="post" action="/risultato/{{ m.id }}" id="res-form">
-  <p class="small">Toccate i bicchieri <strong>centrati</strong> sul rack degli avversari: il conteggio si fa da solo.</p>
+  <p class="small">{{ "Tocca" if m.mode.needs_referee else "Toccate" }} i bicchieri <strong>centrati</strong> sul rack degli avversari: il conteggio si fa da solo.</p>
   {% for side in (1, 2) %}
     {% set team = T[m.t1 if side == 1 else m.t2] %}
     <div class="card {{ 'mine' if my_side == side }}">
@@ -51,4 +51,16 @@
     }
   });
 </script>
+{% if role == "admin" and not m.done and not m.started_at %}
+  <form class="card" method="post" action="/admin/partita/{{ m.id }}/modalita">
+    <label for="modalita">Modalità di questa partita</label>
+    <div style="display:flex;gap:8px">
+      <select id="modalita" name="modalita">
+        <option value="">Come il torneo</option>
+        {% for key, label in scoring_modes.items() %}<option value="{{ key }}" {{ 'selected' if m.mode == key }}>{{ label }}</option>{% endfor %}
+      </select>
+      <button class="ghost" type="submit">Cambia</button>
+    </div>
+  </form>
+{% endif %}
 {% endblock %}

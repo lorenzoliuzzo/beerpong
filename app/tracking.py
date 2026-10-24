@@ -13,6 +13,8 @@ from .service import TournamentError
 # and rebuild tournament-wide context only when any report or result changes.
 _state_cache: dict[int, tuple[tuple[int, int], live.LiveState]] = {}
 _context_cache: list[tuple[tuple, dict]] = []
+# The win chance is a simulation: run it again only when its inputs move (a hit, or one shot less of time).
+_odds_cache: dict[int, tuple[tuple, float]] = {}
 
 
 def reports(db: sqlite3.Connection, match_id: int) -> list[live.Report]:
@@ -280,7 +282,12 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float) -> dict:
         prob1 = 1.0 if st.winner_side == 1 else 0.0
     else:
         left = live.shots_left_per_team(st, now, duration)
-        prob1 = live.win_probability(cups_to_hit, rates, left, seed=match_id)
+        key = (cups_to_hit, rates, left)
+        cached = _odds_cache.get(match_id)
+        if cached is None or cached[0] != key:
+            cached = (key, live.win_probability(cups_to_hit, rates, left, seed=match_id))
+            _odds_cache[match_id] = cached
+        prob1 = cached[1]
 
     def team_block(side: int, team_id: int) -> dict:
         t = team_rows[team_id]
@@ -362,6 +369,18 @@ def apply_live_splits(db: sqlite3.Connection, match_id: int) -> None:
                     f"UPDATE matches SET {a} = ?, {b} = ? WHERE id = ?",
                     (st.hits.get((side, 1), 0), st.hits.get((side, 2), 0), match_id),
                 )
+
+
+def save_shot_hits(db: sqlite3.Connection, match_id: int) -> None:
+    """The cups the referee saw go into the same table the couples fill in, with who sank each:
+    every heatmap reads one source, however the match was scored."""
+    st = state(db, match_id)
+    with db:
+        db.execute("DELETE FROM cup_hits WHERE match_id = ?", (match_id,))
+        db.executemany(
+            "INSERT OR IGNORE INTO cup_hits(match_id, side, cup, player) VALUES (?, ?, ?, ?)",
+            [(match_id, s.side, s.removed, s.player) for s in st.shots if s.removed],
+        )
 
 
 # --- Tournament-wide shot statistics ------------------------------------------------------

@@ -2,27 +2,45 @@
 {% import "_ui.html" as ui with context %}
 {% block content %}
 {% set ov = overview %}
-{% set setup = cfg.phase == "setup" %}
+{% set setup = cfg.phase.is_setup %}
 <h1>Organizzazione</h1>
+{% set paid_n = reg.confirmed|length %}
+{% set placed_n = reg.placed|length %}
+<ol class="admin-steps" aria-label="Fasi dell'organizzazione">
+  <li class="{{ 'done' if info.created else 'now' }}"><a href="/admin/torneo">
+    <b>1 · Torneo</b><span>{{ (info.date[8:10] ~ "/" ~ info.date[5:7] ~ " · " ~ info.target_teams ~ " coppie") if info.created else "da creare" }}</span></a></li>
+  <li class="{{ 'done' if placed_n >= reg.target else ('now' if info.created and setup else '') }}"><a href="#coppie">
+    <b>2 · Iscrizioni</b><span>{{ placed_n }}/{{ reg.target }} posti{% if reg.waiting %} · {{ reg.waiting|length }} in attesa{% endif %}</span></a></li>
+  <li class="{{ 'done' if placed_n and paid_n == placed_n else ('now' if placed_n and setup else '') }}"><a href="#pagamenti">
+    <b>3 · Pagamenti</b><span>{{ paid_n }}/{{ placed_n }} confermate</span></a></li>
+  <li class="{{ 'now' if not setup }}"><a href="{{ '#checkin' if setup else '#torneo' }}">
+    <b>4 · Giorno del torneo</b><span>{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></a></li>
+</ol>
 <nav class="subnav" aria-label="Sezioni">
-  <a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
+  <a href="/admin/torneo">Info torneo</a><a href="#pagamenti">Pagamenti</a><a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
   <a href="#solo-serata">Solo serata</a><a href="#notifiche">Notifiche</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
 </nav>
 
 {% set n = chk.players|length %}
 {% if setup %}
+{# Only the couples with a place count here: the waiting list is not expected to pay yet. #}
+{% set placed_ids = reg.placed|map(attribute="id")|list %}
+{% set pn = chk.players|selectattr("id", "in", placed_ids)|list|length %}
+{% macro placed_failing(key) %}{{ chk.failing(key)|selectattr("id", "in", placed_ids)|list|length }}{% endmacro %}
+{% set done_n = chk.done|selectattr("id", "in", placed_ids)|list|length %}
 <div class="summary">
-  <a href="#coppie" data-show="nonpagate" class="tile {{ 'ok' if not chk.failing('nonpagate') }}"><div class="big">{{ n - chk.failing('nonpagate')|length }}/{{ n }}</div><span class="muted small">pagate</span></a>
-  <a href="#coppie" data-show="fuorigruppo" class="tile {{ 'ok' if not chk.failing('fuorigruppo') }}"><div class="big">{{ n - chk.failing('fuorigruppo')|length }}/{{ n }}</div><span class="muted small">nel gruppo</span></a>
-  <a href="#coppie" data-show="senzatelefono" class="tile {{ 'ok' if not chk.failing('senzatelefono') }}"><div class="big">{{ n - chk.failing('senzatelefono')|length }}/{{ n }}</div><span class="muted small">con telefono</span></a>
-  <a href="#coppie" data-show="dasistemare" class="tile {{ 'ok' if chk.done|length == n }}"><div class="big">{{ chk.done|length }}/{{ n }}</div><span class="muted small">tutto ok</span></a>
+  {% for key, label in (("nonpagate", "pagate"), ("fuorigruppo", "nel gruppo"), ("senzatelefono", "con telefono")) %}
+    {% set bad = placed_failing(key)|int %}
+    <a href="#coppie" data-show="{{ key }}" class="tile {{ 'ok' if not bad }}"><div class="big">{{ pn - bad }}/{{ pn }}</div><span class="muted small">{{ label }}</span></a>
+  {% endfor %}
+  <a href="#coppie" data-show="dasistemare" class="tile {{ 'ok' if done_n == pn }}"><div class="big">{{ done_n }}/{{ pn }}</div><span class="muted small">tutto ok</span></a>
 </div>
 {% else %}
 {% set late = tables|selectattr("next_match")|selectattr("next_match.time", "lt", server_hm)|list %}
 <div class="summary">
   <a href="#torneo" class="tile {{ 'ok' if played == total }}"><div class="big">{{ played }}/{{ total }}</div><span class="muted small">partite</span></a>
   <a href="#torneo" class="tile {{ 'ok' if not late }}"><div class="big">{{ late|length }}</div><span class="muted small">tavoli in ritardo</span></a>
-  <a href="/arbitro" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">canestri da dividere</span></a>
+  <a href="#torneo" class="tile {{ 'ok' if not missing_splits }}"><div class="big">{{ missing_splits }}</div><span class="muted small">bicchieri da dividere</span></a>
   <a href="#notifiche" class="tile ok"><div class="big">{{ push_subs[0] }}</div><span class="muted small">telefoni avvisati</span></a>
 </div>
 {% endif %}
@@ -67,7 +85,7 @@
     <details>
       <summary><strong>Incolla un elenco di pagamenti</strong></summary>
       <form method="post" action="/admin/pagamenti/elenco">
-        <label for="elenco-pagati">Una squadra per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
+        <label for="elenco-pagati">Una coppia per riga: quelle con ✅ diventano «pagato». Le altre restano come sono.</label>
         <textarea id="elenco-pagati" name="elenco" required></textarea>
         <button class="wide" type="submit">Segna pagati</button>
       </form>
@@ -84,8 +102,8 @@
       <details>
         <summary><strong>Importa un elenco</strong></summary>
         <form method="post" action="/admin/squadre/importa">
-          <label for="testo">Una riga per iscrizione: <code>Squadra; Giocatore 1; Giocatore 2; Telefono</code><br>
-            Senza giocatore 2 = coppia parziale. Senza nome squadra = iscritto solo serata (nome in «Giocatore 1»).</label>
+          <label for="testo">Una riga per iscrizione: <code>Coppia; Giocatore 1; Giocatore 2; Telefono</code><br>
+            Senza giocatore 2 = coppia parziale. Senza nome coppia = iscritto solo serata (nome in «Giocatore 1»).</label>
           <textarea id="testo" name="testo" required></textarea>
           <button class="wide" type="submit">Importa</button>
         </form>
@@ -95,7 +113,52 @@
 </details>
 
 {% endset %}
-{% if setup %}{{ coppie_section }}{% endif %}
+{% if setup %}
+<details class="section" id="pagamenti" open>
+  <summary>Pagamenti <span class="pill {{ 'ok' if paid_n == placed_n else 'warn' }}">{{ paid_n }}/{{ placed_n }}</span></summary>
+  <div class="body">
+    <p class="muted small">Il pagamento è l'unica conferma: ogni coppia scrive il suo codice nella causale. Incolla l'estratto Satispay o del conto (anche tutto, righe in più non danno fastidio).</p>
+    <form method="post" action="/admin/pagamenti/estratto">
+      <label for="estratto">Estratto pagamenti</label>
+      <textarea id="estratto" name="estratto" required placeholder="24/10 Satispay da Mario R. 10,00 € BP007"></textarea>
+      <button class="wide" type="submit">Conferma i pagamenti trovati</button>
+    </form>
+    {% if reg.unpaid %}
+      <h3>Da pagare ({{ reg.unpaid|length }})</h3>
+      <div class="list">
+        {% for t in reg.unpaid %}
+          <div class="row">
+            <div class="grow"><div class="title">{{ t.name }} <span class="pill">{{ pay_code(t.id) }}</span></div><span class="muted small">{{ ui.players(t) }}</span></div>
+            {% if t.phone1 %}<a class="btn small ghost" target="_blank" rel="noopener"
+               href="https://wa.me/{{ wa_number(t.phone1) }}?text={{ pay_message(info, t)|urlencode }}">💬 Sollecita</a>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% set to_welcome = reg.confirmed|rejectattr("organizer")|list %}
+    {% if to_welcome %}
+      <details>
+        <summary><strong>Confermate ({{ to_welcome|length }})</strong>: manda a ognuna il suo link di accesso</summary>
+        <div class="list">
+          {% for t in to_welcome %}
+            <div class="row">
+              <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
+              {% for i in (1, 2) if t["phone" ~ i] %}<a class="btn small" target="_blank" rel="noopener"
+                 href="https://wa.me/{{ wa_number(t['phone' ~ i]) }}?text={{ access_message(info, t, i)|urlencode }}">💬 {{ t["p" ~ i] or "Accesso" }}</a>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+    {% if reg.waiting %}
+      <h3>Lista d'attesa ({{ reg.waiting|length }})</h3>
+      <p class="muted small">Oltre i {{ reg.target }} posti, in ordine di iscrizione: entrano se una coppia rinuncia (eliminala dalla scheda) o se aumenti i posti.</p>
+      <div class="list">{% for t in reg.waiting %}<div class="row"><a class="grow" href="/admin/squadre/{{ t.id }}">{{ loop.index }}. {{ t.name }}</a>{% if t.paid %}<span class="pill ok">ha pagato</span>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
+  </div>
+</details>
+{{ coppie_section }}
+{% endif %}
 
 <details class="section" id="torneo" {{ 'open' if not setup }}>
   <summary>Torneo <span class="pill accent">{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></summary>
@@ -117,7 +180,7 @@
       <a class="btn ghost wide" href="/admin/gironi">Prova i gironi prima di partire</a>
       <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} tavoli.</p>
     {% else %}
-      {% if cfg.phase == "groups" %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
+      {% if cfg.phase == Phase.GROUPS %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
       {% if missing_splits %}<p class="muted small">{{ missing_splits }} punteggi non ancora divisi tra i giocatori.</p>{% endif %}
       {% if tables %}
         <div class="list regia">
@@ -127,34 +190,31 @@
               <div class="grow">
                 <div class="title">Tavolo {{ tv.field }} <span class="muted small">{{ tv.group_letters }}</span>
                   {% if tv in late %}<span class="pill warn">in ritardo</span>{% endif %}</div>
-                {% if m %}<span class="small">{{ m.n1 }} <strong>{{ "%d–%d"|format(*m.live_score) if m.live_score else "vs" }}</strong> {{ m.n2 }}</span>
+                {% if m %}<span class="small">{{ m.n1 }} <strong>vs</strong> {{ m.n2 }}</span>
                   <div class="muted small">{{ m.label }} · dalle {{ m.time }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</div>
                 {% else %}<span class="muted small">{{ "Finito" if tv.total_count and tv.done_count == tv.total_count else "In attesa" }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</span>{% endif %}
               </div>
-              <a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
+              {% if m and m.mode.by_shots %}<a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
+              {% elif m %}<a class="btn small" href="/risultato/{{ m.id }}">Risultato</a>{% endif %}
             </div>
           {% endfor %}
         </div>
       {% endif %}
       <a class="btn ghost wide" href="/arbitro">Tutte le partite e i risultati</a>
-      {% if cfg.phase in ("groups", "knockout") %}
+      {% if cfg.phase.in_play %}
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
           <div style="display:flex;gap:8px">
-            <input id="minuti" name="minuti" type="number" inputmode="numeric" value="5" required>
+            <input id="minuti" name="minuti" type="number" inputmode="numeric" placeholder="5" required>
             <button type="submit" class="ghost">Sposta orari</button>
           </div>
         </form>
       {% endif %}
-      {% if cfg.phase == "knockout" %}
+      {% if cfg.phase == Phase.KNOCKOUT %}
         <form method="post" action="/admin/riapri" onsubmit="return confirm('Riaprire i gironi? Il tabellone verrà rigenerato.')">
           <button type="submit" class="ghost wide">Riapri gironi per correggere un risultato</button>
         </form>
       {% endif %}
-      <form method="post" action="/admin/annulla" style="margin-top:24px;text-align:center"
-            onsubmit="return confirm('Cancellare gironi, programma e TUTTI i risultati? Check-in e pagamenti restano.') && confirm('Sicuro? Non si torna indietro.')">
-        <button type="submit" class="link" style="color:var(--err)">Annulla sorteggio e risultati…</button>
-      </form>
     {% endif %}
   </div>
 </details>
@@ -236,14 +296,9 @@
   <div class="body">
     <a class="btn wide" href="/admin/qr">QR code di check-in da stampare</a>
     <p class="url muted">{{ checkin_url }}</p>
-    <form method="post" action="/admin/chiave" onsubmit="return confirm('Il QR già stampato smetterà di funzionare. Continuare?')">
-      <button type="submit" class="ghost small">Genera nuova chiave</button>
-    </form>
-    <h3>PIN staff</h3>
-    <div class="list">
-      <div class="row"><span>Admin</span><code>{{ admin_pin }}</code></div>
-      {% for f, pin in pins %}<div class="row"><span>Arbitro tavolo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
-    </div>
+    <p class="muted small">Per invalidare il QR stampato: <a href="#pericolo">Zona pericolosa</a>.</p>
+    <h3>PIN admin</h3>
+    <details class="pin-reveal"><summary>Mostra il PIN admin</summary><p><code>{{ admin_pin }}</code></p></details>
     <form method="post" action="/admin/pin">
       <label for="pin">Nuovo PIN admin (almeno 6 cifre)</label>
       <div style="display:flex;gap:8px"><input id="pin" name="pin" inputmode="numeric" required><button type="submit" class="ghost">Cambia</button></div>
@@ -255,12 +310,10 @@
   <summary>Impostazioni</summary>
   <div class="body">
     <form method="post" action="/admin/impostazioni">
-      <label for="title">Nome del torneo</label>
-      <input id="title" name="title" value="{{ cfg.title }}" required>
-      <label for="start_time">Inizio del torneo</label>
-      <input id="start_time" name="start_time" type="time" value="{{ cfg.start_time }}" required>
-      <label for="fields">Tavoli</label>
-      <input id="fields" name="fields" type="number" inputmode="numeric" min="1" max="20" value="{{ cfg.fields }}" required>
+      <p class="muted small">Nome, data, posti e tavoli sono in <a href="/admin/torneo">Info torneo</a>.</p>
+      <input type="hidden" name="title" value="{{ cfg.title }}">
+      <input type="hidden" name="start_time" value="{{ cfg.start_time }}">
+      <input type="hidden" name="fields" value="{{ cfg.fields }}">
       <label for="group_min">Durata partita girone (min)</label>
       <input id="group_min" name="group_min" type="number" inputmode="numeric" min="1" value="{{ cfg.group_min }}" required>
       <label for="ko_min">Durata eliminazione diretta (min)</label>
@@ -272,6 +325,25 @@
       <p class="muted small">Tavoli, durate e inizio valgono quando si generano programma e tabellone: se si avvia dopo l'orario, si parte subito. La finale è senza limite di tempo.</p>
       <button class="wide" type="submit">Salva</button>
     </form>
+  </div>
+</details>
+
+{# Irreversible actions live here, away from the routine toggles. #}
+<details class="section danger-zone" id="pericolo">
+  <summary>Zona pericolosa</summary>
+  <div class="body">
+    <form method="post" action="/admin/chiave" onsubmit="return confirm('Il QR già stampato smetterà di funzionare. Continuare?')">
+      <p class="muted small">Una nuova chiave rende inutile il QR di check-in già stampato.</p>
+      <button type="submit" class="danger wide">Genera nuova chiave del QR</button>
+    </form>
+    {% if not setup %}
+      <form method="post" action="/admin/annulla">
+        <p class="muted small">Cancella gironi, programma e <strong>tutti i risultati</strong>; check-in e pagamenti restano. Non si torna indietro.</p>
+        <label for="conferma">Per confermare scrivi ANNULLA</label>
+        <input id="conferma" name="conferma" required autocomplete="off" pattern="ANNULLA">
+        <button type="submit" class="danger wide">Annulla sorteggio e risultati</button>
+      </form>
+    {% endif %}
   </div>
 </details>
 

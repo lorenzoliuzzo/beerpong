@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
-{% block title %}Squadra · {{ cfg.title }}{% endblock %}
+{% block title %}Coppia · {{ cfg.title }}{% endblock %}
 {% block content %}
 <div class="slim-head">
-  <h1>Squadra</h1>
+  <h1>Coppia</h1>
   {% if tournament_liters is defined %}
     <span class="pill">🍺 {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti nel torneo</span>
   {% endif %}
@@ -11,13 +11,13 @@
 <div class="card">
   <strong>Giocate al torneo?</strong>
   <p class="muted small">Entrate nel profilo della vostra coppia: girone, tavolo, prossime partite, litri bevuti e avvisi sul telefono quando tocca a voi.</p>
-  {% if cfg.phase == "setup" %}
-    <p class="small">Appena arrivati fate il <strong>check-in</strong> scansionando il QR code sul tavolo.</p>
+  {% if cfg.phase.is_setup %}
+    <p class="small">Alla serata inquadrate il <strong>QR all'ingresso</strong>: vi segna presenti.</p>
   {% endif %}
-  <a class="btn wide" href="/checkin">Entra con il vostro numero</a>
+  <a class="btn wide" href="/checkin">Entra con il tuo numero</a>
 </div>
 {% if teams %}
-  <h2 style="margin-top:18px">Tutte le squadre</h2>
+  <h2 style="margin-top:18px">Tutte le coppie</h2>
   <div class="list">
     {% for t in teams.values() if t.checked_in %}
       <a class="row" href="/squadra/{{ t.id }}" style="text-decoration:none;color:inherit">
