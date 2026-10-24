@@ -22,7 +22,7 @@ The interface of a one-night beer pong tournament app: every player on their own
 ## Visual foundations
 
 - **Ground:** warm paper `bg` (#f6f2ea) with white `surface` cards in light; espresso `bg` (#12100d) in dark. The theme follows the OS (`prefers-color-scheme`); there is no switch. The TV board is always dark (`board-*` tokens).
-- **One hue:** `accent` orange does the brand, the action, the selection *and* "this is you". Status colours: `ok` green, `warn-soft` yellow (no warn ink), `err` red. The live page adds team colours `t1` blue and `t2` red; couples can also pick their own colour for their avatar and profile stripe. `gold`, `beer` and `voucher` are three near-yellows/oranges for champions, cups and the free-beer coupon. A blue `heat-1`…`heat-7` ramp draws hit maps.
+- **Three jobs, three hues:** `accent` orange is brand and action (links, buttons, active tab, selection); `you` teal marks "this is you"; `live` (the red of `err`) marks what is happening now. Status colours: `ok` green, `warn-soft` yellow (no warn ink), `err` red. The live page adds team colours `t1` blue and `t2` red; couples can also pick their own colour for their avatar and profile stripe. `gold`, `beer` and `voucher` are three near-yellows/oranges for champions, cups and the free-beer coupon. A blue `heat-1`…`heat-7` ramp draws hit maps.
 - **Shape:** soft cards (`radius` 14px) with 1px `line` borders and no shadows; pills (`radius-pill`) for status; round avatars; cups as circles in a triangle rack.
 - **Type:** the platform system font, no web fonts. Hierarchy comes almost entirely from weight: 700, 800 and 900 make up most of the 130 weight declarations.
 - **Layout:** phone-only, one column, max 560px (`content-max`), 16px gutter, fixed bottom tab bar with three tabs (Squadra / Tavoli / Classifica), sticky top bar with the title and a "Staff" link.
@@ -33,7 +33,7 @@ The interface of a one-night beer pong tournament app: every player on their own
 
 1. Primary action = filled `accent` button, full width (`.wide`) at the end of a form. Secondary = `.ghost`. Destructive = `.danger` (`err`) or a red link, behind `confirm()`. Referee start/confirm = `.ref-go` (`ok`).
 2. The status of a team or row (paid, arrived, live) is a **pill**. The status of *the page for you* (your next match, a to-do) is a **banner** at the top.
-3. "Mine" = `accent-soft` background, `stripe-mine`, or the ★ VOI badge. Winners = `ok` text. Qualifiers = `ok` stripe; best thirds = `gold` stripe.
+3. "Mine" = `you-soft` background, a `you` border or stripe, or the ★ VOI badge (`.badge.you`). Winners = `ok` text. Qualifiers = `ok` stripe; best thirds = `gold` stripe.
 4. In the live page team 1 is `t1` (blue, left), team 2 is `t2` (red, right).
 5. Body text sits on `bg` or `surface` only. Do not set white text on `ok`, `err`, `t1`, `t2` or `voucher` in dark mode, nor `accent` text on `accent-soft` (see each token's note).
 

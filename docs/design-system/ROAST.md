@@ -22,14 +22,13 @@ A critical review of branch `torneo`, updated on branch `claude/beerpong-app-rev
 - **Strings as a state machine**: `Phase`, `Scoring` and `LivePhase` in `app/states.py` are `StrEnum`s; code and templates ask `cfg.phase.is_setup`, `m.mode.by_shots` and the like.
 - **Admin page is a junk drawer**: `/admin` is split via segmented navigation into "Preparazione" (info torneo, iscrizioni/coppie, pagamenti, accessi e impostazioni) and "Serata" (tavoli live, presenze/check-in, solo serata, notifiche, zona pericolosa). Broadcast to every phone requires typing `INVIA` to prevent accidental mass pushes.
 - **Three ways to arrive, four badges**: arrival and check-in vocabulary consolidated: "📱 collegato" remains strictly for paired phones; player arrivals are "✓ arrivato/a <ora>"; couple presence is uniformly "Check-in fatto ✓" / "✓ presente" once both are at the venue.
+- **One orange did eight jobs**: `accent` orange is now only brand and action (links, buttons, active tab, selection). "You" has its own teal `you` / `you-soft` (★ VOI pill, your rows, matches, group and table); live and urgent ("in campo" banner, match now on a table, overtime) use `live`, the red of `err`; scores, counters and group letters are plain text on a neutral fill. A test keeps orange off the "mine" and live rules.
 
 ## Still open
 
 **Two homes, five rankings.** "Tavoli" is the home and owns Programma, Tabellone and the live pages; Classifica has five views and Eliminazione repeats Tabellone.
 
 **Players still get homework.** The cup-split nag after every match, for rankings the app itself calls skewed.
-
-**One orange does eight jobs.** Brand, actions, links, active tab, "you", badges, referee score and the urgent banner.
 
 **Everything is bold.** 109 declarations at 700–900 against 4 at 400.
 

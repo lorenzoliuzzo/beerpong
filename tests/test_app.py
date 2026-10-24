@@ -1703,6 +1703,17 @@ def test_every_css_variable_used_is_defined() -> None:
     assert used - defined == set()
 
 
+def test_you_and_live_have_their_own_colour_not_the_brand_orange() -> None:
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "style.css").read_text()
+    rules = re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+    for selector, body in rules:
+        selector = selector.strip()
+        if re.search(r"\.mine\b|\.me\b|mine-|my-", selector):
+            assert "--accent" not in body, selector
+        if re.search(r"\.banner\.hot|\.tnow|\.nowcard|\.running|now-callout|regia-now", selector) and "ref-go" not in selector:
+            assert "--accent" not in body, selector
+
+
 def test_only_the_admin_has_a_pin(client: TestClient) -> None:
     db_call(lambda db: (set_setting(db, "ref_pin_1", "654321"), set_setting(db, "referees", "pin"), db.commit()))
     init_db()  # an older database: its table PINs go, and "PIN only" becomes "organizers only"

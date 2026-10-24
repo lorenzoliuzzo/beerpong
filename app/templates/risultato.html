@@ -11,7 +11,7 @@
     {% set team = T[m.t1 if side == 1 else m.t2] %}
     <div class="card {{ 'mine' if my_side == side }}">
       <div class="section-head" style="margin:0 0 8px">
-        <h2 style="margin:0">{{ team.name }}{% if my_side == side %} <span class="badge">VOI</span>{% endif %}</h2>
+        <h2 style="margin:0">{{ team.name }}{% if my_side == side %} <span class="badge you">VOI</span>{% endif %}</h2>
         <span class="pill"><strong data-count="{{ side }}">{{ hits[side]|length }}</strong> / {{ cups }} 🥤</span>
       </div>
       <p class="muted small" style="margin:0 0 6px">Bicchieri messi da {{ team.name }} (rack avversario, punta verso di voi)</p>
