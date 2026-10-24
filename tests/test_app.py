@@ -1006,6 +1006,7 @@ def test_wrong_numbers_are_throttled(client: TestClient) -> None:
     for _ in range(app_main.ATTEMPT_MAX_FAILURES):
         client.post("/checkin/accedi", data={"phone": "3330000000"})
     assert "Troppi tentativi" in client.post("/checkin/accedi", data={"phone": "3330000000"}).text
+    login(client, ADMIN_PIN)  # the crowd's typos do not lock the admin out
 
 
 def test_admin_control_room_during_the_groups(client: TestClient) -> None:

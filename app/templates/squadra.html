@@ -427,7 +427,11 @@
 {% endif %}
 
 <script>
+// The page refreshes itself every 20 s: show the chosen tab again after each refresh.
+let teamMatchesMode = 'phase';
+document.addEventListener('bp:refresh', () => switchTeamMatches(teamMatchesMode));
 function switchTeamMatches(mode) {
+  teamMatchesMode = mode;
   const pPhase = document.getElementById('pane-matches-phase');
   const pDone = document.getElementById('pane-matches-done');
   const tPhase = document.getElementById('tab-matches-phase');

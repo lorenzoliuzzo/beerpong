@@ -77,15 +77,20 @@ def redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
 
-def _throttled(request: Request) -> bool:
-    failures = _failures[request.client.host if request.client else "?"]
+def _attempts(request: Request, scope: str) -> deque[float]:
+    # Separate counts for the admin PIN and for players' numbers/codes: typos in the crowd never lock the admin out.
+    return _failures[f"{scope}:{request.client.host if request.client else '?'}"]
+
+
+def _throttled(request: Request, scope: str) -> bool:
+    failures = _attempts(request, scope)
     while failures and failures[0] < time.monotonic() - ATTEMPT_WINDOW_S:
         failures.popleft()
     return len(failures) >= ATTEMPT_MAX_FAILURES
 
 
-def _record_failure(request: Request) -> None:
-    _failures[request.client.host if request.client else "?"].append(time.monotonic())
+def _record_failure(request: Request, scope: str) -> None:
+    _attempts(request, scope).append(time.monotonic())
 
 
 def is_admin(request: Request) -> bool:
@@ -698,7 +703,7 @@ def checkin_phone(
 ) -> Response:
     """Each player types their own number: they are in the couple's profile as themselves and, with the QR of
     the venue scanned, arrived."""
-    if _throttled(request):
+    if _throttled(request, "players"):
         flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
         return redirect("/checkin")
     found = service.teams_by_phone(db, phone)
@@ -708,7 +713,7 @@ def checkin_phone(
         if service.is_unpaired_guest(db, phone):
             flash(request, "Sei iscritto «solo serata»: se giocate in coppia, completate qui.")
             return redirect("/checkin/nuova")
-        _record_failure(request)
+        _record_failure(request, "players")
         flash(request, "Numero non trovato: se il tuo non è tra quelli dell'iscrizione, fatti invitare dal compagno "
                        "(ha il QR nel suo profilo) o cerca la coppia nell'elenco.", "err")
         return redirect("/checkin")
@@ -770,11 +775,11 @@ def arrival(
     if t is None or player is None:
         return redirect("/checkin")
     if not request.session.get("checkin_ok"):
-        if _throttled(request):
+        if _throttled(request, "players"):
             flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
             return redirect("/io")
         if not service.venue_code_ok(db, codice):
-            _record_failure(request)
+            _record_failure(request, "players")
             flash(request, "Codice sbagliato: è il numero di 4 cifre sotto il QR all'ingresso e sulla TV.", "err")
             return redirect("/io")
         request.session["checkin_ok"] = True
@@ -901,13 +906,13 @@ def guest_team_save(
     if not request.session.get("checkin_ok"):
         flash(request, "Si fa alla serata: inquadrate il QR all'ingresso.", "err")
         return redirect("/checkin/nuova")
-    if _throttled(request):
+    if _throttled(request, "players"):
         flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
         return redirect("/checkin/nuova")
     try:
         team_id = service.register_guest_team(db, phone1, name, p1, p2, phone2, payment)
     except TournamentError as e:
-        _record_failure(request)
+        _record_failure(request, "players")
         flash(request, str(e), "err")
         return redirect("/checkin/nuova")
     enter_team(request, db, team_id, 1)  # the guest who fills the form is the first player
@@ -1012,11 +1017,11 @@ def login_form(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Re
 
 @router.post("/login")
 def login(request: Request, pin: str = Form(...), db: sqlite3.Connection = Depends(get_db)) -> Response:
-    if _throttled(request):
+    if _throttled(request, "admin"):
         flash(request, "Troppi tentativi: riprova tra qualche minuto.", "err")
         return redirect("/login")
     if not service.is_admin_pin(db, pin.strip()):
-        _record_failure(request)
+        _record_failure(request, "admin")
         flash(request, "PIN non valido.", "err")
         return redirect("/login")
     request.session.update({"role": "admin", "field": None})
@@ -1761,7 +1766,6 @@ def create_app() -> FastAPI:
     init_db()
     db = connect()
     secret = get_setting(db, "secret")
-    log.warning("PIN admin: %s", get_setting(db, "admin_pin"))
     db.close()
 
     app = FastAPI(title="Beer Pong", docs_url=None, redoc_url=None, openapi_url=None)

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import sqlite3
 from pathlib import Path
 
+log = logging.getLogger("beerpong")
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "beerpong.db"
 
 SCHEMA = """
@@ -183,7 +185,10 @@ def init_db() -> None:
         for key, value in DEFAULTS.items():
             conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
         admin_pin = os.environ.get("BP_ADMIN_PIN") or random_pin()
-        conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_pin', ?)", (admin_pin,))
+        added = conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_pin', ?)", (admin_pin,)).rowcount
+        if added and not os.environ.get("BP_ADMIN_PIN"):
+            # Shown once, when it is made: logs get copied around, the PIN should not travel with them.
+            log.warning("New admin PIN: %s (change it from the admin page)", admin_pin)
         conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('secret', ?)", (secrets.token_hex(32),))
         conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES ('reg_key', ?)", (random_key(),))
         # Seed of the provisional draw shown on the public board; starting the tournament reuses it.

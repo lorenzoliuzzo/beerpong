@@ -13,6 +13,8 @@ from .service import TournamentError
 # and rebuild tournament-wide context only when any report or result changes.
 _state_cache: dict[int, tuple[tuple[int, int], live.LiveState]] = {}
 _context_cache: list[tuple[tuple, dict]] = []
+# The win chance is a simulation: run it again only when its inputs move (a hit, or one shot less of time).
+_odds_cache: dict[int, tuple[tuple, float]] = {}
 
 
 def reports(db: sqlite3.Connection, match_id: int) -> list[live.Report]:
@@ -280,7 +282,12 @@ def live_view(db: sqlite3.Connection, match_id: int, now: float) -> dict:
         prob1 = 1.0 if st.winner_side == 1 else 0.0
     else:
         left = live.shots_left_per_team(st, now, duration)
-        prob1 = live.win_probability(cups_to_hit, rates, left, seed=match_id)
+        key = (cups_to_hit, rates, left)
+        cached = _odds_cache.get(match_id)
+        if cached is None or cached[0] != key:
+            cached = (key, live.win_probability(cups_to_hit, rates, left, seed=match_id))
+            _odds_cache[match_id] = cached
+        prob1 = cached[1]
 
     def team_block(side: int, team_id: int) -> dict:
         t = team_rows[team_id]
