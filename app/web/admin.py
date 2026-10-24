@@ -26,15 +26,17 @@ admin = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
 
 @admin.get("")
-def admin_home(request: Request, db: sqlite3.Connection = Depends(get_db)) -> Response:
+def admin_home(request: Request, vista: str = "", db: sqlite3.Connection = Depends(get_db)) -> Response:
     cfg = service.load_config(db)
+    if vista not in ("preparazione", "serata"):
+        vista = "preparazione" if cfg.phase.is_setup else "serata"
     pending_groups = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
     views = service.matches(db)
     missing_splits = sum(1 for m in views for s in (1, 2) if m.split_missing(s))
     playable = [m for m in views if not m.bye and m.t1 is not None and m.t2 is not None]
     tables = service.table_views(db, all_matches=views) if cfg.phase.in_play else []
     return page(
-        request, db, "admin.html", overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
+        request, db, "admin.html", vista=vista, overview=service.checkin_overview(db), chk=service.checklist(db), checks=service.CHECKS,
         push_subs=push.subscriber_count(db),
         answered=sum(1 for t in service.teams(db).values() if t["q_at"]),
         solo=service.unassigned_guests(db),
@@ -425,8 +427,12 @@ def admin_start(
 @admin.post("/notifica")
 def admin_notify(
     request: Request, background: BackgroundTasks, titolo: str = Form(""), testo: str = Form(""),
-    db: sqlite3.Connection = Depends(get_db),
+    conferma: str = Form(""), db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
+    if conferma.strip() != "INVIA":
+        flash(request, "Notifica non inviata: per confermare scrivi INVIA.", "err")
+        return redirect("/admin#notifiche")
+
     def notify() -> None:
         deliveries = push.broadcast(db, titolo, testo)
         background.add_task(push.send, deliveries)

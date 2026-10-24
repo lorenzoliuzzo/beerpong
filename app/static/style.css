@@ -326,6 +326,8 @@ table.compact td.name { white-space: normal; }
 .segmented { display: flex; border: 1px solid var(--line); border-radius: 12px; padding: 3px; margin: 8px 0 12px; background: var(--surface); }
 .segmented a { flex: 1; text-align: center; padding: 9px 4px; border-radius: 9px; text-decoration: none; color: var(--muted); font-weight: 700; font-size: .92rem; }
 .segmented a.on { background: var(--accent); color: var(--accent-ink); }
+.admin-pane { display: contents; }
+.admin-pane.hidden { display: none; }
 
 details.section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); margin: 10px 0; }
 details.section > summary { list-style: none; padding: 16px; font-weight: 800; font-size: 1.05rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; }

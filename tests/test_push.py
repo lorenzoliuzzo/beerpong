@@ -109,8 +109,9 @@ def test_admin_broadcast_and_dropped_subscriptions(client: TestClient, monkeypat
 
     monkeypatch.setattr(push, "webpush", webpush)
     login(client, ADMIN_PIN)
-    assert "Scrivi il testo" in client.post("/admin/notifica", data={"testo": " "}).text
-    r = client.post("/admin/notifica", data={"titolo": "", "testo": "Si parte tra 10 minuti!"})
+    assert "per confermare scrivi INVIA" in client.post("/admin/notifica", data={"testo": "Ciao", "conferma": "no"}).text
+    assert "Scrivi il testo" in client.post("/admin/notifica", data={"testo": " ", "conferma": "INVIA"}).text
+    r = client.post("/admin/notifica", data={"titolo": "", "testo": "Si parte tra 10 minuti!", "conferma": "INVIA"})
     assert "Notifica inviata a 2 telefoni." in r.text
     assert delivered == ["Si parte tra 10 minuti!"]
     assert db_call(push.subscriber_count) == (1, 0)
@@ -139,7 +140,7 @@ def test_real_signing_reaches_the_push_service(client: TestClient, monkeypatch: 
     login(client, ADMIN_PIN)
     client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 6, "buffer_min": 1,
                                              "public_url": "https://torneo.example.it:8443/"})
-    client.post("/admin/notifica", data={"testo": "Prova"})
+    client.post("/admin/notifica", data={"testo": "Prova", "conferma": "INVIA"})
     # the unreachable service (/2) is skipped and the next one (/3) still gets its notice
     assert [p["url"].rsplit("/", 1)[1] for p in posts] == ["real", "3"] and posts[0]["timeout"] == push.SEND_TIMEOUT_S
     headers = posts[0]["headers"]

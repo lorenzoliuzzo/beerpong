@@ -16,9 +16,16 @@
   <li class="{{ 'now' if not setup }}"><a href="{{ '#checkin' if setup else '#torneo' }}">
     <b>4 · Giorno del torneo</b><span>{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></a></li>
 </ol>
+<nav class="segmented" aria-label="Vista pannello organizzazione">
+  <a href="?vista=preparazione" class="{{ 'on' if vista == 'preparazione' }}">📋 Preparazione</a>
+  <a href="?vista=serata" class="{{ 'on' if vista == 'serata' }}">🍻 Serata</a>
+</nav>
 <nav class="subnav" aria-label="Sezioni">
-  <a href="/admin/torneo">Info torneo</a><a href="#pagamenti">Pagamenti</a><a href="#coppie">Coppie</a><a href="#torneo">Torneo</a><a href="#checkin">Check-in</a>
-  <a href="#solo-serata">Solo serata</a><a href="#notifiche">Notifiche</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
+  {% if vista == 'preparazione' %}
+    <a href="/admin/torneo">Info torneo</a><a href="#coppie">Coppie</a><a href="#pagamenti">Pagamenti</a><a href="/admin/mancanti">Da sistemare</a><a href="#qr">Accessi</a><a href="#impostazioni">Impostazioni</a>
+  {% else %}
+    <a href="#checkin">Check-in</a><a href="#torneo">Torneo e tavoli</a><a href="#solo-serata">Solo serata</a><a href="#notifiche">Notifiche</a><a href="#pericolo">Zona pericolosa</a>
+  {% endif %}
 </nav>
 
 {% set n = chk.players|length %}
@@ -268,7 +275,9 @@
       <input id="notifica-titolo" name="titolo" maxlength="60" placeholder="{{ cfg.title }}">
       <label for="notifica-testo">Messaggio</label>
       <textarea id="notifica-testo" name="testo" required maxlength="200" style="min-height:80px" placeholder="Es. si parte tra 10 minuti!"></textarea>
-      <button class="wide" type="submit" onclick="return confirm('Mandare la notifica a tutti i telefoni iscritti?')">📣 Manda a tutti</button>
+      <label for="notifica-conferma">Per confermare scrivi INVIA</label>
+      <input id="notifica-conferma" name="conferma" required autocomplete="off" pattern="INVIA" placeholder="INVIA">
+      <button class="wide" type="submit">📣 Manda a tutti</button>
     </form>
   </div>
 </details>
