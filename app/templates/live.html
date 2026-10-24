@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}{{ m.n1 }} vs {{ m.n2 }} · LIVE{% endblock %}
 {% block content %}
 <div id="live" data-match="{{ m.id }}">
   <div class="slim-head mb-2">
-    <span class="muted small">{{ m.label }}{% if m.field %} · <strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
+    <span class="muted small">{{ m.label }}{% if m.field %} · <strong>{{ ui.icon("table") }} Tavolo {{ m.field }}</strong>{% endif %}</span>
     {% if m.field %}
-      <a class="btn small ghost" href="/gironi?sez=tavoli&amp;tavolo={{ m.field }}">← Tavolo {{ m.field }}</a>
+      <a class="btn small ghost" href="/gironi?sez=tavoli&amp;tavolo={{ m.field }}">{{ ui.icon("back") }} Tavolo {{ m.field }}</a>
     {% endif %}
   </div>
 
@@ -52,13 +53,13 @@
 
     <div id="result" class="banner gold" hidden></div>
 
-    <p class="muted small center">🧑‍⚖️ I tiri li segna l'arbitro del tavolo.</p>
+    <p class="muted small center">{{ ui.icon("referee") }} I tiri li segna l'arbitro del tavolo.</p>
     <div class="pstats" id="pstats" hidden></div>
   </section>
 
   <div class="toast" id="toast" hidden></div>
 
-  <p id="you-play" class="banner warm" hidden>🏓 State giocando: il tifo torna quando finisce la vostra partita.</p>
+  <p id="you-play" class="banner warm" hidden>{{ ui.icon("table") }} State giocando: il tifo torna quando finisce la vostra partita.</p>
   <section class="cheers" aria-label="Tifo">
     <div class="cheer-col" id="cheer1"></div>
     <div class="cheer-col" id="cheer2"></div>
@@ -74,6 +75,7 @@
   let data = null, offset = 0, busy = false;
 
   const $ = (sel) => document.querySelector(sel);
+  const ico = (n) => `<svg class="icon" aria-hidden="true"><use href="#i-${n}"/></svg>`;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const serverNow = () => (Date.now() + offset) / 1000;
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -97,8 +99,9 @@
     const [t1, t2] = data.teams;
     for (const [i, t] of [[1, t1], [2, t2]]) {
       document.querySelectorAll(`[data-f="name${i}"], [data-f="name${i}b"]`).forEach((el) => (el.textContent = t.name));
-      const bits = [t.label, t.record, t.accuracy != null ? `🎯 ${t.accuracy}%` : ""].filter(Boolean);
-      $(`[data-f="meta${i}"]`).innerHTML = bits.map(esc).join("<br>");
+      const bits = [t.label, t.record].filter(Boolean).map(esc);
+      if (t.accuracy != null) bits.push(`${ico("target")} ${esc(t.accuracy)}%`);
+      $(`[data-f="meta${i}"]`).innerHTML = bits.join("<br>");
       $(`#rack${i}`).innerHTML = rackHTML(t.rack, t.rows);
     }
     const score = data.done ? data.score : [t1.hits, t2.hits];
@@ -108,7 +111,7 @@
       const n = (data.streak || [0, 0])[i - 1], el = $(`#streak${i}`);
       const blows = (data.blows || [0, 0])[i - 1];
       el.hidden = (n < 2 || data.done) && !blows;
-      el.textContent = [n >= 2 && !data.done ? `🔥 ${n} di fila` : "", blows ? `💨 ${blows} ${blows === 1 ? "soffio" : "soffi"}` : ""].filter(Boolean).join(" · ");
+      el.innerHTML = [n >= 2 && !data.done ? `${ico("flame")} ${esc(n)} di fila` : "", blows ? `${ico("wind")} ${esc(blows)} ${blows === 1 ? "soffio" : "soffi"}` : ""].filter(Boolean).join(" · ");
     }
     const pts = data.timeline || [];
     $("#trend-box").hidden = pts.length < 2;
@@ -151,7 +154,7 @@
       res.hidden = false;
       res.innerHTML = data.done
         ? `<div class="label">Risultato finale</div><div class="headline">${esc(t1.name)} ${data.score[0]}–${data.score[1]} ${esc(t2.name)}</div>`
-        : `<div class="label">Bicchieri finiti!</div><div class="headline">🏆 ${esc(w ? w.name : "")}</div>In attesa della conferma dell'arbitro`;
+        : `<div class="label">Bicchieri finiti!</div><div class="headline">${ico("trophy")} ${esc(w ? w.name : "")}</div>In attesa della conferma dell'arbitro`;
     } else {
       res.hidden = true;
     }

@@ -6,7 +6,7 @@
 <p class="muted mt-0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.time %} · {{ m.time }}{% endif %}</p>
 <form method="post" action="/partita/{{ m.id }}">
   <div class="card">
-    {% if live_score %}<p class="small">📡 Dai tiri segnalati live: <strong>{{ live_score[0] }}–{{ live_score[1] }}</strong> (già inserito, controlla)</p>{% endif %}
+    {% if live_score %}<p class="small">{{ ui.icon("signal") }} Dai tiri segnalati live: <strong>{{ live_score[0] }}–{{ live_score[1] }}</strong> (già inserito, controlla)</p>{% endif %}
     <label>{{ m.n1 }}</label>
     {{ ui.stepper("s1", m.s1 or (live_score[0] if live_score else 0), label=m.n1) }}
     <label>{{ m.n2 }}</label>

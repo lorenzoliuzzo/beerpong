@@ -16,7 +16,7 @@ The interface of a one-night beer pong tournament app: every player on their own
 
 - **Language:** Italian, informal. Couples are *voi* ("Tocca a voi"), single players *tu* with a gender slash ("Sei arrivato/a").
 - **Vocabulary:** always *coppia* for a team (never *squadra*) and *bicchieri* for cups (never *canestri*). Also *girone* (group), *tavolo* (table; it was *campo* in the first version), *tabellone* (bracket) vs *cartellone* (TV board), *soffio* (blow, rule 5), *tiro della salvezza* (redemption shot), *regia* (control room). The app's visible text follows this; URLs such as `/squadra/<id>` keep the old words.
-- **Tone:** pub-friendly, playful, lots of emoji: about 60 distinct ones across the templates (🍺 🏆 🎯 🏓 📣 🔥 🥇 🦊 🐸 …).
+- **Tone:** pub-friendly and playful. Emoji carry the voice (🍻 sign-offs, 👋, podium medals, push texts, the avatar picker); the interface itself uses icons.
 - **Numbers:** tabular numerals; scores with an en dash (`7–5`); litres with a decimal comma (`1,5 L`).
 
 ## Visual foundations
@@ -40,7 +40,7 @@ The interface of a one-night beer pong tournament app: every player on their own
 
 ## Iconography
 
-Three stroke icons (24px, 2px stroke, round caps) in the tab bar: star (Squadra), four squares (Tavoli), trophy (Classifica), inline SVG in `base.html`. A PWA icon (`icon-192.png`, `icon-512.png`). Everything else is emoji, including the referee's controls (▶ ✓ ✗ 💨 ⇄ ⟲ ↶).
+One stroke set: 24px grid, 2px stroke, round caps and joins, `currentColor`, sized to the text (`1.15em`; `.icon.xl` for empty states). The symbols live in `app/templates/_icons.html` (included once by `base.html`) and are drawn with `ui.icon("name")`, or `ico("name")` in live.html's script. The three tab-bar icons are the same style. Emoji are voice, not icons: avatars, push and WhatsApp texts, flash messages, cheers, podium medals. A PWA icon (`icon-192.png`, `icon-512.png`).
 
 ## Components
 

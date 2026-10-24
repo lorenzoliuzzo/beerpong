@@ -4,7 +4,7 @@
 {% block content %}
 <div class="slim-head">
   <h1>Classifica</h1>
-  <span class="pill">🍺 {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti live</span>
+  <span class="pill">{{ ui.icon("beer") }} {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti live</span>
 </div>
 
 <nav class="segmented mb-3">
@@ -20,7 +20,7 @@
     <div class="label muted small">La vostra posizione · {{ me.name }}</div>
     <div class="my-rank-row">
       {% if mine.cups_pos %}<div><div class="big">#{{ mine.cups_pos }}</div><span class="muted small">per bicchieri</span></div>{% endif %}
-      {% for pos, s in mine.players %}<div><div class="big">#{{ pos }}</div><span class="muted small">{{ s.player }} · {{ s.cups }} 🥤</span></div>{% endfor %}
+      {% for pos, s in mine.players %}<div><div class="big">#{{ pos }}</div><span class="muted small">{{ s.player }} · {{ s.cups }} {{ ui.icon("cup") }}</span></div>{% endfor %}
     </div>
   </a>
 {% endif %}
@@ -52,7 +52,7 @@
 
   {% if rounds %}
     <div class="section-head mt-6">
-      <h2>🏆 Fase a Eliminazione Diretta</h2>
+      <h2>{{ ui.icon("trophy") }} Fase a Eliminazione Diretta</h2>
       <a href="/classifiche?vista=eliminazione" class="small">Dettaglio turni ›</a>
     </div>
     {% for name, ms in rounds %}
@@ -67,7 +67,7 @@
     {% if final.done %}
       <div class="banner gold center">
         <div class="label">Campioni del Torneo</div>
-        <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
+        <div class="headline">{{ ui.icon("trophy") }} {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
         Finale {{ final.s1 }}–{{ final.s2 }}
       </div>
     {% endif %}
@@ -215,7 +215,7 @@
           <div class="label">{{ title }}</div>
           <div class="title"><strong>{{ p.player }}</strong></div>
           <span class="muted small">{{ p.team }}</span>
-          <div class="small">{{ p.hits }}/{{ p.shots }} · {{ (p.accuracy * 100)|round|int }}%{% if p.finishers %} · 🏁 {{ p.finishers }}{% endif %}</div>
+          <div class="small">{{ p.hits }}/{{ p.shots }} · {{ (p.accuracy * 100)|round|int }}%{% if p.finishers %} · {{ ui.icon("flag") }} {{ p.finishers }}{% endif %}</div>
         </div>
       {% endfor %}
     </div>
@@ -247,7 +247,7 @@
     </div>
   {% else %}
     <div class="card pt-6 pr-4 pb-6 pl-4 center">
-      <div class="mb-2" style="font-size:2rem">🎯</div>
+      <div class="mb-2" style="font-size:2rem">{{ ui.icon("target") }}</div>
       <div class="title">Nessun tiro segnalato finora</div>
       <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli arbitri iniziano a segnare i tiri.</p>
     </div>

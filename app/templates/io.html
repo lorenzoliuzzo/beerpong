@@ -5,7 +5,7 @@
 <div class="slim-head">
   <h1>Coppia</h1>
   {% if tournament_liters is defined %}
-    <span class="pill">🍺 {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti nel torneo</span>
+    <span class="pill">{{ ui.icon("beer") }} {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti nel torneo</span>
   {% endif %}
 </div>
 <div class="card">

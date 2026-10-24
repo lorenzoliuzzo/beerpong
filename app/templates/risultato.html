@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Risultato · {{ m.n1 }} vs {{ m.n2 }}{% endblock %}
 {% block content %}
 <p><a href="{{ '/gironi?tavolo=' ~ m.field if m.field else '/gironi' }}">‹ {{ "Tavolo " ~ m.field if m.field else "Tavoli" }}</a></p>
@@ -12,7 +13,7 @@
     <div class="card {{ 'mine' if my_side == side }}">
       <div class="section-head m-0 mb-2">
         <h2 class="m-0">{{ team.name }}{% if my_side == side %} <span class="badge you">VOI</span>{% endif %}</h2>
-        <span class="pill"><strong data-count="{{ side }}">{{ hits[side]|length }}</strong> / {{ cups }} 🥤</span>
+        <span class="pill"><strong data-count="{{ side }}">{{ hits[side]|length }}</strong> / {{ cups }} {{ ui.icon("cup") }}</span>
       </div>
       <p class="muted small m-0 mb-2">Bicchieri messi da {{ team.name }} (rack avversario, punta verso di voi)</p>
       <div class="heat-rack res-rack">
@@ -35,7 +36,7 @@
   {% else %}
     <p class="muted small">Nei gironi il pari vale come pareggio (1 punto a testa).</p>
   {% endif %}
-  <button class="wide" type="submit">✓ Conferma risultato</button>
+  <button class="wide" type="submit">{{ ui.icon("check") }} Conferma risultato</button>
 </form>
 <style>
   .res-rack .heat-row { display:flex; justify-content:center; gap:var(--sp-2); margin:var(--sp-1) 0; }

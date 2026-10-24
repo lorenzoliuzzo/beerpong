@@ -17,8 +17,8 @@
     <b>4 · Giorno del torneo</b><span>{{ {"setup": "check-in", "groups": "gironi", "knockout": "eliminazione", "finished": "concluso"}[cfg.phase] }}</span></a></li>
 </ol>
 <nav class="segmented" aria-label="Vista pannello organizzazione">
-  <a href="?vista=preparazione" class="{{ 'on' if vista == 'preparazione' }}">📋 Preparazione</a>
-  <a href="?vista=serata" class="{{ 'on' if vista == 'serata' }}">🍻 Serata</a>
+  <a href="?vista=preparazione" class="{{ 'on' if vista == 'preparazione' }}">{{ ui.icon("clipboard") }} Preparazione</a>
+  <a href="?vista=serata" class="{{ 'on' if vista == 'serata' }}">{{ ui.icon("beer") }} Serata</a>
 </nav>
 <nav class="subnav" aria-label="Sezioni">
   {% if vista == 'preparazione' %}
@@ -136,7 +136,7 @@
           <div class="row">
             <div class="grow"><div class="title">{{ t.name }} <span class="pill">{{ pay_code(t.id) }}</span></div><span class="muted small">{{ ui.players(t) }}</span></div>
             {% if t.phone1 %}<a class="btn small ghost" target="_blank" rel="noopener"
-               href="https://wa.me/{{ wa_number(t.phone1) }}?text={{ pay_message(info, t)|urlencode }}">💬 Sollecita</a>{% endif %}
+               href="https://wa.me/{{ wa_number(t.phone1) }}?text={{ pay_message(info, t)|urlencode }}">{{ ui.icon("chat") }} Sollecita</a>{% endif %}
           </div>
         {% endfor %}
       </div>
@@ -150,7 +150,7 @@
             <div class="row">
               <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
               {% for i in (1, 2) if t["phone" ~ i] %}<a class="btn small" target="_blank" rel="noopener"
-                 href="https://wa.me/{{ wa_number(t['phone' ~ i]) }}?text={{ access_message(info, t, i)|urlencode }}">💬 {{ t["p" ~ i] or "Accesso" }}</a>{% endfor %}
+                 href="https://wa.me/{{ wa_number(t['phone' ~ i]) }}?text={{ access_message(info, t, i)|urlencode }}">{{ ui.icon("chat") }} {{ t["p" ~ i] or "Accesso" }}</a>{% endfor %}
             </div>
           {% endfor %}
         </div>
@@ -179,9 +179,9 @@
             onsubmit='return confirm({{ ("Avviare con " ~ ov.present|length ~ " coppie presenti?" ~ (" Ne mancano " ~ ov.missing|length ~ ": resteranno fuori." if ov.missing else ""))|tojson }})'>
         <button class="wide" type="submit">Avvia il torneo</button>
       </form>
-      <a class="btn ghost wide" href="/cartellone" target="_blank">📺 Apri il cartellone (TV / proiettore)</a>
+      <a class="btn ghost wide" href="/cartellone" target="_blank">{{ ui.icon("tv") }} Apri il cartellone (TV / proiettore)</a>
       <form method="post" action="/admin/cartellone/rimescola" onsubmit="return confirm('Rimescolare i gironi provvisori mostrati sul cartellone?')">
-        <button class="ghost wide" type="submit">🔀 Rimescola i gironi provvisori del cartellone</button>
+        <button class="ghost wide" type="submit">{{ ui.icon("shuffle") }} Rimescola i gironi provvisori del cartellone</button>
       </form>
       <a class="btn ghost wide" href="/admin/gironi">Prova i gironi prima di partire</a>
       <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} tavoli.</p>
@@ -235,7 +235,7 @@
         {% for t in ov.missing %}
           <div class="row">
             <a class="grow plain-link" href="/admin/squadre/{{ t.id }}"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></a>
-            {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+            {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">{{ ui.icon("phone") }}</a>{% endif %}
             {% if setup and t.p1 and t.p2 %}
             <form method="post" action="/admin/squadre/{{ t.id }}/presente"><input type="hidden" name="presente" value="1"><button class="small" type="submit">Presente</button></form>
             {% elif not (t.p1 and t.p2) %}<span class="pill warn">da completare</span>{% endif %}
@@ -250,7 +250,7 @@
         <div class="row">
           <a class="grow plain-link" href="/admin/squadre/{{ t.id }}"><div class="title">{{ t.name }}{% if t.id in ov.guest_teams %} <span class="pill accent">da «solo serata»</span>{% endif %}</div>
             <span class="muted small">{{ ui.players(t) }}{% if t.phone1 %} · {{ t.phone1 }}{% endif %}</span></a>
-          {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+          {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">{{ ui.icon("phone") }}</a>{% endif %}
           {% if setup %}
           <form method="post" action="/admin/squadre/{{ t.id }}/presente"><input type="hidden" name="presente" value="0"><button class="small ghost" type="submit">Togli</button></form>
           {% endif %}
@@ -266,7 +266,7 @@
 <details class="section" id="notifiche">
   <summary>Notifiche <span class="pill">{{ push_subs[0] }} telefoni</span></summary>
   <div class="body">
-    <p class="muted small">📋 {{ answered }} coppie hanno risposto al questionario.</p>
+    <p class="muted small">{{ ui.icon("clipboard") }} {{ answered }} coppie hanno risposto al questionario.</p>
     <p class="muted small">{{ push_subs[0] }} telefoni iscritti, di {{ push_subs[1] }} coppie. Gli avvisi «tocca a voi» e «preparatevi» partono da soli; qui mandi un annuncio a tutti.</p>
     <form method="post" action="/admin/notifica">
       <label for="notifica-titolo">Titolo (facoltativo)</label>
@@ -275,7 +275,7 @@
       <textarea id="notifica-testo" name="testo" required maxlength="200" style="min-height:80px" placeholder="Es. si parte tra 10 minuti!"></textarea>
       <label for="notifica-conferma">Per confermare scrivi INVIA</label>
       <input id="notifica-conferma" name="conferma" required autocomplete="off" pattern="INVIA" placeholder="INVIA">
-      <button class="wide" type="submit">📣 Manda a tutti</button>
+      <button class="wide" type="submit">{{ ui.icon("call") }} Manda a tutti</button>
     </form>
   </div>
 </details>
@@ -289,7 +289,7 @@
         <div class="row">
           <div class="grow"><div class="title">{{ g.name or "Senza nome" }}</div>
             <span class="muted small">{{ g.phone }}{% if g.registered_at %} · iscritto il {{ g.registered_at[8:10] }}/{{ g.registered_at[5:7] }}{% endif %}</span></div>
-          <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama {{ g.name or g.phone }}">📞</a>
+          <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama {{ g.name or g.phone }}">{{ ui.icon("phone") }}</a>
         </div>
       {% else %}
         <div class="row muted">Nessun iscritto solo serata.</div>

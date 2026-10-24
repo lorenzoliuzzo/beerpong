@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Info e regole · {{ info.title }}{% endblock %}
 {% block content %}
 <h1>{{ info.title }}</h1>
 {% if info.date %}
-  <p class="muted mt-0">📅 {{ info.date[8:10] }}/{{ info.date[5:7] }}/{{ info.date[:4] }} · ore {{ info.start_time }} · {{ info.fields }} tavoli</p>
+  <p class="muted mt-0">{{ ui.icon("calendar") }} {{ info.date[8:10] }}/{{ info.date[5:7] }}/{{ info.date[:4] }} · ore {{ info.start_time }} · {{ info.fields }} tavoli</p>
 {% endif %}
 
 <div class="summary">

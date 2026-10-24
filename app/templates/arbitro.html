@@ -5,7 +5,7 @@
 {% block header %}
   {% if focused %}
     <header class="top ref-top">
-      <strong>🏓 Tavolo {{ field_no }} · Arbitro{% if not role and me %} · {{ me["p" ~ me.referee_player] }}{% endif %}</strong>
+      <strong>{{ ui.icon("table") }} Tavolo {{ field_no }} · Arbitro{% if not role and me %} · {{ me["p" ~ me.referee_player] }}{% endif %}</strong>
       {% if role == "referee" %}
         <form method="post" action="/logout" onsubmit="return confirm('Uscire dall\'area arbitro?')"><button class="link" type="submit">Esci</button></form>
       {% else %}<a href="/io">‹ Profilo</a>{% endif %}
@@ -28,7 +28,7 @@
     <span class="ref-ov-teams"><strong>{{ m.n1 }}</strong>
       <span class="ref-ov-score">{{ "%d – %d"|format(*m.live_score) if m.started_at and m.live_score else ("in corso" if m.started_at else "vs") }}</span>
       <strong>{{ m.n2 }}</strong></span>
-    <span class="ref-go">{{ "▶ Continua a segnare" if m.started_at else "▶ Segna la partita" }}</span>
+    <span class="ref-go">{{ ui.icon("play") }} {{ "Continua a segnare" if m.started_at else "Segna la partita" }}</span>
   </a>
 {% endmacro %}
 

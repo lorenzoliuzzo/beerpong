@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block content %}
 {% set setup = cfg.phase.is_setup %}
 <p><a href="/admin#coppie">‹ Organizzazione</a></p>
 <h1>{{ t.name if t else "Nuova coppia" }}</h1>
 {% if guest_team %}<p><span class="pill accent">creata al check-in da un iscritto «solo serata»</span></p>{% endif %}
-{% if t and t.note %}<div class="banner todo">📝 {{ t.note }}</div>{% endif %}
+{% if t and t.note %}<div class="banner todo">{{ ui.icon("edit") }} {{ t.note }}</div>{% endif %}
 {% if t and t.photo %}
   <div class="card flex gap-3 items-center">
     <img class="team-photo" src="/foto/{{ t.photo }}" alt="Foto di {{ t.name }}">
@@ -30,7 +31,7 @@
     <input id="phone1" name="phone1" type="tel" inputmode="tel" value="{{ t.phone1 if t }}">
     <label for="phone2">Secondo telefono</label>
     <input id="phone2" name="phone2" type="tel" inputmode="tel" value="{{ t.phone2 if t }}">
-    {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">📞 Chiama</a></p>{% endif %}
+    {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">{{ ui.icon("phone") }} Chiama</a></p>{% endif %}
     <div class="choices mt-3">
       <label><input type="checkbox" name="gruppo" value="1" {{ 'checked' if t and t.in_chat }}> Nel gruppo WhatsApp</label>
       <label><input type="checkbox" name="organizzatori" value="1" {{ 'checked' if t and t.organizer }}> Organizzatori (non conta nelle verifiche)</label>
@@ -64,7 +65,7 @@
   </div>
   <button class="wide" type="submit">{{ "Salva" if t else "Aggiungi coppia" }}</button>
   {% if t and t.note %}
-    <button class="wide ghost" type="submit" name="verificata" value="1">✓ Verificata: salva e togli la nota</button>
+    <button class="wide ghost" type="submit" name="verificata" value="1">{{ ui.icon("check") }} Verificata: salva e togli la nota</button>
   {% endif %}
 </form>
 

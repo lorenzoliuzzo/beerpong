@@ -88,7 +88,7 @@
     <div class="row">
       <a class="grow plain-link" href="/admin/squadre/{{ t.id }}">
         <div class="title">{{ t.name }}</div>{{ ui.payment_pill(t, payments) }}</a>
-      {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+      {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">{{ ui.icon("phone") }}</a>{% endif %}
       {{ ui.checks(t, "/admin/mancanti#non-pagato") }}
     </div>
   {% else %}
@@ -122,7 +122,7 @@
           {% if not (t.p1 and t.p2) %}<span class="pill warn">giocatori</span>{% endif %}
           {% if not t.phone1 %}<span class="pill">telefono</span>{% endif %}
         </div>
-        {% if t.note %}<div class="small muted">📝 {{ t.note }}</div>{% endif %}
+        {% if t.note %}<div class="small muted">{{ ui.icon("edit") }} {{ t.note }}</div>{% endif %}
       </div>
       <span class="chev">›</span>
     </a>
@@ -138,9 +138,9 @@
     <div class="flex justify-between gap-2 items-center">
       <div><div class="title"><strong>{{ g.name or "Senza nome" }}</strong></div>
         <span class="muted small">{{ g.phone }}{% if g.registered_at %} · iscritto il {{ g.registered_at[8:10] }}/{{ g.registered_at[5:7] }} alle {{ g.registered_at[11:16] }}{% endif %}</span></div>
-      <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama">📞</a>
+      <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama">{{ ui.icon("phone") }}</a>
     </div>
-    {% for hint in gv.hints %}<p class="small m-0 mt-2">💡 {{ hint }}</p>{% endfor %}
+    {% for hint in gv.hints %}<p class="small m-0 mt-2">{{ ui.icon("bulb") }} {{ hint }}</p>{% endfor %}
     {% if setup %}
       <details class="mt-2">
         <summary class="small"><strong>Mettilo in una coppia</strong></summary>

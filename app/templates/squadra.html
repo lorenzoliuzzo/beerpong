@@ -14,40 +14,40 @@
           <a href="/gironi?g={{ t.grp }}" class="pill ok">{{ profile.grp_name }}</a>
         {% endif %}
         {% if profile and profile.field %}
-          <a href="/gironi?tavolo={{ profile.field }}" class="pill">🏓 Tavolo {{ profile.field }}</a>
+          <a href="/gironi?tavolo={{ profile.field }}" class="pill">{{ ui.icon("table") }} Tavolo {{ profile.field }}</a>
         {% endif %}
         {% if dash.champion %}
-          <span class="pill ok">Campioni 🏆</span>
+          <span class="pill ok">Campioni {{ ui.icon("trophy") }}</span>
         {% elif dash.eliminated %}
           <span class="pill">Eliminata</span>
         {% elif dash.status == "now" %}
-          <span class="live-badge-pulse">● IN CAMPO ORA</span>
+          <span class="live-badge-pulse">{{ ui.icon("live") }} IN CAMPO ORA</span>
         {% elif dash.status == "next" %}
-          <span class="pill warn">📣 Prossima chiamata</span>
+          <span class="pill warn">{{ ui.icon("call") }} Prossima chiamata</span>
         {% endif %}
       </div>
       <h1 class="m-0 mt-2 mb-half">{{ t.name }}</h1>
-      <p class="muted m-0" style="font-size:1rem">👥 {{ ui.players(t) }}</p>
+      <p class="muted m-0" style="font-size:1rem">{{ ui.icon("users") }} {{ ui.players(t) }}</p>
       {% if t.motto %}<p class="tph-motto">«{{ t.motto }}»</p>{% endif %}
       {% if own %}
-        <div class="tph-own"><span class="badge you" title="Il vostro profilo">★ VOI</span>
-          <a class="btn small ghost" href="/io/profilo">✏️ Personalizza</a></div>
+        <div class="tph-own"><span class="badge you" title="Il vostro profilo">{{ ui.icon("star") }} VOI</span>
+          <a class="btn small ghost" href="/io/profilo">{{ ui.icon("edit") }} Personalizza</a></div>
       {% endif %}
     </div>
   </div>
 
   {% if dash.status == "now" and dash.next_match %}
     <div class="banner hot mt-3 mb-0">
-      <div class="label">🔴 In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
+      <div class="label">{{ ui.icon("live") }} In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
       {% if dash.next_match.live_score %}
         <div class="headline mt-1">{{ dash.next_match.live_score[0] }}–{{ dash.next_match.live_score[1] }}</div>
       {% endif %}
-      {% if own and dash.next_match.mode.by_couples %}<a class="btn wide mt-2" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
+      {% if own and dash.next_match.mode.by_couples %}<a class="btn wide mt-2" href="/risultato/{{ dash.next_match.id }}">{{ ui.icon("edit") }} Finita? Inserite il risultato</a>{% endif %}
     </div>
   {% elif dash.status == "next" and dash.next_match %}
     <div class="banner warm mt-3 mb-0">
-      <div class="label">📣 Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }}{{ ui.countdown(dash.next_match) }})</div>
+      <div class="label">{{ ui.icon("call") }} Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }}{{ ui.countdown(dash.next_match) }})</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
     </div>
   {% endif %}
@@ -60,7 +60,7 @@
       <h2 class="m-0 mb-2">Arrivo alla serata</h2>
       <div class="phones">
         {% for i in (1, 2) %}
-          <span class="pill {{ 'ok' if t['arrived' ~ i ~ '_at'] }}">{{ t["p" ~ i] }} · {{ ("✓ arrivato/a " ~ t['arrived' ~ i ~ '_at'][11:16]) if t['arrived' ~ i ~ '_at'] else "in arrivo" }}</span>
+          <span class="pill {{ 'ok' if t['arrived' ~ i ~ '_at'] }}">{{ t["p" ~ i] }} · {% if t['arrived' ~ i ~ '_at'] %}{{ ui.icon("check") }} arrivato/a {{ t['arrived' ~ i ~ '_at'][11:16] }}{% else %}in arrivo{% endif %}</span>
         {% endfor %}
       </div>
       {% if not t["arrived" ~ me_player ~ "_at"] %}
@@ -72,7 +72,7 @@
           {% if not t["arrived" ~ mate ~ "_at"] %}
             <label class="small m-0 mt-2 mb-2"><input type="checkbox" name="compagno" value="1"> Anche {{ t["p" ~ mate] }} è qui con me (se non ha il telefono)</label>
           {% endif %}
-          <button class="wide" type="submit">🍺 Sono arrivato/a</button>
+          <button class="wide" type="submit">{{ ui.icon("beer") }} Sono arrivato/a</button>
         </form>
       {% else %}
         <p class="small">Manca {{ t["p" ~ mate] }}: segna il suo arrivo dal suo telefono, oppure, se non ce l'ha, confermalo tu.</p>
@@ -87,20 +87,20 @@
     {% set taken = t["beer" ~ i ~ "_at"] %}
     {% if not taken %}
       <details class="card beer" id="birra{{ i }}">
-        <summary class="beer-row"><span class="beer-icon">🍺</span>
+        <summary class="beer-row"><span class="beer-icon">{{ ui.icon("beer") }}</span>
           <span class="grow"><strong>La prima birra di {{ t["p" ~ i] }}</strong><span class="muted small">Tocca qui al bancone per mostrare il buono.</span></span></summary>
         <div class="voucher">
-          <div class="beer-icon big">🍺</div>
+          <div class="beer-icon big">{{ ui.icon("beer") }}</div>
           <div class="voucher-title">PRIMA BIRRA</div>
           <div class="voucher-name">{{ t["p" ~ i] }} · {{ t.name }}</div>
         </div>
         <form method="post" action="/io/birra" onsubmit='return confirm({{ ("Segnare come ritirata la birra di " ~ t["p" ~ i] ~ "?")|tojson }})'>
           <input type="hidden" name="giocatore" value="{{ i }}">
-          <button class="wide" type="submit">✓ Ritirata · lo tocca il bancone</button>
+          <button class="wide" type="submit">{{ ui.icon("check") }} Ritirata · lo tocca il bancone</button>
         </form>
       </details>
     {% else %}
-      <p class="muted small center">🍺 Prima birra di {{ t["p" ~ i] }} ritirata alle {{ taken[11:16] }}</p>
+      <p class="muted small center">{{ ui.icon("beer") }} Prima birra di {{ t["p" ~ i] }} ritirata alle {{ taken[11:16] }}</p>
     {% endif %}
   {% endfor %}
 {% endif %}
@@ -109,7 +109,7 @@
 
 {% if own and t.referee_player and cfg.scoring.needs_referee %}
   <a class="banner todo ref-entry" href="/arbitro">
-    <div class="label">🧑‍⚖️ Arbitro{% if ref_table %} · Tavolo {{ ref_table }}{% endif %}</div>
+    <div class="label">{{ ui.icon("referee") }} Arbitro{% if ref_table %} · Tavolo {{ ref_table }}{% endif %}</div>
     <div class="headline">{{ t["p" ~ t.referee_player] }} arbitra {{ "il Tavolo " ~ ref_table if ref_table else "il tavolo del vostro girone" }}</div>
     {% if cfg.phase.in_play %}Apri la schermata arbitro →{% else %}La schermata arbitro si apre all'avvio del torneo.{% endif %}
   </a>
@@ -120,7 +120,7 @@
     <h2 class="m-0 mb-2">Ciao {{ t["p" ~ me_player] }}! 👋</h2>
     <div class="phones">
       {% for i in (1, 2) %}
-        <span class="pill {{ 'ok' if devices[i] }}">{{ t["p" ~ i] }} · {{ "📱 collegato" if devices[i] else "non ancora" }}</span>
+        <span class="pill {{ 'ok' if devices[i] }}">{{ t["p" ~ i] }} · {% if devices[i] %}{{ ui.icon("phone") }} collegato{% else %}non ancora{% endif %}</span>
       {% endfor %}
     </div>
     {% if invite and not devices[3 - me_player] %}
@@ -128,7 +128,7 @@
         <summary><strong>Invita {{ t["p" ~ (3 - me_player)] }}</strong> sul suo telefono</summary>
         <p class="muted small">Fategli inquadrare il QR, oppure mandategli il link: entra direttamente come {{ t["p" ~ (3 - me_player)] }}, senza numero. Vale 12 ore.</p>
         <img class="invite-qr" src="/io/invito.svg" alt="QR per {{ t['p' ~ (3 - me_player)] }}" width="200" height="200">
-        <a class="btn wide" href="https://wa.me/?text={{ ('Entra in «' ~ t.name ~ '» al torneo: ' ~ invite)|urlencode }}" target="_blank" rel="noopener">💬 Manda il link su WhatsApp</a>
+        <a class="btn wide" href="https://wa.me/?text={{ ('Entra in «' ~ t.name ~ '» al torneo: ' ~ invite)|urlencode }}" target="_blank" rel="noopener">{{ ui.icon("chat") }} Manda il link su WhatsApp</a>
         <button class="link small" type="button" data-copy="{{ invite }}">Copia il link</button>
       </details>
     {% elif invite %}
@@ -139,24 +139,24 @@
   {% if cfg.phase.is_setup %}
     {% if t.checked_in %}
     <div class="banner mt-3">
-      <div class="label">Check-in fatto ✓</div>
+      <div class="label">Check-in fatto {{ ui.icon("check") }}</div>
       {{ ui.payment_pill(t, payments) }}
     </div>
     {% endif %}
     {% if spot %}
       <div class="card">
         <div class="label muted small fw-medium" style="text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
-        <div class="headline fw-bold m-0 mt-1 mb-1" style="font-size:1.3rem">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
+        <div class="headline fw-bold m-0 mt-1 mb-1" style="font-size:1.3rem">Girone {{ spot.group.letter }}{% if spot.table %} · {{ ui.icon("table") }} Tavolo {{ spot.table }}{% endif %}</div>
         {% if spot.first_time %}<p class="m-0 mb-2">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
         <div class="list">
           {% for m in spot.group.teams %}
             <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
-              {% if m.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
+              {% if m.checked_in %}<span class="pill ok">{{ ui.icon("check") }} arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
           {% endfor %}
         </div>
         <p class="muted small m-0 mt-2">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
       </div>
-      <p><a class="btn ghost wide" href="/arrivi">👀 Chi è arrivato</a></p>
+      <p><a class="btn ghost wide" href="/arrivi">{{ ui.icon("eye") }} Chi è arrivato</a></p>
       <p><a class="btn ghost wide" href="/gironi">Tutti i gironi</a></p>
     {% else %}
       <p class="muted">Si parte appena ci sono tutti: qui comparirà la vostra prima partita.</p>
@@ -180,7 +180,7 @@
   {% set done_matches = dash.matches|selectattr("done")|list %}
 
   <div class="section-head mt-6">
-    <h2>📅 Partite di {{ t.name }}</h2>
+    <h2>{{ ui.icon("calendar") }} Partite di {{ t.name }}</h2>
     <span class="muted small">{{ done_matches|length }}/{{ dash.matches|length }} giocate</span>
   </div>
 
@@ -191,7 +191,7 @@
 
   <div id="pane-matches-phase">
     {% if group_matches %}
-      <h3 class="m-0 mt-3 mb-2" style="font-size:0.95rem">🏁 Fase a Gironi · {{ dash.table.name if dash.table else "Girone" }}</h3>
+      <h3 class="m-0 mt-3 mb-2" style="font-size:0.95rem">{{ ui.icon("flag") }} Fase a Gironi · {{ dash.table.name if dash.table else "Girone" }}</h3>
       {% for m in group_matches %}
         <div class="muted small fw-medium m-0 mt-2 mb-half">Giornata {{ loop.index }}</div>
         {{ ui.match(m, show_label=False, mine=t.id) }}
@@ -199,7 +199,7 @@
     {% endif %}
 
     {% if ko_matches %}
-      <h3 class="m-0 mt-4 mb-2" style="font-size:0.95rem">🏆 Fase a Eliminazione Diretta</h3>
+      <h3 class="m-0 mt-4 mb-2" style="font-size:0.95rem">{{ ui.icon("trophy") }} Fase a Eliminazione Diretta</h3>
       {% for m in ko_matches %}
         <div class="muted small fw-medium m-0 mt-2 mb-half">{{ m.label }}</div>
         {{ ui.match(m, show_label=False, mine=t.id) }}
@@ -224,14 +224,14 @@
 
 {% if profile and profile.played %}
   <a class="list block no-underline mt-4" href="/squadra/{{ t.id }}/statistiche">
-    <div class="row"><div class="grow"><div class="title">📊 Statistiche</div>
+    <div class="row"><div class="grow"><div class="title">{{ ui.icon("chart") }} Statistiche</div>
       <span class="muted small">Classifiche, precisione, litri bevuti, dove centrate</span></div><span class="chev">›</span></div>
   </a>
 {% endif %}
 
 {% if own and not t.q_at %}
   <a class="banner todo" href="/questionario">
-    <div class="label">📋 Due domande veloci · facoltative</div>
+    <div class="label">{{ ui.icon("clipboard") }} Due domande veloci · facoltative</div>
     Diteci quanto mirate bene: poi lo confrontiamo con quello che fate al tavolo →
   </a>
 {% endif %}

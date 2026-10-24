@@ -7,7 +7,7 @@
 <p class="muted">Come vi vedono gli altri: sui tavoli, in classifica e sulla TV.</p>
 
 <div class="card">
-  <h2 class="mt-0">📸 Foto della coppia</h2>
+  <h2 class="mt-0">{{ ui.icon("camera") }} Foto della coppia</h2>
   <div class="photo-edit">
     <img id="photo-preview" class="team-photo" src="{{ '/foto/' ~ t.photo if t.photo else '' }}" alt="Foto di {{ t.name }}" {{ 'hidden' if not t.photo }}>
     <div>
@@ -20,7 +20,7 @@
 </div>
 
 <form class="card" method="post" action="/io/coppia" id="coppia">
-  <h2 class="mt-0">👥 La coppia</h2>
+  <h2 class="mt-0">{{ ui.icon("users") }} La coppia</h2>
   <label for="name">Nome della coppia</label>
   <input id="name" name="name" value="{{ t.name }}" maxlength="40" required autocomplete="off">
   {% for i in (1, 2) %}
@@ -50,7 +50,7 @@
     {% for key, hex in colors.items() %}
       <label class="swatch" style="--sw: {{ hex }}" title="{{ key }}"><input type="radio" name="colore" value="{{ key }}" {{ 'checked' if t.color == key }}><span></span></label>
     {% endfor %}
-    <label class="swatch none" title="Nessuno"><input type="radio" name="colore" value="" {{ 'checked' if not t.color }}><span>✕</span></label>
+    <label class="swatch none" title="Nessuno"><input type="radio" name="colore" value="" {{ 'checked' if not t.color }}><span>{{ ui.icon("close") }}</span></label>
   </div>
 
   <label for="nick1">Soprannome di {{ t.p1 }}{% if me_player == 1 %} (tu){% endif %}</label>

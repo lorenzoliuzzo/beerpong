@@ -22,7 +22,7 @@
       {% else %}
         <div class="ref-meta">{{ m.label }}{% if m.time %} · ore {{ m.time }}{{ ui.countdown(m) }}{% endif %}</div>
       {% endif %}
-      <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="ref-swap" type="submit" aria-label="Scambia i lati">⇄</button></form>
+      <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="ref-swap" type="submit" aria-label="Scambia i lati">{{ ui.icon("swap") }}</button></form>
     </div>
     <div class="ref-names">{% for s in order %}<strong>{{ team[s].name }}</strong>{% endfor %}</div>
 
@@ -32,7 +32,7 @@
         <div class="ref-picks">
           {% for s in order %}<label class="ref-pick"><input type="radio" name="primo" value="{{ s }}" {{ 'checked' if s == order[0] }}><span>{{ team[s].name }}</span></label>{% endfor %}
         </div>
-        <button class="ref-go" type="submit">▶ Inizia: parte il tempo</button>
+        <button class="ref-go" type="submit">{{ ui.icon("play") }} Inizia: parte il tempo</button>
       </form>
     {% else %}
       {% set st = rv.state %}
@@ -41,24 +41,24 @@
         <form method="post" action="/partita/{{ m.id }}" class="ref-win">
           <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
           <input type="hidden" name="vincitore" value="{{ w }}">
-          <p class="ref-q">🏆 Vince <strong>{{ team[w].name }}</strong></p>
-          <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+          <p class="ref-q">{{ ui.icon("trophy") }} Vince <strong>{{ team[w].name }}</strong></p>
+          <button class="ref-go" type="submit">{{ ui.icon("check") }} Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
         </form>
       {% else %}
         {% if st.phase == LivePhase.SALVEZZA %}
-          <div class="ref-phase salvezza">🛟 <strong>Tiro della salvezza</strong>: {{ team[rv.turn_side].name }}, un tiro a testa.<br>
+          <div class="ref-phase salvezza">{{ ui.icon("lifebuoy") }} <strong>Tiro della salvezza</strong>: {{ team[rv.turn_side].name }}, un tiro a testa.<br>
             <span class="small">Se segnano almeno un bicchiere si va all'overtime, se no vince {{ team[3 - rv.turn_side].name }}.</span></div>
         {% elif st.phase == LivePhase.OVERTIME %}
-          <div class="ref-phase overtime">⚔️ <strong>Overtime</strong> · {{ st.rack_cups }} bicchieri a testa</div>
+          <div class="ref-phase overtime">{{ ui.icon("zap") }} <strong>Overtime</strong> · {{ st.rack_cups }} bicchieri a testa</div>
         {% endif %}
         {% if m.duration and st.phase == LivePhase.PLAY %}
           <form method="post" action="/partita/{{ m.id }}" class="ref-win ref-timeout" hidden>
             <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
             {% if m.stage == "ko" and st.side_hits(1) == st.side_hits(2) %}
-              <p class="ref-q">⏱ Tempo scaduto in parità: overtime, continuate a segnare.</p>
+              <p class="ref-q">{{ ui.icon("timer") }} Tempo scaduto in parità: overtime, continuate a segnare.</p>
             {% else %}
-              <p class="ref-q">⏱ Tempo scaduto</p>
-              <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+              <p class="ref-q">{{ ui.icon("timer") }} Tempo scaduto</p>
+              <button class="ref-go" type="submit">{{ ui.icon("check") }} Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
             {% endif %}
           </form>
         {% endif %}
@@ -72,7 +72,7 @@
               <div class="ref-half shooting">
                 <span class="ref-role">tira</span>
                 {% for pl in ([2, 1] if flip else [1, 2]) %}
-                  <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>🎯 {{ team[s]["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
+                  <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>{{ ui.icon("target") }} {{ team[s]["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} {{ ui.icon("check") }}{% endif %}</span></label>
                 {% endfor %}
               </div>
             {% else %}
@@ -85,25 +85,25 @@
                   </div>{% endfor %}
                 </div>
                 {% if 0 < standing|length < st.rack_cups and standing|length <= 6 and standing|length < (rv.rows[s]|map('length')|sum) %}
-                  <button class="small ghost ref-rerack" type="submit" formaction="/partita/{{ m.id }}/riordina" name="lato" value="{{ s }}">⟲ Riordina</button>
+                  <button class="small ghost ref-rerack" type="submit" formaction="/partita/{{ m.id }}/riordina" name="lato" value="{{ s }}">{{ ui.icon("rotate") }} Riordina</button>
                 {% endif %}
               </div>
             {% endif %}
           {% endfor %}
           <div class="ref-outcomes">
-            <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
-            <button class="ref-blow" type="submit" name="bicchiere" value="soffio" title="Regola del soffio: la palla girava nel bicchiere e la difesa l'ha soffiata fuori">💨 Soffiato</button>
+            <button class="ref-miss" type="submit" name="bicchiere" value="0">{{ ui.icon("close") }} Fuori</button>
+            <button class="ref-blow" type="submit" name="bicchiere" value="soffio" title="Regola del soffio: la palla girava nel bicchiere e la difesa l'ha soffiata fuori">{{ ui.icon("wind") }} Soffiato</button>
           </div>
         </form>
       {% endif %}
       {% if rv.last_rerack %}
         <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
-          <button class="ghost" type="submit">↶ Annulla: riordino bicchieri di {{ team[rv.last_rerack].name }}</button>
+          <button class="ghost" type="submit">{{ ui.icon("undo") }} Annulla: riordino bicchieri di {{ team[rv.last_rerack].name }}</button>
         </form>
       {% elif rv.last_shot %}
         {% set ls = rv.last_shot %}
         <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
-          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "💨 soffiato" if rv.last_blown else ("🎯 centrato" if ls.removed else "✗ fuori") }}</button>
+          <button class="ghost" type="submit">{{ ui.icon("undo") }} Annulla: {{ team[ls.side]["p" ~ ls.player] }} {% if rv.last_blown %}{{ ui.icon("wind") }} soffiato{% elif ls.removed %}{{ ui.icon("target") }} centrato{% else %}{{ ui.icon("close") }} fuori{% endif %}</button>
         </form>
       {% endif %}
       <details class="ref-more">
@@ -165,7 +165,7 @@
         tick();
       } catch (_) {
         document.querySelector("main").classList.remove("ref-busy");
-        warn("⚠️ Tiro NON salvato: connessione assente. Riprova.");
+        warn("Tiro NON salvato: connessione assente. Riprova.");
       } finally {
         busy = false;
       }

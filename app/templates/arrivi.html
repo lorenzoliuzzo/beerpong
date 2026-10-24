@@ -17,7 +17,7 @@
       <a class="row arrival {{ 'mine' if me and me.id == t.id }}" href="/squadra/{{ t.id }}" style="{{ ('--team: ' ~ ui.team_color(t)) if t.color }}">
         {{ ui.avatar(t) }}
         <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}{% if t.motto %} · «{{ t.motto }}»{% endif %}</span></div>
-        <span class="pill ok">✓ {{ t.checked_in_at[11:16] if t.checked_in_at else "arrivata" }}</span>
+        <span class="pill ok">{{ ui.icon("check") }} {{ t.checked_in_at[11:16] if t.checked_in_at else "arrivata" }}</span>
       </a>
     {% endfor %}
   </div>
@@ -31,7 +31,7 @@
     {% for t in arr.expected %}
       {% set half = t.arrived1_at or t.arrived2_at %}
       <a class="row {{ 'muted' if not half }}" href="/squadra/{{ t.id }}">{{ ui.avatar(t) }}<div class="grow"><div class="title">{{ t.name }}</div><span class="small">{{ ui.players(t) }}</span></div>
-        {% if half %}<span class="pill warn">{{ t.p1 if t.arrived1_at else t.p2 }} ✓ · manca {{ t.p2 if t.arrived1_at else t.p1 }}</span>{% endif %}</a>
+        {% if half %}<span class="pill warn">{{ t.p1 if t.arrived1_at else t.p2 }} {{ ui.icon("check") }} · manca {{ t.p2 if t.arrived1_at else t.p1 }}</span>{% endif %}</a>
     {% endfor %}
   </div>
 {% endif %}

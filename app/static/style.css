@@ -126,7 +126,7 @@ main.ref-busy { opacity: .6; pointer-events: none; }
 .ref-q { text-align: center; margin: var(--sp-1) 0; font-size: 1.05rem; }
 .ref-picks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
 .ref-pick input { position: absolute; opacity: 0; pointer-events: none; }
-.ref-pick span { display: flex; align-items: center; justify-content: center; min-height: 56px; padding: var(--sp-2); border-radius: var(--radius); border: 2px solid var(--line); font-weight: var(--fw-medium); text-align: center; cursor: pointer; }
+.ref-pick span { display: flex; align-items: center; justify-content: center; gap: var(--sp-1); min-height: 56px; padding: var(--sp-2); border-radius: var(--radius); border: 2px solid var(--line); font-weight: var(--fw-medium); text-align: center; cursor: pointer; }
 .ref-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .ref-pick.shot span { color: var(--muted); }
 .ref-board { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
@@ -177,6 +177,9 @@ nav.tabbar a {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-1);
   color: var(--muted); text-decoration: none; font-size: .7rem; font-weight: var(--fw-medium);
 }
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.icon { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.icon.xl { width: 2.5rem; height: 2.5rem; }
 nav.tabbar svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 nav.tabbar a.on { color: var(--accent); }
 
