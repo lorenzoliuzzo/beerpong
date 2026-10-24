@@ -15,7 +15,7 @@ from pathlib import Path
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer, URLSafeTimedSerializer
 
 from . import bracket, planning
-from .db import get_setting, random_key, set_setting
+from .db import get_setting, random_key, random_pin, set_setting
 from .standings import Result, Row, compute_table
 
 MAX_TEAM_CUPS = 30
@@ -29,6 +29,16 @@ class TournamentError(Exception):
     pass
 
 
+# How a match is scored: chosen for the tournament, and changeable for a single match.
+SCORING = {
+    "coppie": "Le coppie inseriscono il risultato",
+    "risultato": "L'arbitro inserisce il risultato finale",
+    "tiri": "L'arbitro segna tiro per tiro",
+}
+# Who may referee when a match needs one.
+REFEREES = {"pin": "Con il PIN del tavolo", "volontari": "Chi non sta giocando", "entrambi": "Tutti e due"}
+
+
 @dataclass(frozen=True)
 class Config:
     title: str
@@ -39,6 +49,16 @@ class Config:
     public_url: str
     phase: str
     start_time: str
+    scoring: str = "coppie"
+    referees: str = "entrambi"
+
+    @property
+    def pin_referees(self) -> bool:
+        return self.referees in ("pin", "entrambi")
+
+    @property
+    def volunteer_referees(self) -> bool:
+        return self.referees in ("volontari", "entrambi")
 
 
 @dataclass
@@ -64,6 +84,8 @@ class MatchView:
     grp: int | None
     round: int
     pos: int
+    live_score: tuple[int, int] | None = None  # from the referee's shots, while it is played shot by shot
+    mode: str = "coppie"  # how it is scored (SCORING): its own choice or the tournament's
     playing: bool = False  # its turn on a table right now (see live()): the couples are called
     started_at: float | None = None  # the referee started it
     start_iso: str = ""  # scheduled start, local time, for the countdowns
@@ -98,12 +120,32 @@ def load_config(db: sqlite3.Connection) -> Config:
         public_url=get_setting(db, "public_url"),
         phase=get_setting(db, "phase"),
         start_time=get_setting(db, "start_time"),
+        scoring=get_setting(db, "scoring"),
+        referees=get_setting(db, "referees"),
     )
+
+
+def referee_pin(db: sqlite3.Connection, field_no: int) -> str:
+    key = f"ref_pin_{field_no}"
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    if row:
+        return row["value"]
+    taken = {r["value"] for r in db.execute("SELECT value FROM settings WHERE key LIKE 'ref_pin_%' OR key = 'admin_pin'")}
+    pin = random_pin()
+    while pin in taken:
+        pin = random_pin()
+    with db:
+        set_setting(db, key, pin)
+    return pin
 
 
 def authenticate(db: sqlite3.Connection, pin: str) -> tuple[str, int | None] | None:
     if secrets.compare_digest(pin, get_setting(db, "admin_pin")):
         return "admin", None
+    if get_setting(db, "referees") in ("pin", "entrambi"):
+        for row in db.execute("SELECT key, value FROM settings WHERE key LIKE 'ref_pin_%'"):
+            if secrets.compare_digest(pin, row["value"]):
+                return "referee", int(row["key"].removeprefix("ref_pin_"))
     return None
 
 
@@ -941,6 +983,11 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
     def split(a: int | None, b: int | None) -> tuple[int, int] | None:
         return (a, b) if a is not None and b is not None else None
 
+    from . import tracking  # tracking imports this module
+
+    default_mode = get_setting(db, "scoring")
+    has_reports = {r[0] for r in db.execute("SELECT DISTINCT match_id FROM reports").fetchall()}
+
     views = []
     for r in rows:
         label = group_name(r["grp"]) if r["stage"] == "group" else bracket.round_name(r["round"], total_rounds)
@@ -969,6 +1016,8 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 pos=r["pos"],
                 started_at=r["started_at"],
                 start_iso=r["start"] or "",
+                live_score=tracking.live_score(db, r["id"]) if r["id"] in has_reports and not r["done"] else None,
+                mode=r["mode"] or default_mode,
             )
         )
     for m in live(views)[0]:
@@ -1353,6 +1402,15 @@ class PlayerProfile:
     fav_cup: int | None
     fav_cup_hits: int
     heatmap: dict[int, int] = field(default_factory=dict)  # cup -> hits by this player
+    # From the referee's shots, in matches scored shot by shot (all zero otherwise):
+    live_shots: int = 0
+    live_hits: int = 0
+    accuracy_rank: int | None = None
+    finishers: int = 0
+
+    @property
+    def live_accuracy(self) -> float:
+        return 100.0 * self.live_hits / self.live_shots if self.live_shots else 0.0
 
 
 LITERS_PER_TEAM_MATCH = 1.0  # 1 L of beer in each couple's rack per match
@@ -1372,9 +1430,12 @@ def beer_stats(
         if m.bye or m.t1 is None or m.t2 is None:
             continue
         rack_cups = FINAL_CUPS if (m.stage == "ko" and m.round == total_rounds) else 6
-        if not m.done:
+        if m.done:
+            s1, s2 = m.s1 or 0, m.s2 or 0
+        elif m.live_score:
+            s1, s2 = m.live_score
+        else:
             continue
-        s1, s2 = m.s1 or 0, m.s2 or 0
         # Team 1 drinks the cups hit by Team 2 (s2), Team 2 drinks the cups hit by Team 1 (s1)
         for tid, drunk_cups in ((m.t1, s2), (m.t2, s1)):
             liters = drunk_cups * (LITERS_PER_TEAM_MATCH / rack_cups)
@@ -1408,13 +1469,22 @@ class TeamProfile:
     cups_avg: float
     team_heatmap: dict[int, int]
     players: list[PlayerProfile]
+    team_shots: int = 0  # shot by shot only, like the fields below
+    team_hits: int = 0
+    team_accuracy_rank: int | None = None
+    blows: int = 0  # balls the couple blew out of its cups (rule 5)
     liters_drunk: float = 0.0
     cups_drunk_live: int = 0
     tournament_liters: float = 0.0
     total_cups_live: int = 0
 
+    @property
+    def team_accuracy(self) -> float:
+        return 100.0 * self.team_hits / self.team_shots if self.team_shots else 0.0
+
 
 def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
+    from . import tracking
     row = team(db, team_id)
     if row is None:
         return None
@@ -1471,6 +1541,29 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
         if h["player"] in (1, 2):
             player_heat[h["player"]][h["cup"]] += 1
 
+    # Shots, where a referee scored them one by one.
+    p_shots, p_hits, p_finishers = {1: 0, 2: 0}, {1: 0, 2: 0}, {1: 0, 2: 0}
+    for m in all_ms:
+        side = m.side(team_id)
+        st = tracking.state(db, m.id)
+        last_hit = next((s for s in reversed(st.shots) if s.removed is not None), None) if st.winner_side else None
+        for s in st.shots:
+            if s.side != side or s.player not in (1, 2):
+                continue
+            p_shots[s.player] += 1
+            if s.removed is not None:
+                p_hits[s.player] += 1
+                p_finishers[s.player] += s is last_hit
+    shot_st = tracking.shot_stats(db) if p_shots[1] + p_shots[2] else None
+    acc_rank = {}
+    team_acc_rank = None
+    if shot_st:
+        ranked = sorted((p for p in shot_st.players if p.shots), key=lambda p: (-p.accuracy, -p.hits, p.player.lower()))
+        acc_rank = {(p.team_id, p.player): i for i, p in enumerate(ranked, 1)}
+        totals = tracking._team_side_stats(db)
+        by_acc = sorted(((tid, h / sh, h) for tid, (h, sh) in totals.items() if sh), key=lambda x: (-x[1], -x[2]))
+        team_acc_rank = next((i for i, x in enumerate(by_acc, 1) if x[0] == team_id), None)
+
     p1_sc = sc_by_key.get((team_id, row["p1"]))
     p2_sc = sc_by_key.get((team_id, row["p2"]))
     c1 = p1_sc[1].cups if p1_sc else 0
@@ -1500,6 +1593,10 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
                 fav_cup=best_cup[0],
                 fav_cup_hits=best_cup[1],
                 heatmap=p_heat,
+                live_shots=p_shots[idx],
+                live_hits=p_hits[idx],
+                accuracy_rank=acc_rank.get((team_id, pname)),
+                finishers=p_finishers[idx],
             )
         )
 
@@ -1524,6 +1621,14 @@ def team_profile(db: sqlite3.Connection, team_id: int) -> TeamProfile | None:
         cups_avg=cups_avg,
         team_heatmap=team_heat,
         players=players_out,
+        team_shots=p_shots[1] + p_shots[2],
+        team_hits=p_hits[1] + p_hits[2],
+        team_accuracy_rank=team_acc_rank,
+        blows=db.execute(
+            "SELECT COUNT(*) FROM blows b JOIN matches m ON m.id = b.match_id"
+            " WHERE (b.side = 1 AND m.team1 = ?) OR (b.side = 2 AND m.team2 = ?)",
+            (team_id, team_id),
+        ).fetchone()[0],
         liters_drunk=team_liters,
         cups_drunk_live=team_cups_drunk,
         tournament_liters=t_liters,
@@ -2071,13 +2176,17 @@ class TournamentInfo:
     rules: str
     form_url: str
     pay_info: str  # how to pay: Satispay number, IBAN, ...
+    scoring: str = "coppie"
+    referees: str = "entrambi"
 
     @property
     def created(self) -> bool:
         return bool(self.date)
 
 
-TOURNAMENT_KEYS = ("title", "date", "start_time", "target_teams", "fields", "fee", "rules", "form_url", "pay_info")
+TOURNAMENT_KEYS = (
+    "title", "date", "start_time", "target_teams", "fields", "fee", "rules", "form_url", "pay_info", "scoring", "referees",
+)
 
 
 def load_tournament(db: sqlite3.Connection) -> TournamentInfo:
@@ -2104,10 +2213,13 @@ def save_tournament(db: sqlite3.Connection, info: TournamentInfo) -> None:
     # Shown as a link on the public page: only web addresses, never javascript: or the like.
     if info.form_url and not re.fullmatch(r"https?://\S+", info.form_url.strip()):
         raise TournamentError("Il link di iscrizione deve iniziare con https://")
+    if info.scoring not in SCORING or info.referees not in REFEREES:
+        raise TournamentError("Scegli come si segnano le partite e chi arbitra.")
     values = {
         "title": info.title.strip(), "date": info.date, "start_time": info.start_time,
         "target_teams": str(info.target_teams), "fields": str(info.fields), "fee": fee,
         "rules": info.rules.strip()[:4000], "form_url": info.form_url.strip(), "pay_info": info.pay_info.strip()[:1000],
+        "scoring": info.scoring, "referees": info.referees,
     }
     with db:
         for k, v in values.items():
@@ -2400,3 +2512,17 @@ def arrivals(db: sqlite3.Connection) -> Arrivals:
     placed = registration(db).placed
     arrived = sorted((t for t in placed if t["checked_in"]), key=lambda t: t["checked_in_at"] or "", reverse=True)
     return Arrivals(arrived, sorted((t for t in placed if not t["checked_in"]), key=lambda t: t["name"].casefold()))
+
+
+
+def set_match_mode(db: sqlite3.Connection, match_id: int, mode: str) -> None:
+    """One match scored differently from the tournament (say, the final shot by shot); "" goes back to it."""
+    if mode and mode not in SCORING:
+        raise TournamentError("Modalità non valida.")
+    m = db.execute("SELECT done, started_at FROM matches WHERE id = ?", (match_id,)).fetchone()
+    if m is None:
+        raise TournamentError("Partita non trovata.")
+    if m["done"] or m["started_at"] is not None:
+        raise TournamentError("La partita è già iniziata: la modalità non si cambia più.")
+    with db:
+        db.execute("UPDATE matches SET mode = ? WHERE id = ?", (mode or None, match_id))

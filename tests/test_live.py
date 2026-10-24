@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app import live
+from app import live, service, tracking
 from app import main as app_main
 from app.live import Report
 from app.main import create_app
 
-from .test_app import ADMIN_PIN
+from .test_app import ADMIN_PIN, db_call, setup_tournament, shot_by_shot
 
 
 def shot(i: int, device: str, at: float, side: int = 1, player: int = 1, cup: int = 3) -> Report:
@@ -96,3 +96,97 @@ def test_rerack_compacts_the_remaining_cups() -> None:
     assert st.racks[2].cups == {1, 2} and st.side_hits(1) == 4
 
 
+
+
+def test_the_live_page_is_for_watching(client: TestClient) -> None:
+    shot_by_shot()
+    setup_tournament(client, 8, fields=4)
+    m = db_call(service.matches)[0]
+    assert "in chiamata" in client.get("/").text  # called to the table, the referee has not started it yet
+    page = client.get(f"/live/{m.id}").text
+    assert "Chi sta tirando" not in page and 'id="sheet"' not in page and "segna l'arbitro" in page
+    for path in ("segnala", "annulla"):  # nobody but the referee records shots
+        r = client.post(f"/api/live/{m.id}/{path}", json={"kind": "shot", "side": 1, "player": 1, "cup": 1})
+        assert r.status_code in (404, 405)
+
+    # The referee scores, and that is what the live page and the statistics show.
+    db_call(lambda db: service.start_match(db, m.id, 1000.0, 1))
+    db_call(lambda db: tracking.referee_shot(db, m.id, 2, 4, 1010.0, 0))
+    state = client.get(f"/api/live/{m.id}").json()
+    assert state["started_at"] == 1000.0 and state["duration"] == 300
+    assert 4 not in state["teams"][1]["rack"] and len(state["teams"][1]["rack"]) == 5 and state["prob"][0] > 0.5
+    client.post(f"/partita/{m.id}", data={"s1": 1, "s2": 0})
+    assert db_call(service.match, m.id).split1 == (0, 1)  # the referee's hits fill in the players' split
+    stats = db_call(tracking.shot_stats)
+    assert stats.total_shots == 1 and stats.heatmap[4] == 1
+    assert "Bomber" in client.get("/classifiche?vista=tiri").text
+
+
+def test_cheer_rate_limit(client: TestClient) -> None:
+    shot_by_shot()
+    setup_tournament(client, 8, fields=4)
+    m = db_call(service.matches)[0]
+    assert client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🍺"}).status_code == 200
+    assert client.post(f"/api/live/{m.id}/tifo", json={"side": 1, "emoji": "🔥"}).status_code == 429  # too close
+
+
+def test_live_view_has_trend_streak_cheers_and_other_tables(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    shot_by_shot()
+    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    setup_tournament(client, 8, fields=2)
+    m = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
+    other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
+    tracking._others_cache = (0.0, [])  # a fresh tournament: do not reuse another test's strip
+    db_call(lambda db: service.start_match(db, m.id, 1000.0, 1))
+    for n, (pl, cup) in enumerate([(1, 1), (2, 2), (1, 0), (2, 0), (1, 3)]):
+        db_call(lambda db: tracking.referee_shot(db, m.id, pl, cup, 1001.0 + n, n))
+    data = client.get(f"/api/live/{m.id}").json()
+    assert len(data["timeline"]) == 1 + 3 and all(0 <= p["p"] <= 1 for p in data["timeline"])
+    assert data["timeline"][-1]["p"] > data["timeline"][0]["p"]  # couple 1 leads 3-0
+    assert data["streak"] == [3, 0]  # couple 1 hit all three of its shots; the misses were couple 2
+    assert [o["id"] for o in data["others"]] == [other.id]
+
+    r = client.post(f"/api/live/{m.id}/tifo", json={"side": 2, "emoji": "🔥"})
+    assert r.status_code == 200 and r.json()["cheers"][1]["🔥"] == 1
+    assert client.post(f"/api/live/{m.id}/tifo", json={"side": 2, "emoji": "💩"}).status_code == 400
+    page = client.get(f"/live/{m.id}").text
+    assert 'id="trend"' in page and 'id="cheer1"' in page and 'id="others"' in page
+
+
+def test_one_cheer_of_each_kind_per_account_and_none_while_playing(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    shot_by_shot()
+    monkeypatch.setattr("app.main.REPORT_MIN_GAP_S", 0)
+    client.post("/login", data={"pin": ADMIN_PIN})
+    client.post("/admin/squadre/importa", data={"testo": "\n".join(f"S{i}; A{i}; B{i}; 33311100{i:02d}" for i in range(8))})
+    client.post("/admin/impostazioni", data={"title": "T", "fields": 2, "group_min": 5, "ko_min": 7, "buffer_min": 1})
+    for t in db_call(service.teams).values():
+        client.post(f"/admin/squadre/{t['id']}/presente", data={"presente": 1})
+    client.post("/admin/avvia")
+    client.post("/logout")
+    m = next(x for x in db_call(service.matches) if x.playing)
+
+    def tifo(c: TestClient, side: int = 1, emo: str = "🍺"):
+        return c.post(f"/api/live/{m.id}/tifo", json={"side": side, "emoji": emo})
+
+    r = tifo(client)
+    assert r.json()["cheers"][0]["🍺"] == 1 and r.json()["my_cheers"] == [[1, "🍺"]]
+    assert tifo(client, 1, "🔥").json()["cheers"][0]["🔥"] == 1  # another kind counts on its own
+    r = tifo(client)  # the same one again takes it back
+    assert r.json()["cheers"][0]["🍺"] == 0 and r.json()["my_cheers"] == [[1, "🔥"]]
+
+    # a couple cheers once whatever the number of its phones
+    waiting = next(t for t in db_call(service.teams).values() if t["id"] not in (m.t1, m.t2))
+    phones = [TestClient(client.app) for _ in range(2)]
+    for ph in phones:
+        assert "Bentornat" in ph.post("/checkin/accedi", data={"phone": waiting["phone1"]}).text
+    assert tifo(phones[0], 2, "👏").json()["cheers"][1]["👏"] == 1
+    assert tifo(phones[1], 2, "👏").json()["cheers"][1]["👏"] == 0  # same couple: the second tap took it back
+
+    # a couple whose match is on can neither cheer nor report shots, and the page knows it
+    db_call(lambda db: service.start_match(db, m.id, 1000.0, 1))
+    with TestClient(client.app) as at_table:
+        at_table.post("/checkin/accedi", data={"phone": db_call(service.team, m.t1)["phone1"]})
+        r = tifo(at_table)
+        assert r.status_code == 403 and "occhi sul tavolo" in r.json()["error"]
+        assert at_table.get(f"/api/live/{m.id}").json()["you_play"] is True
+    assert client.get(f"/api/live/{m.id}").json()["you_play"] is False

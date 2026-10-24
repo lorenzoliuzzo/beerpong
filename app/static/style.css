@@ -1514,3 +1514,5 @@ a.ref-overview.running .ref-go { background: var(--accent); }
 .voucher-name { font-size: 1.1rem; font-weight: 700; }
 .voucher-left { margin-top: 6px; font-size: 1.4rem; font-weight: 800; }
 @keyframes voucher-pulse { from { transform: scale(1); } to { transform: scale(1.02); } }
+
+.choices.stack { flex-direction: column; align-items: flex-start; }

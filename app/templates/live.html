@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}{{ m.n1 }} vs {{ m.n2 }} · LIVE{% endblock %}
+{% block content %}
+<div id="live" data-match="{{ m.id }}">
+  <div class="slim-head" style="margin-bottom:8px">
+    <span class="muted small">{{ m.label }}{% if m.field %} · <strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
+    {% if m.field %}
+      <a class="btn small ghost" href="/gironi?sez=tavoli&amp;tavolo={{ m.field }}">← Tavolo {{ m.field }}</a>
+    {% endif %}
+  </div>
+
+  <nav class="live-others" id="others" aria-label="Altre partite in campo" hidden></nav>
+
+  <section class="arena">
+    <div class="vs">
+      <div class="side s1">
+        <a class="tname" data-f="name1" href="/squadra/{{ m.t1 }}" style="text-decoration:none;color:inherit">{{ m.n1 }}</a>
+        <div class="tmeta" data-f="meta1"></div>
+        <div class="streak" id="streak1" hidden></div>
+      </div>
+      <div class="clockbox">
+        <div class="bigscore"><span id="sc1">0</span><span class="dash">–</span><span id="sc2">0</span></div>
+        <div class="clock" id="clock">--:--</div>
+        <div class="clock-sub" id="clock-sub"></div>
+      </div>
+      <div class="side s2">
+        <a class="tname" data-f="name2" href="/squadra/{{ m.t2 }}" style="text-decoration:none;color:inherit">{{ m.n2 }}</a>
+        <div class="tmeta" data-f="meta2"></div>
+        <div class="streak" id="streak2" hidden></div>
+      </div>
+    </div>
+
+    <div class="odds" aria-label="Probabilità di vittoria">
+      <span class="o1" id="odds1"></span><span class="o2" id="odds2"></span>
+    </div>
+    <div class="odds-labels"><span id="odds1-t"></span><span class="muted small">probabilità di vittoria</span><span id="odds2-t"></span></div>
+    <div class="trend-box" id="trend-box" hidden>
+      <svg class="trend" id="trend" viewBox="0 0 300 64" preserveAspectRatio="none" aria-label="Andamento della probabilità di vittoria"></svg>
+      <div class="trend-label muted small">andamento tiro dopo tiro</div>
+    </div>
+
+    <div class="racks">
+      <div class="rack-block">
+        <div class="rack-title"><span class="dot2"></span> Bicchieri di <b data-f="name2b">{{ m.n2 }}</b></div>
+        <div class="rack" id="rack2"></div>
+      </div>
+      <div class="rack-block">
+        <div class="rack-title"><span class="dot1"></span> Bicchieri di <b data-f="name1b">{{ m.n1 }}</b></div>
+        <div class="rack" id="rack1"></div>
+      </div>
+    </div>
+
+    <div id="result" class="banner gold" hidden></div>
+
+    <p class="muted small" style="text-align:center">🧑‍⚖️ I tiri li segna l'arbitro del tavolo.</p>
+    <div class="pstats" id="pstats" hidden></div>
+  </section>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <p id="you-play" class="banner warm" hidden>🏓 State giocando: il tifo torna quando finisce la vostra partita.</p>
+  <section class="cheers" aria-label="Tifo">
+    <div class="cheer-col" id="cheer1"></div>
+    <div class="cheer-col" id="cheer2"></div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById("live");
+  const id = root.dataset.match;
+  let ROWS = [[4, 5, 6], [2, 3], [1]];  // far row first, apex closest to the shooter; the final has 10 cups
+  let data = null, offset = 0, busy = false;
+
+  const $ = (sel) => document.querySelector(sel);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const serverNow = () => (Date.now() + offset) / 1000;
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+  function toast(text) {
+    const t = $("#toast");
+    t.textContent = text;
+    t.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => (t.hidden = true), 4000);
+  }
+
+  function rackHTML(cups, rows) {
+    const standing = new Set(cups);
+    return (rows || ROWS).map((row) => `<div class="rrow">${row.map((c) =>
+      `<span class="cup ${standing.has(c) ? "up" : "down"}"></span>`).join("")}</div>`).join("");
+  }
+
+  function render() {
+    if (!data) return;
+    const [t1, t2] = data.teams;
+    for (const [i, t] of [[1, t1], [2, t2]]) {
+      document.querySelectorAll(`[data-f="name${i}"], [data-f="name${i}b"]`).forEach((el) => (el.textContent = t.name));
+      const bits = [t.label, t.record, t.accuracy != null ? `🎯 ${t.accuracy}%` : ""].filter(Boolean);
+      $(`[data-f="meta${i}"]`).innerHTML = bits.map(esc).join("<br>");
+      $(`#rack${i}`).innerHTML = rackHTML(t.rack, t.rows);
+    }
+    const score = data.done ? data.score : [t1.hits, t2.hits];
+    $("#sc1").textContent = score[0];
+    $("#sc2").textContent = score[1];
+    for (const i of [1, 2]) {
+      const n = (data.streak || [0, 0])[i - 1], el = $(`#streak${i}`);
+      const blows = (data.blows || [0, 0])[i - 1];
+      el.hidden = (n < 2 || data.done) && !blows;
+      el.textContent = [n >= 2 && !data.done ? `🔥 ${n} di fila` : "", blows ? `💨 ${blows} ${blows === 1 ? "soffio" : "soffi"}` : ""].filter(Boolean).join(" · ");
+    }
+    const pts = data.timeline || [];
+    $("#trend-box").hidden = pts.length < 2;
+    if (pts.length >= 2) {
+      const xy = pts.map((p, k) => `${(k / (pts.length - 1)) * 300},${(1 - p.p) * 60 + 2}`);
+      $("#trend").innerHTML = `<line x1="0" y1="32" x2="300" y2="32" class="mid"/>
+        <polygon points="0,62 ${xy.join(" ")} 300,62" class="area"/><polyline points="${xy.join(" ")}" class="line"/>`;
+    }
+    $("#pstats").hidden = !data.official;
+    $("#pstats").innerHTML = data.teams.map((t, k) => `<div class="pcol s${k + 1}">${t.players.map((p, j) => {
+      const st = t.player_stats[j], pct = st.shots ? Math.round(100 * st.hits / st.shots) + "%" : "—";
+      return `<div class="prow"><span>${esc(p || "Giocatore " + (j + 1))}</span><b>${st.hits}/${st.shots}</b><small>${pct}</small></div>`;
+    }).join("")}</div>`).join("");
+    const cheers = data.cheers || [{}, {}];
+    const mineCheers = new Set((data.my_cheers || []).map(([s, e]) => `${s}${e}`));
+    for (const i of [1, 2]) {
+      $(`#cheer${i}`).innerHTML = `<div class="cheer-team">${esc(data.teams[i - 1].name)}</div>` +
+        Object.entries(cheers[i - 1]).map(([emo, n]) => {
+          const on = mineCheers.has(`${i}${emo}`);
+          return `<button class="cheer ${on ? "on" : ""}" data-cheer="${i}" data-emoji="${emo}" aria-pressed="${on}" ${data.you_play ? "disabled" : ""}
+            aria-label="Tifa ${esc(data.teams[i - 1].name)} ${emo}">${emo}<small>${n}</small></button>`;
+        }).join("");
+    }
+    $("#you-play").hidden = !data.you_play;
+    const others = data.others || [];
+    $("#others").hidden = !others.length;
+    $("#others").innerHTML = others.map((o) => `<a href="/live/${o.id}"><span class="tno">T${o.field}</span>
+      ${esc(o.n1)} <b>${o.score ? o.score[0] + "–" + o.score[1] : "vs"}</b> ${esc(o.n2)}</a>`).join("");
+
+    const p1 = Math.round(data.prob[0] * 100);
+    $("#odds1").style.width = p1 + "%";
+    $("#odds2").style.width = 100 - p1 + "%";
+    $("#odds1-t").textContent = p1 + "%";
+    $("#odds2-t").textContent = 100 - p1 + "%";
+
+    const over = data.done || data.winner_side;
+    const res = $("#result");
+    if (over) {
+      const w = data.teams[data.winner_side - 1];
+      res.hidden = false;
+      res.innerHTML = data.done
+        ? `<div class="label">Risultato finale</div><div class="headline">${esc(t1.name)} ${data.score[0]}–${data.score[1]} ${esc(t2.name)}</div>`
+        : `<div class="label">Bicchieri finiti!</div><div class="headline">🏆 ${esc(w ? w.name : "")}</div>In attesa della conferma dell'arbitro`;
+    } else {
+      res.hidden = true;
+    }
+
+  }
+
+  function tick() {
+    const clock = $("#clock"), sub = $("#clock-sub");
+    if (!data) return;
+    if (data.started_at == null) {
+      clock.textContent = data.duration ? mmss(data.duration) : "0:00";
+      sub.textContent = "da iniziare";
+      clock.className = "clock";
+      return;
+    }
+    const elapsed = Math.max(0, serverNow() - data.started_at);
+    if (data.duration) {
+      const left = Math.max(0, data.duration - elapsed);
+      clock.textContent = left > 0 ? mmss(left) : "TEMPO!";
+      clock.className = "clock" + (left <= 30 ? " hot" : "");
+      sub.textContent = left > 0 ? "rimanenti" : "fine tempo";
+    } else {
+      clock.textContent = mmss(elapsed);
+      clock.className = "clock";
+      sub.textContent = "senza limite";
+    }
+  }
+
+  async function load() {
+    if (document.hidden || busy) return;
+    try {
+      const r = await fetch(`/api/live/${id}`, { cache: "no-store", credentials: "same-origin" });
+      if (!r.ok) return;
+      accept(await r.json());
+    } catch (_) { /* offline for a moment: the next poll retries */ }
+  }
+
+  function accept(json, t0) {
+    data = json;
+    offset = data.now * 1000 - (t0 ? (t0 + Date.now()) / 2 : Date.now());
+    render();
+    tick();
+  }
+
+  async function send(path, body) {
+    busy = true;
+    const t0 = Date.now();
+    try {
+      const r = await fetch(`/api/live/${id}/${path}`, {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const json = await r.json();
+      if (!r.ok) { toast(json.error || "Errore"); return null; }
+      accept(json, t0);
+      return json;
+    } catch (_) {
+      toast("Connessione assente: riprova");
+      return null;
+    } finally {
+      busy = false;
+    }
+  }
+
+
+  document.addEventListener("click", async (e) => {
+    const cheerBtn = e.target.closest("[data-cheer]");
+    if (cheerBtn) {
+      cheerBtn.classList.remove("pop"); void cheerBtn.offsetWidth; cheerBtn.classList.add("pop");
+      if (navigator.vibrate) navigator.vibrate(15);
+      await send("tifo", { side: +cheerBtn.dataset.cheer, emoji: cheerBtn.dataset.emoji });
+      return;
+    }
+  });
+
+  load();
+  setInterval(load, 2000);
+  setInterval(tick, 250);
+  document.addEventListener("visibilitychange", load);
+})();
+</script>
+{% endblock %}

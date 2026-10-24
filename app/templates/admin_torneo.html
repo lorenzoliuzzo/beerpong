@@ -35,6 +35,20 @@
   <label for="pay_info">Come pagare</label>
   <textarea id="pay_info" name="pay_info" style="min-height:80px" placeholder="Satispay al 333 1234567 oppure bonifico IBAN IT00 …">{{ info.pay_info }}</textarea>
   <p class="muted small">Ogni coppia riceve un codice da scrivere nella causale (es. BP007): incollando l'estratto Satispay o del conto, l'app conferma da sola chi ha pagato. Il pagamento è l'unica conferma dell'iscrizione.</p>
+  <h2>Come si segnano le partite</h2>
+  <div class="choices stack">
+    {% for key, label in scoring.items() %}
+      <label><input type="radio" name="scoring" value="{{ key }}" {{ 'checked' if info.scoring == key }}> {{ label }}</label>
+    {% endfor %}
+  </div>
+  <p class="muted small">Vale per tutte le partite; dalla pagina del risultato puoi cambiarla per una sola (es. la finale tiro per tiro). Con «tiro per tiro» arrivano precisione, premi e la pagina live con le quote.</p>
+  <label>Chi arbitra (quando serve un arbitro)</label>
+  <div class="choices stack">
+    {% for key, label in referees.items() %}
+      <label><input type="radio" name="referees" value="{{ key }}" {{ 'checked' if info.referees == key }}> {{ label }}</label>
+    {% endfor %}
+  </div>
+  <p class="muted small">Con il PIN: lo trovi in Organizzazione → Accessi, uno per tavolo. Chi non sta giocando: tocca «Arbitra questa partita» sulla partita in corso.</p>
   <label for="rules">Regole</label>
   <textarea id="rules" name="rules" style="min-height:180px" placeholder="6 bicchieri per lato, gironi da 4, si passa in due…">{{ info.rules }}</textarea>
   <button class="wide" type="submit">{{ "Salva" if info.created else "Crea il torneo" }}</button>

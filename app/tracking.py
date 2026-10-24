@@ -364,6 +364,18 @@ def apply_live_splits(db: sqlite3.Connection, match_id: int) -> None:
                 )
 
 
+def save_shot_hits(db: sqlite3.Connection, match_id: int) -> None:
+    """The cups the referee saw go into the same table the couples fill in, with who sank each:
+    every heatmap reads one source, however the match was scored."""
+    st = state(db, match_id)
+    with db:
+        db.execute("DELETE FROM cup_hits WHERE match_id = ?", (match_id,))
+        db.executemany(
+            "INSERT OR IGNORE INTO cup_hits(match_id, side, cup, player) VALUES (?, ?, ?, ?)",
+            [(match_id, s.side, s.removed, s.player) for s in st.shots if s.removed],
+        )
+
+
 # --- Tournament-wide shot statistics ------------------------------------------------------
 
 

@@ -194,12 +194,13 @@
                   <div class="muted small">{{ m.label }} · dalle {{ m.time }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</div>
                 {% else %}<span class="muted small">{{ "Finito" if tv.total_count and tv.done_count == tv.total_count else "In attesa" }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</span>{% endif %}
               </div>
-              {% if m %}<a class="btn small" href="/risultato/{{ m.id }}">Risultato</a>{% endif %}
+              {% if m and m.mode == "tiri" %}<a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
+              {% elif m %}<a class="btn small" href="/risultato/{{ m.id }}">Risultato</a>{% endif %}
             </div>
           {% endfor %}
         </div>
       {% endif %}
-      <a class="btn ghost wide" href="/programma">Tutte le partite e i risultati</a>
+      <a class="btn ghost wide" href="/arbitro">Tutte le partite e i risultati</a>
       {% if cfg.phase in ("groups", "knockout") %}
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
@@ -305,6 +306,7 @@
     <h3>PIN staff</h3>
     <div class="list">
       <div class="row"><span>Admin</span><code>{{ admin_pin }}</code></div>
+      {% for f, pin in pins %}<div class="row"><span>Arbitro tavolo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
       {% for f, pin in pins %}<div class="row"><span>Arbitro tavolo {{ f }}</span><code>{{ pin }}</code></div>{% endfor %}
     </div>
     <form method="post" action="/admin/pin">

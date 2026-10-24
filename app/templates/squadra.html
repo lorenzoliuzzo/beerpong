@@ -42,7 +42,10 @@
     <div class="banner live" style="margin-top:12px;margin-bottom:0">
       <div class="label">🔴 In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
-      {% if own %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
+      {% if dash.next_match.live_score %}
+        <div class="headline" style="margin-top:4px">{{ dash.next_match.live_score[0] }}–{{ dash.next_match.live_score[1] }}</div>
+      {% endif %}
+      {% if own and dash.next_match.mode == "coppie" %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
     </div>
   {% elif dash.status == "next" and dash.next_match %}
     <div class="banner next" style="margin-top:12px;margin-bottom:0">
@@ -129,6 +132,14 @@
       <span class="sub">{{ profile.total_cups_live }} bicchieri totali (1 L/squadra)</span>
     </div>
   </div>
+{% endif %}
+
+{% if own and t.referee_player and cfg.scoring != "coppie" %}
+  <a class="banner todo ref-entry" href="/arbitro">
+    <div class="label">🧑‍⚖️ Arbitro{% if ref_table %} · Tavolo {{ ref_table }}{% endif %}</div>
+    <div class="headline">{{ t["p" ~ t.referee_player] }} arbitra {{ "il Tavolo " ~ ref_table if ref_table else "il tavolo del vostro girone" }}</div>
+    {% if cfg.phase in ("groups", "knockout") %}Apri la schermata arbitro →{% else %}La schermata arbitro si apre all'avvio del torneo.{% endif %}
+  </a>
 {% endif %}
 
 {% if own and not t.q_at %}
@@ -276,6 +287,13 @@
       <div class="pr-val">{% if profile.team_cups_rank %}#{{ profile.team_cups_rank }} <small>/ {{ profile.total_teams }}</small>{% else %}—{% endif %}</div>
       <span class="pr-sub">{{ profile.cups_for }} bicchieri ({{ "%.1f"|format(profile.cups_avg) }}/gara)</span>
     </div>
+    {% if profile.team_shots %}
+    <div class="pr-card">
+      <span class="pr-label">Ranking Precisione 🎯</span>
+      <div class="pr-val">{% if profile.team_accuracy_rank %}#{{ profile.team_accuracy_rank }}{% else %}—{% endif %}</div>
+      <span class="pr-sub">{{ "%.0f"|format(profile.team_accuracy) }}% ({{ profile.team_hits }}/{{ profile.team_shots }} tiri)</span>
+    </div>
+    {% endif %}
     <div class="pr-card">
       <span class="pr-label">Rendimento Generale</span>
       <div class="pr-val">{% if profile.overall_group_rank %}#{{ profile.overall_group_rank }} <small>/ {{ profile.total_teams }}</small>{% else %}—{% endif %}</div>
@@ -306,6 +324,16 @@
         <div class="ck-num">🍺 {{ "%.2f"|format(profile.liters_drunk)|replace(".", ",") }} L</div>
         <div class="ck-lbl">Litri Bevuti</div>
       </div>
+      {% if profile.team_shots %}
+      <div>
+        <div class="ck-num">💨 {{ profile.blows }}</div>
+        <div class="ck-lbl">Soffi in difesa</div>
+      </div>
+      <div>
+        <div class="ck-num">{{ "%.0f"|format(profile.team_accuracy) }}%</div>
+        <div class="ck-lbl">Precisione Tiro</div>
+      </div>
+      {% endif %}
       <div>
         <div class="ck-num {{ 'pos-diff' if profile.cups_diff > 0 else ('neg-diff' if profile.cups_diff < 0 else '') }}">{{ "%+d"|format(profile.cups_diff) }}</div>
         <div class="ck-lbl">Diff. Bicchieri</div>
@@ -350,6 +378,9 @@
             {% if p.scorer_rank %}
               <span class="pill ok" title="Posizione in Classifica Marcatori">🏅 #{{ p.scorer_rank }} Marcatori</span>
             {% endif %}
+            {% if p.accuracy_rank %}
+              <span class="pill" title="Posizione per Precisione al tiro">🔭 #{{ p.accuracy_rank }} Precisione</span>
+            {% endif %}
           </div>
         </div>
 
@@ -366,10 +397,16 @@
             <span class="ppc-val">{{ p.share_pct }}%</span>
             <span class="ppc-lbl">Quota Coppia</span>
           </div>
+          {% if p.live_shots %}
+            <div class="ppc-stat">
+              <span class="ppc-val">{{ "%.0f"|format(p.live_accuracy) }}%</span>
+              <span class="ppc-lbl">Precisione ({{ p.live_hits }}/{{ p.live_shots }})</span>
+            </div>
+          {% endif %}
           {% if t["q_aim" ~ p.index] is not none %}
             <div class="ppc-stat">
               <span class="ppc-val">{{ t["q_aim" ~ p.index] * 10 }}%</span>
-              <span class="ppc-lbl">Dichiarato</span>
+              <span class="ppc-lbl">Dichiarato{% if p.live_shots %} · reale {{ "%.0f"|format(p.live_accuracy) }}%{% endif %}</span>
             </div>
           {% endif %}
           <div class="ppc-stat">

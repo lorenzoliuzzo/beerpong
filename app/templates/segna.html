@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Segna · {{ m.n1 }} vs {{ m.n2 }}{% endblock %}
+{% block header %}
+  <header class="top ref-top">
+    <a href="{{ back_url or ('/arbitro' ~ ('?campo=' ~ m.field if role == 'admin' else '')) }}">‹ Tavolo {{ m.field }}</a>
+    <strong>{{ m.label }}</strong>
+  </header>
+{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}
+{% macro ref_card(m) %}
+  {% set rv = scoring.get(m.id) %}
+  {% set flip = m.id in flipped %}
+  {% set order = [2, 1] if flip else [1, 2] %}
+  {% set team = {1: players[m.t1], 2: players[m.t2]} %}
+  <div class="ref-card {{ 'running' if m.started_at }}">
+    <div class="ref-bar">
+      {% if m.started_at %}
+        <div class="ref-clock" data-started="{{ m.started_at }}" data-duration="{{ (m.duration or 0) * 60 }}" data-now="{{ now_ts }}"><span class="ref-clock-time">--:--</span></div>
+        <div class="ref-score-big">{{ rv.state.side_hits(order[0]) }}<span>–</span>{{ rv.state.side_hits(order[1]) }}</div>
+      {% else %}
+        <div class="ref-meta">{{ m.label }}{% if m.time %} · ore {{ m.time }}{{ ui.countdown(m) }}{% endif %}</div>
+      {% endif %}
+      <form method="post" action="/partita/{{ m.id }}/lati" data-ajax><button class="ref-swap" type="submit" aria-label="Scambia i lati">⇄</button></form>
+    </div>
+    <div class="ref-names">{% for s in order %}<strong>{{ team[s].name }}</strong>{% endfor %}</div>
+
+    {% if not m.started_at %}
+      <form method="post" action="/partita/{{ m.id }}/inizia" data-ajax>
+        <p class="ref-q">Chi tira per primo?</p>
+        <div class="ref-picks">
+          {% for s in order %}<label class="ref-pick"><input type="radio" name="primo" value="{{ s }}" {{ 'checked' if s == order[0] }}><span>{{ team[s].name }}</span></label>{% endfor %}
+        </div>
+        <button class="ref-go" type="submit">▶ Inizia: parte il tempo</button>
+      </form>
+    {% else %}
+      {% set st = rv.state %}
+      {% if st.winner_side %}
+        {% set w = st.winner_side %}
+        <form method="post" action="/partita/{{ m.id }}" class="ref-win">
+          <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
+          <input type="hidden" name="vincitore" value="{{ w }}">
+          <p class="ref-q">🏆 Vince <strong>{{ team[w].name }}</strong></p>
+          <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+        </form>
+      {% else %}
+        {% if st.phase == "salvezza" %}
+          <div class="ref-phase salvezza">🛟 <strong>Tiro della salvezza</strong>: {{ team[rv.turn_side].name }}, un tiro a testa.<br>
+            <span class="small">Se segnano almeno un canestro si va all'overtime, se no vince {{ team[3 - rv.turn_side].name }}.</span></div>
+        {% elif st.phase == "overtime" %}
+          <div class="ref-phase overtime">⚔️ <strong>Overtime</strong> · {{ st.rack_cups }} bicchieri a testa</div>
+        {% endif %}
+        {% if m.duration and st.phase == "play" %}
+          <form method="post" action="/partita/{{ m.id }}" class="ref-win ref-timeout" hidden>
+            <input type="hidden" name="s1" value="{{ st.side_hits(1) }}"><input type="hidden" name="s2" value="{{ st.side_hits(2) }}">
+            {% if m.stage == "ko" and st.side_hits(1) == st.side_hits(2) %}
+              <p class="ref-q">⏱ Tempo scaduto in parità: overtime, continuate a segnare.</p>
+            {% else %}
+              <p class="ref-q">⏱ Tempo scaduto</p>
+              <button class="ref-go" type="submit">✓ Conferma {{ st.side_hits(1) }}–{{ st.side_hits(2) }}</button>
+            {% endif %}
+          </form>
+        {% endif %}
+        {% set shooter, target = rv.turn_side, 3 - rv.turn_side %}
+        {% set target_on_right = order[1] == target %}
+        {% set cols = rv.rows[target]|reverse|list if target_on_right else rv.rows[target] %}
+        <form method="post" action="/partita/{{ m.id }}/tiro" data-ajax class="ref-table">
+          <input type="hidden" name="n" value="{{ official_counts[m.id] }}">
+          {% for s in order %}
+            {% if s == shooter %}
+              <div class="ref-half shooting">
+                <span class="ref-role">tira</span>
+                {% for pl in ([2, 1] if flip else [1, 2]) %}
+                  <label class="ref-pick {{ 'shot' if pl in rv.shot_in_turn }}"><input type="radio" name="giocatore" value="{{ pl }}" {{ 'checked' if pl == rv.next_player }}><span>🎯 {{ team[s]["p" ~ pl] or "Giocatore " ~ pl }}{% if pl in rv.shot_in_turn %} ✓{% endif %}</span></label>
+                {% endfor %}
+              </div>
+            {% else %}
+              {% set standing = st.racks[s].cups %}
+              <div class="ref-half target">
+                <span class="ref-role">bicchieri ({{ standing|length }})</span>
+                <div class="ref-rack {{ 'big' if rv.rows[s]|length > 3 }}">
+                  {% for col in cols %}<div class="ref-col">
+                    {% for c in col %}{% if c in standing %}<button class="cup up" type="submit" name="bicchiere" value="{{ c }}" aria-label="Bicchiere centrato"></button>{% else %}{% set by = rv.hit_by[s].get(c) %}{% set who = team[shooter]["p" ~ by] if by else "" %}<span class="cup down" title="{{ 'Colpito da ' ~ who if who }}">{% if who %}<small>{{ who[:2] }}</small>{% endif %}</span>{% endif %}{% endfor %}
+                  </div>{% endfor %}
+                </div>
+                {% if 0 < standing|length < st.rack_cups and standing|length <= 6 and standing|length < (rv.rows[s]|map('length')|sum) %}
+                  <button class="small ghost ref-rerack" type="submit" formaction="/partita/{{ m.id }}/riordina" name="lato" value="{{ s }}">⟲ Riordina</button>
+                {% endif %}
+              </div>
+            {% endif %}
+          {% endfor %}
+          <div class="ref-outcomes">
+            <button class="ref-miss" type="submit" name="bicchiere" value="0">✗ Fuori</button>
+            <button class="ref-blow" type="submit" name="bicchiere" value="soffio" title="Regola del soffio: la palla girava nel bicchiere e la difesa l'ha soffiata fuori">💨 Soffiato</button>
+          </div>
+        </form>
+      {% endif %}
+      {% if rv.last_rerack %}
+        <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
+          <button class="ghost" type="submit">↶ Annulla: riordino bicchieri di {{ team[rv.last_rerack].name }}</button>
+        </form>
+      {% elif rv.last_shot %}
+        {% set ls = rv.last_shot %}
+        <form method="post" action="/partita/{{ m.id }}/annulla-tiro" data-ajax class="ref-undo">
+          <button class="ghost" type="submit">↶ Annulla: {{ team[ls.side]["p" ~ ls.player] }} {{ "💨 soffiato" if rv.last_blown else ("🎯 centrato" if ls.removed else "✗ fuori") }}</button>
+        </form>
+      {% endif %}
+      <details class="ref-more">
+        <summary>Altro</summary>
+        <p class="muted small">Palla in un bicchiere già tolto? Non segnare niente: chi ha tirato ritira (regola 6).</p>
+        <a class="btn small ghost" href="/partita/{{ m.id }}">Inserisci il risultato a mano</a>
+        <form method="post" action="/partita/{{ m.id }}/annulla-inizio" onsubmit="return confirm('Annullare l\'inizio? I tiri segnati si perdono.')"><button class="link" type="submit">Annulla inizio partita</button></form>
+              </details>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{{ ref_card(m) }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // The match clock: server start time and duration, corrected by the server/phone clock offset.
+  (() => {
+    const tick = () => document.querySelectorAll(".ref-clock").forEach((el) => {
+      const started = +el.dataset.started, total = +el.dataset.duration;
+      if (el.dataset.offset === undefined) el.dataset.offset = +el.dataset.now - Date.now() / 1000;
+      const elapsed = Date.now() / 1000 + +el.dataset.offset - started;
+      const left = total ? total - elapsed : elapsed;
+      const s = Math.max(0, Math.floor(Math.abs(left)));
+      el.querySelector(".ref-clock-time").textContent =
+        (total && left < 0 ? "+" : "") + String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+      el.classList.toggle("over", Boolean(total) && left < 0);
+      const timeout = el.closest(".ref-card") && el.closest(".ref-card").querySelector(".ref-timeout");
+      if (timeout) timeout.hidden = !(total && left < 0);
+    });
+    tick(); setInterval(tick, 500);
+
+    // Scoring taps post in the background and swap the page in place: no reload between shots.
+    // While one is on its way every button is locked, so a nervous double tap cannot send two.
+    const warn = (msg) => {
+      let t = document.getElementById("ref-toast");
+      if (!t) { t = document.createElement("div"); t.id = "ref-toast"; t.className = "toast err"; document.body.appendChild(t); }
+      t.textContent = msg; t.hidden = false;
+      clearTimeout(warn.timer); warn.timer = setTimeout(() => (t.hidden = true), 6000);
+    };
+    let busy = false;
+    document.addEventListener("submit", async (e) => {
+      const form = e.target.closest("form[data-ajax]");
+      if (!form) return;
+      e.preventDefault();
+      if (busy) return;
+      busy = true;
+      const body = new FormData(form, e.submitter);
+      document.querySelector("main").classList.add("ref-busy");
+      try {
+        // A button may post somewhere else than its form (formaction), like "Riordina" inside the shot form.
+        const url = e.submitter && e.submitter.hasAttribute("formaction") ? e.submitter.formAction : form.action;
+        const r = await fetch(url, { method: "POST", body, credentials: "same-origin" });
+        if (!r.ok || new URL(r.url).pathname === "/login") throw new Error(r.status);
+        const fresh = new DOMParser().parseFromString(await r.text(), "text/html").querySelector("main");
+        document.querySelector("main").replaceWith(fresh);
+        if (navigator.vibrate) navigator.vibrate(25);
+        tick();
+      } catch (_) {
+        document.querySelector("main").classList.remove("ref-busy");
+        warn("⚠️ Tiro NON salvato: connessione assente. Riprova.");
+      } finally {
+        busy = false;
+      }
+    });
+
+    // Keep the screen on while a match is being scored.
+    let lock = null;
+    const keepAwake = async () => {
+      if (!("wakeLock" in navigator) || !document.querySelector(".ref-card.running") || document.hidden) return;
+      try { lock = await navigator.wakeLock.request("screen"); } catch (_) { lock = null; }
+    };
+    document.addEventListener("visibilitychange", keepAwake);
+    document.addEventListener("click", () => { if (!lock) keepAwake(); });
+    keepAwake();
+  })();
+</script>
+{% endblock %}

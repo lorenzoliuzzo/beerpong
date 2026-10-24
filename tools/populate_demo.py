@@ -44,6 +44,7 @@ def setup_demo(db_conn: sqlite3.Connection) -> None:
         service.reset_tournament(db_conn)
     with db_conn:
         db.set_setting(db_conn, "fields", "4")
+        db.set_setting(db_conn, "scoring", "tiri")  # the simulator plays every match shot by shot
         db.set_setting(db_conn, "start_time", "00:00")  # times count from half an hour ago, not from tonight
         db_conn.execute("UPDATE teams SET checked_in = 1, paid = 1, payment = 'contanti'")
         db_conn.execute("DELETE FROM reports")

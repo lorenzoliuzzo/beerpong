@@ -28,7 +28,7 @@ def test_demo_shortcuts_enter_as_couple_or_admin(tmp_path: Path, monkeypatch: py
 
     with TestClient(create_app()) as c:
         home = c.get("/").text
-        assert all(f'action="/demo/{r}"' in home for r in ("coppia", "admin")) and "/demo/arbitro" not in home
+        assert all(f'action="/demo/{r}"' in home for r in ("coppia", "arbitro", "admin"))
         r = c.post("/demo/coppia", follow_redirects=False)
         assert r.headers["location"] == "/io" and "★ VOI" in c.get("/io").text
         assert c.post("/demo/admin", follow_redirects=False).headers["location"] == "/admin"
@@ -63,6 +63,28 @@ def test_simulator_refuses_the_real_database(monkeypatch: pytest.MonkeyPatch) ->
         demo_sim.main()
 
 
+def test_demo_referee_takes_a_table_from_the_simulator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BP_DB", str(tmp_path / "demo.db"))
+    db.init_db()
+    conn = db.connect()
+    setup_demo(conn)
+    from app.main import create_app
+
+    with TestClient(create_app()) as c:
+        r = c.post("/demo/arbitro", follow_redirects=False)
+        assert r.headers["location"] == "/arbitro"
+        page = c.get("/arbitro").text
+        assert "Arbitro · Tavolo" in page and 'class="tabbar"' not in page
+    field_no = next(f for f in range(1, 5) if db.get_setting(conn, f"demo_ref_{f}"))
+    mine = next(m for m in service.matches(conn) if m.playing and m.field == field_no)
+    before = tracking.official_count(tracking.referee_view(conn, mine.id))
+    rng = random.Random(1)
+    for i in range(5):
+        demo_sim.tick(conn, rng, time.time() + i)
+    assert tracking.official_count(tracking.referee_view(conn, mine.id)) == before  # the simulator left it alone
+    conn.close()
+
+
 def test_demo_guide_and_role_tips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BP_DB", str(tmp_path / "demo.db"))
     db.init_db()
@@ -74,6 +96,8 @@ def test_demo_guide_and_role_tips(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     with TestClient(create_app()) as c:
         home = c.get("/").text
         assert 'id="demo-guide"' in home and "Come vuoi provare la demo?" in home and "data-demo-role" not in home
+        c.post("/demo/arbitro")
+        assert 'data-demo-tip="arbitro"' in c.get("/arbitro").text
         c.post("/demo/admin")
         assert 'data-demo-tip="admin"' in c.get("/admin").text
         c.post("/demo/coppia")
