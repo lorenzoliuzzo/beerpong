@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block content %}
-{% set setup = cfg.phase == "setup" %}
+{% set setup = cfg.phase.is_setup %}
 <p><a href="/admin#coppie">‹ Organizzazione</a></p>
 <h1>Da sistemare</h1>
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-{% set setup = cfg.phase == "setup" %}
+{% set setup = cfg.phase.is_setup %}
 <p><a href="/admin#coppie">‹ Organizzazione</a></p>
 <h1>{{ t.name if t else "Nuova coppia" }}</h1>
 {% if guest_team %}<p><span class="pill accent">creata al check-in da un iscritto «solo serata»</span></p>{% endif %}

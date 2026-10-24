@@ -15,7 +15,8 @@ from pathlib import Path
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer, URLSafeTimedSerializer
 
 from . import bracket, planning
-from .db import get_setting, random_key, set_setting
+from .db import get_phase, get_setting, random_key, set_phase, set_setting
+from .states import Phase, Scoring
 from .standings import Result, Row, compute_table
 
 MAX_TEAM_CUPS = 30
@@ -30,11 +31,7 @@ class TournamentError(Exception):
 
 
 # How a match is scored: chosen for the tournament, and changeable for a single match.
-SCORING = {
-    "coppie": "Le coppie inseriscono il risultato",
-    "risultato": "L'arbitro inserisce il risultato finale",
-    "tiri": "L'arbitro segna tiro per tiro",
-}
+SCORING = {s: s.label for s in Scoring}
 # Who may referee when a match needs one.
 REFEREES = {"volontari": "Anche chi non sta giocando", "organizzatori": "Solo gli organizzatori"}
 
@@ -47,9 +44,9 @@ class Config:
     ko_min: int
     buffer_min: int
     public_url: str
-    phase: str
+    phase: Phase
     start_time: str
-    scoring: str = "coppie"
+    scoring: Scoring = Scoring.COPPIE
     referees: str = "volontari"
 
     @property
@@ -81,7 +78,7 @@ class MatchView:
     round: int
     pos: int
     live_score: tuple[int, int] | None = None  # from the referee's shots, while it is played shot by shot
-    mode: str = "coppie"  # how it is scored (SCORING): its own choice or the tournament's
+    mode: Scoring = Scoring.COPPIE  # how it is scored (SCORING): its own choice or the tournament's
     playing: bool = False  # its turn on a table right now (see live()): the couples are called
     started_at: float | None = None  # the referee started it
     start_iso: str = ""  # scheduled start, local time, for the countdowns
@@ -114,9 +111,9 @@ def load_config(db: sqlite3.Connection) -> Config:
         ko_min=int(get_setting(db, "ko_min")),
         buffer_min=int(get_setting(db, "buffer_min")),
         public_url=get_setting(db, "public_url"),
-        phase=get_setting(db, "phase"),
+        phase=get_phase(db),
         start_time=get_setting(db, "start_time"),
-        scoring=get_setting(db, "scoring"),
+        scoring=Scoring.of(get_setting(db, "scoring")),
         referees=get_setting(db, "referees"),
     )
 
@@ -152,7 +149,7 @@ def team(db: sqlite3.Connection, team_id: int) -> sqlite3.Row | None:
 
 
 def _require_setup(db: sqlite3.Connection) -> None:
-    if get_setting(db, "phase") != "setup":
+    if get_phase(db).started:
         raise TournamentError("Il torneo è già iniziato.")
 
 
@@ -364,7 +361,7 @@ def save_team(
     referee_player: int | None = None,
 ) -> int:
     """Admin add (team_id None) or edit. After the draw only names, phones and payment can change."""
-    setup = get_setting(db, "phase") == "setup"
+    setup = get_phase(db).is_setup
     current = team(db, team_id) if team_id is not None else None
     if team_id is not None and current is None:
         raise TournamentError("Coppia non trovata.")
@@ -589,7 +586,7 @@ def preview_draw(db: sqlite3.Connection, present_only: bool, seed: int) -> DrawP
 
 def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = None) -> None:
     cfg = load_config(db)
-    if cfg.phase != "setup":
+    if cfg.phase.started:
         raise TournamentError("Il torneo è già iniziato.")
     ids = [r["id"] for r in db.execute("SELECT id FROM teams WHERE checked_in = 1")]
     if len(ids) < MIN_TEAMS:
@@ -610,7 +607,7 @@ def start_tournament(db: sqlite3.Connection, now: datetime, seed: int | None = N
                 " VALUES ('group', ?, ?, ?, ?, ?, ?, ?, ?)",
                 (f.grp, f.round, si, field_no, _fmt(base + si * step), cfg.group_min, f.team1, f.team2),
             )
-        set_setting(db, "phase", "groups")
+        set_phase(db, Phase.GROUPS)
 
 
 def reset_tournament(db: sqlite3.Connection) -> None:
@@ -618,7 +615,7 @@ def reset_tournament(db: sqlite3.Connection) -> None:
         db.execute("DELETE FROM matches")
         db.execute("DELETE FROM push_sent")
         db.execute("UPDATE teams SET grp = NULL")
-        set_setting(db, "phase", "setup")
+        set_phase(db, Phase.SETUP)
 
 
 def shift_schedule(db: sqlite3.Connection, minutes: int) -> None:
@@ -639,7 +636,7 @@ def _next_match(db: sqlite3.Connection, m: sqlite3.Row) -> sqlite3.Row | None:
 def _advance(db: sqlite3.Connection, m: sqlite3.Row, winner: int) -> None:
     nxt = _next_match(db, m)
     if nxt is None:
-        set_setting(db, "phase", "finished")
+        set_phase(db, Phase.FINISHED)
         return
     column = "team1" if m["pos"] % 2 == 0 else "team2"
     db.execute(f"UPDATE matches SET {column} = ? WHERE id = ?", (winner, nxt["id"]))
@@ -711,7 +708,7 @@ def record_result(db: sqlite3.Connection, match_id: int, s1: int, s2: int, winne
     was_done = bool(m["done"])
 
     if m["stage"] == "group":
-        if get_setting(db, "phase") != "groups":
+        if get_phase(db) is not Phase.GROUPS:
             raise TournamentError("Gironi chiusi: per correggere, l'admin deve prima riaprire i gironi.")
         winner = m["team1"] if s1 > s2 else m["team2"] if s2 > s1 else None
     else:
@@ -803,7 +800,7 @@ def _sync_split(db: sqlite3.Connection, match_id: int, side: int) -> None:
 
 def generate_bracket(db: sqlite3.Connection) -> None:
     cfg = load_config(db)
-    if cfg.phase != "groups":
+    if cfg.phase is not Phase.GROUPS:
         raise TournamentError("Il tabellone si genera alla fine dei gironi.")
     pending = db.execute("SELECT COUNT(*) FROM matches WHERE stage = 'group' AND done = 0").fetchone()[0]
     if pending:
@@ -845,7 +842,7 @@ def generate_bracket(db: sqlite3.Connection) -> None:
                 "UPDATE matches SET slot = ?, field = ?, start = ?, duration = ? WHERE stage = 'ko' AND round = ? AND pos = ?",
                 (slot + offset, field_no, _fmt(at), None if r == total_rounds else cfg.ko_min, r, p),
             )
-        set_setting(db, "phase", "knockout")
+        set_phase(db, Phase.KNOCKOUT)
 
 
 def _ko_timetable(
@@ -911,7 +908,7 @@ def planned_knockout(db: sqlite3.Connection) -> list[PlannedKo]:
 
 
 def reopen_groups(db: sqlite3.Connection) -> None:
-    if get_setting(db, "phase") != "knockout":
+    if get_phase(db) is not Phase.KNOCKOUT:
         raise TournamentError("I gironi sono già aperti.")
     played = db.execute(
         "SELECT COUNT(*) FROM matches WHERE stage = 'ko' AND (done = 1 OR started_at IS NOT NULL) AND bye = 0"
@@ -920,7 +917,7 @@ def reopen_groups(db: sqlite3.Connection) -> None:
         raise TournamentError("Si è già giocata una partita a eliminazione: non si possono riaprire i gironi.")
     with db:
         db.execute("DELETE FROM matches WHERE stage = 'ko'")
-        set_setting(db, "phase", "groups")
+        set_phase(db, Phase.GROUPS)
 
 
 def _group_rows(db: sqlite3.Connection) -> dict[int, list[Row]]:
@@ -957,7 +954,7 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
 
     from . import tracking  # tracking imports this module
 
-    default_mode = get_setting(db, "scoring")
+    default_mode = Scoring.of(get_setting(db, "scoring"))
     has_reports = {r[0] for r in db.execute("SELECT DISTINCT match_id FROM reports").fetchall()}
 
     views = []
@@ -989,7 +986,7 @@ def matches(db: sqlite3.Connection) -> list[MatchView]:
                 started_at=r["started_at"],
                 start_iso=r["start"] or "",
                 live_score=tracking.live_score(db, r["id"]) if r["id"] in has_reports and not r["done"] else None,
-                mode=r["mode"] or default_mode,
+                mode=Scoring.of(r["mode"] or default_mode),
             )
         )
     for m in live(views)[0]:
@@ -1079,7 +1076,7 @@ def table_views(
     if all_matches is None:
         all_matches = matches(db)
     ko_ms = [m for m in all_matches if m.stage == "ko" and not m.bye]
-    if cfg.phase in ("knockout", "finished") and ko_ms:
+    if cfg.phase.knockout_reached and ko_ms:
         active_round = min((m.round for m in ko_ms if not m.done), default=max(m.round for m in ko_ms))
         phase_ms = [m for m in ko_ms if m.round == active_round]
         phase_label = phase_ms[0].label if phase_ms else "Eliminazione diretta"
@@ -1342,9 +1339,9 @@ def team_dashboard(db: sqlite3.Connection, team_id: int) -> TeamDashboard | None
     table = next((g for g in group_tables(db) if g.grp == row["grp"]), None) if row["grp"] is not None else None
     position = next((i for i, r in enumerate(table.rows, 1) if r.team == team_id), None) if table else None
     ko = [m for m in views if m.stage == "ko"]
-    phase = get_setting(db, "phase")
+    phase = get_phase(db)
     in_bracket = any(m.side(team_id) for m in ko)
-    eliminated = (phase in ("knockout", "finished") and not in_bracket) or any(
+    eliminated = (phase.knockout_reached and not in_bracket) or any(
         m.done and m.side(team_id) and m.winner != team_id for m in ko
     )
     final = max(ko, key=lambda m: m.round, default=None)
@@ -1907,7 +1904,7 @@ def standing_labels(db: sqlite3.Connection) -> dict[int, str]:
 
 def projected_first_round(db: sqlite3.Connection) -> list[tuple[int | None, int | None]]:
     """While groups are being played: the first knockout round if the groups ended now."""
-    if get_setting(db, "phase") != "groups":
+    if get_phase(db) is not Phase.GROUPS:
         return []
     tables = _group_rows(db)
     size, qualifiers = planning.bracket_plan(len(tables))
@@ -2098,7 +2095,7 @@ def provisional_spot(db: sqlite3.Connection, team_id: int, now: datetime) -> Pro
 def board_groups(db: sqlite3.Connection) -> tuple[list[BoardGroup], bool]:
     """Groups for the board and whether they are provisional (every couple with a place, as if confirmed)."""
     rows = teams(db)
-    if get_setting(db, "phase") == "setup":
+    if get_phase(db).is_setup:
         placed = [t["id"] for t in registration(db).placed]  # the waiting list has no group yet
         if len(placed) < MIN_TEAMS:
             return [], True
@@ -2148,7 +2145,7 @@ class TournamentInfo:
     rules: str
     form_url: str
     pay_info: str  # how to pay: Satispay number, IBAN, ...
-    scoring: str = "coppie"
+    scoring: str = Scoring.COPPIE
     referees: str = "volontari"
 
     @property
@@ -2212,7 +2209,7 @@ def new_tournament(db: sqlite3.Connection, archive_dir: Path) -> Path:
         db.execute("DELETE FROM push_sent")
         db.execute("DELETE FROM guests")
         db.execute("DELETE FROM teams")
-        set_setting(db, "phase", "setup")
+        set_phase(db, Phase.SETUP)
         set_setting(db, "date", "")
         set_setting(db, "reg_key", random_key())
         set_setting(db, "board_seed", str(secrets.randbits(31)))

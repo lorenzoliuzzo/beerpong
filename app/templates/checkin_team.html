@@ -7,7 +7,7 @@
 
 {% if me and me.id == t.id %}
   <div class="card">Sei già dentro: <a href="/io">vai al profilo della coppia</a>.</div>
-{% elif cfg.phase != "setup" and not t.checked_in %}
+{% elif cfg.phase.started and not t.checked_in %}
   <div class="card">Il torneo è già iniziato e questa coppia non ha fatto il check-in. Parlate con l'organizzazione.</div>
 {% else %}
   {# Your own number says which of the two you are: nothing else to ask. #}
@@ -15,8 +15,8 @@
     <input type="hidden" name="team_id" value="{{ t.id }}">
     <label for="phone"><strong>Il tuo numero di telefono</strong></label>
     <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required autofocus>
-    <p class="muted small">Quello che hai lasciato all'iscrizione.{% if cfg.phase == "setup" and allowed %} Ti segniamo arrivato/a.{% endif %}</p>
-    <button class="wide" type="submit">{{ "Sono arrivato/a" if cfg.phase == "setup" and allowed else "Entra" }}</button>
+    <p class="muted small">Quello che hai lasciato all'iscrizione.{% if cfg.phase.is_setup and allowed %} Ti segniamo arrivato/a.{% endif %}</p>
+    <button class="wide" type="submit">{{ "Sono arrivato/a" if cfg.phase.is_setup and allowed else "Entra" }}</button>
   </form>
   <p class="muted small">Il compagno è già dentro, o il tuo numero non c'è? Fatti mostrare il QR «Invita» dal suo profilo, oppure passa dallo staff.</p>
 {% endif %}

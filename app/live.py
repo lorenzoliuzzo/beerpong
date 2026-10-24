@@ -9,6 +9,8 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 
+from .states import LivePhase
+
 CUPS = 10  # the highest cup number: the final's rack; other matches use the first 6 (see service.cups_in_play)
 DEFAULT_SECONDS_PER_SHOT = 12.0  # per team, until the match itself gives a better estimate
 PRIOR_HITS, PRIOR_SHOTS = 3, 10  # Beta prior: an unknown team hits about 30% of its shots
@@ -65,7 +67,7 @@ class LiveState:
     attempts: dict[tuple[int, int], int]
     winner_side: int | None  # a rack was cleared (and, in the knockout, the tiro della salvezza missed)
     # Only for matches the referee scores, who follows the turns:
-    phase: str = "play"  # "play" | "salvezza" | "overtime" | "over"
+    phase: LivePhase = LivePhase.PLAY
     phase_start: int = 0  # index in shots where the racks on the table were set up
     turn_side: int | None = None
     in_turn: frozenset[int] = frozenset()  # players of turn_side who already shot this turn
@@ -98,7 +100,7 @@ def _referee_replay(
     hits: Counter[tuple[int, int]] = Counter()
     attempts: Counter[tuple[int, int]] = Counter()
     shots: list[Shot] = []
-    phase, phase_start, winner = "play", 0, None
+    phase, phase_start, winner = LivePhase.PLAY, 0, None
     side, in_turn, taken = first_side, [], 0  # taken: shots of the current turn
     pending, saving_hits = None, 0
     def apply_reracks(until: float) -> None:
@@ -126,24 +128,24 @@ def _referee_replay(
         shots.append(shot)
         taken += 1
         in_turn.append(shot.player)
-        if phase == "salvezza":
+        if phase == LivePhase.SALVEZZA:
             saving_hits += hit
             if taken < 2 and target.cups:
                 continue
             if not saving_hits:
-                winner, phase = pending, "over"
+                winner, phase = pending, LivePhase.OVER
             else:  # saved: overtime, the couple that had cleared the rack shoots first
-                racks, rack_cups, phase, phase_start = fresh(OVERTIME_CUPS), OVERTIME_CUPS, "overtime", len(shots)
+                racks, rack_cups, phase, phase_start = fresh(OVERTIME_CUPS), OVERTIME_CUPS, LivePhase.OVERTIME, len(shots)
                 rows = {1: RACK_ROWS[OVERTIME_CUPS], 2: RACK_ROWS[OVERTIME_CUPS]}
                 rack_start = {1: len(shots), 2: len(shots)}
                 side, in_turn, taken = pending, [], 0
             continue
         if not target.cups:
             if salvezza:
-                phase, pending, saving_hits = "salvezza", shot.side, 0
+                phase, pending, saving_hits = LivePhase.SALVEZZA, shot.side, 0
                 side, in_turn, taken = 3 - shot.side, [], 0
             else:
-                winner, phase = shot.side, "over"
+                winner, phase = shot.side, LivePhase.OVER
             continue
         if taken >= 2:
             side, in_turn, taken = 3 - side, [], 0

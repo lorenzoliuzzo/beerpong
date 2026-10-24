@@ -43,7 +43,7 @@
       {% if dash.next_match.live_score %}
         <div class="headline" style="margin-top:4px">{{ dash.next_match.live_score[0] }}–{{ dash.next_match.live_score[1] }}</div>
       {% endif %}
-      {% if own and dash.next_match.mode == "coppie" %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
+      {% if own and dash.next_match.mode.by_couples %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
     </div>
   {% elif dash.status == "next" and dash.next_match %}
     <div class="banner warm" style="margin-top:12px;margin-bottom:0">
@@ -64,7 +64,7 @@
 
 {% if own %}
   {% set mate = 3 - me_player if me_player else none %}
-  {% if cfg.phase == "setup" and not t.checked_in %}
+  {% if cfg.phase.is_setup and not t.checked_in %}
     <div class="card arrive">
       <h2 style="margin:0 0 6px">Arrivo alla serata</h2>
       <div class="phones">
@@ -92,7 +92,7 @@
   {% endif %}
 
   {# The free first beer: the voucher opens and closes as often as needed; the bar marks it collected. #}
-  {% for i in (1, 2) if t["arrived" ~ i ~ "_at"] and cfg.phase == "setup" %}
+  {% for i in (1, 2) if t["arrived" ~ i ~ "_at"] and cfg.phase.is_setup %}
     {% set taken = t["beer" ~ i ~ "_at"] %}
     {% if not taken %}
       <details class="card beer" id="birra{{ i }}">
@@ -116,11 +116,11 @@
 
 {% if me and me.id == t.id %}{{ ui.push_box() }}{% endif %}
 
-{% if own and t.referee_player and cfg.scoring != "coppie" %}
+{% if own and t.referee_player and cfg.scoring.needs_referee %}
   <a class="banner todo ref-entry" href="/arbitro">
     <div class="label">🧑‍⚖️ Arbitro{% if ref_table %} · Tavolo {{ ref_table }}{% endif %}</div>
     <div class="headline">{{ t["p" ~ t.referee_player] }} arbitra {{ "il Tavolo " ~ ref_table if ref_table else "il tavolo del vostro girone" }}</div>
-    {% if cfg.phase in ("groups", "knockout") %}Apri la schermata arbitro →{% else %}La schermata arbitro si apre all'avvio del torneo.{% endif %}
+    {% if cfg.phase.in_play %}Apri la schermata arbitro →{% else %}La schermata arbitro si apre all'avvio del torneo.{% endif %}
   </a>
 {% endif %}
 
@@ -145,7 +145,7 @@
         <img class="invite-qr" src="/io/invito.svg" alt="QR per {{ t['p' ~ (3 - me_player)] }}" width="200" height="200"></details>
     {% endif %}
   </div>
-  {% if cfg.phase == "setup" %}
+  {% if cfg.phase.is_setup %}
     {% if t.checked_in %}
     <div class="banner" style="margin-top:12px">
       <div class="label">Check-in fatto ✓</div>
@@ -227,7 +227,7 @@
       </div>
     {% endif %}
   </div>
-{% elif cfg.phase == "setup" %}
+{% elif cfg.phase.is_setup %}
   <p class="muted" style="margin-top:18px">Il calendario comparirà all'inizio del torneo.</p>
 {% endif %}
 

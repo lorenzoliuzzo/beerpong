@@ -6,7 +6,7 @@
 <p class="muted" style="margin-top:0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.done %} · <strong>già inserito {{ m.s1 }}–{{ m.s2 }}</strong>, puoi correggerlo{% endif %}</p>
 
 <form method="post" action="/risultato/{{ m.id }}" id="res-form">
-  <p class="small">{{ "Tocca" if m.mode != "coppie" else "Toccate" }} i bicchieri <strong>centrati</strong> sul rack degli avversari: il conteggio si fa da solo.</p>
+  <p class="small">{{ "Tocca" if m.mode.needs_referee else "Toccate" }} i bicchieri <strong>centrati</strong> sul rack degli avversari: il conteggio si fa da solo.</p>
   {% for side in (1, 2) %}
     {% set team = T[m.t1 if side == 1 else m.t2] %}
     <div class="card {{ 'mine' if my_side == side }}">

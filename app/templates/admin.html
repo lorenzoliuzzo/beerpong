@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui with context %}
 {% block content %}
 {% set ov = overview %}
-{% set setup = cfg.phase == "setup" %}
+{% set setup = cfg.phase.is_setup %}
 <h1>Organizzazione</h1>
 {% set paid_n = reg.confirmed|length %}
 {% set placed_n = reg.placed|length %}
@@ -180,7 +180,7 @@
       <a class="btn ghost wide" href="/admin/gironi">Prova i gironi prima di partire</a>
       <p class="muted small">Nel sorteggio entrano solo le coppie presenti. Se ci sono tutte, i gironi sono quelli del cartellone. Programma su {{ cfg.fields }} tavoli.</p>
     {% else %}
-      {% if cfg.phase == "groups" %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
+      {% if cfg.phase == Phase.GROUPS %}<p>{{ pending_groups }} partite dei gironi da giocare. All'ultimo risultato il tabellone si genera da solo.</p>{% endif %}
       {% if missing_splits %}<p class="muted small">{{ missing_splits }} punteggi non ancora divisi tra i giocatori.</p>{% endif %}
       {% if tables %}
         <div class="list regia">
@@ -194,14 +194,14 @@
                   <div class="muted small">{{ m.label }} · dalle {{ m.time }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</div>
                 {% else %}<span class="muted small">{{ "Finito" if tv.total_count and tv.done_count == tv.total_count else "In attesa" }} · {{ tv.done_count }}/{{ tv.total_count }} giocate</span>{% endif %}
               </div>
-              {% if m and m.mode == "tiri" %}<a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
+              {% if m and m.mode.by_shots %}<a class="btn small" href="/arbitro?campo={{ tv.field }}">Arbitra</a>
               {% elif m %}<a class="btn small" href="/risultato/{{ m.id }}">Risultato</a>{% endif %}
             </div>
           {% endfor %}
         </div>
       {% endif %}
       <a class="btn ghost wide" href="/arbitro">Tutte le partite e i risultati</a>
-      {% if cfg.phase in ("groups", "knockout") %}
+      {% if cfg.phase.in_play %}
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
           <div style="display:flex;gap:8px">
@@ -210,7 +210,7 @@
           </div>
         </form>
       {% endif %}
-      {% if cfg.phase == "knockout" %}
+      {% if cfg.phase == Phase.KNOCKOUT %}
         <form method="post" action="/admin/riapri" onsubmit="return confirm('Riaprire i gironi? Il tabellone verrà rigenerato.')">
           <button type="submit" class="ghost wide">Riapri gironi per correggere un risultato</button>
         </form>

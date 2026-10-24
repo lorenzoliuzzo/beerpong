@@ -19,7 +19,7 @@
 <div class="demo-bar">
   <span><strong>DEMO</strong> · {% if role == "admin" %}stai guardando come <b>Admin</b>{% elif role == "referee" %}stai guardando come <b>Arbitro · Tavolo {{ my_field }}</b>{% elif me %}stai guardando come <b>{{ me.name }}</b>{% else %}<span class="long">coppie inventate, le partite si giocano da sole · </span>prova come:{% endif %}</span>
   <form method="post" action="/demo/coppia"><button class="small {{ 'ghost' if me and not role }}" type="submit">Coppia</button></form>
-  {% if cfg.scoring != "coppie" %}<form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>{% endif %}
+  {% if cfg.scoring.needs_referee %}<form method="post" action="/demo/arbitro"><button class="small {{ 'ghost' if role == 'referee' }}" type="submit">Arbitro</button></form>{% endif %}
   <form method="post" action="/demo/admin"><button class="small {{ 'ghost' if role == 'admin' }}" type="submit">Admin</button></form>
   <button class="small ghost demo-help" type="button" data-demo-guide aria-label="Come funziona la demo">?</button>
 </div>
@@ -30,7 +30,7 @@
     <p class="muted small">Le coppie sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
     <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
       <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: coppia, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
-    {% if cfg.scoring != "coppie" %}
+    {% if cfg.scoring.needs_referee %}
     <form method="post" action="/demo/arbitro" class="demo-role"><button type="submit">
       <strong>🧑‍⚖️ Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
     {% endif %}

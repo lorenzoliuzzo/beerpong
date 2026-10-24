@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block content %}
-{% set setup = cfg.phase == "setup" %}
+{% set setup = cfg.phase.is_setup %}
 <h1>{{ "Check-in" if setup and allowed else "Entra nel vostro profilo" }}</h1>
 {% if setup and not allowed %}
   <p class="muted">Avete pagato? Entra nel profilo della coppia con il tuo numero, anche da casa. Alla serata inquadra il <strong>QR all'ingresso</strong>: ti segna arrivato/a.</p>

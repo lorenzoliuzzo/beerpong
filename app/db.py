@@ -6,6 +6,8 @@ import secrets
 import sqlite3
 from pathlib import Path
 
+from .states import Phase, Scoring
+
 log = logging.getLogger("beerpong")
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "beerpong.db"
 
@@ -142,10 +144,10 @@ DEFAULTS = {
     "public_url": "",
     "title": "Torneo di Beer Pong",
     "target_teams": "32",
-    "phase": "setup",
+    "phase": Phase.SETUP,
     "start_time": "21:30",
     "date": "",
-    "scoring": "coppie",
+    "scoring": Scoring.COPPIE,
     "referees": "volontari",
     "fee": "",
     "rules": "",
@@ -240,6 +242,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def get_setting(conn: sqlite3.Connection, key: str) -> str:
     row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else DEFAULTS.get(key, "")
+
+
+def get_phase(conn: sqlite3.Connection) -> Phase:
+    return Phase.of(get_setting(conn, "phase"))
+
+
+def set_phase(conn: sqlite3.Connection, phase: Phase) -> None:
+    set_setting(conn, "phase", Phase(phase))
 
 
 def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:

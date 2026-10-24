@@ -35,7 +35,7 @@
 
 {% if current %}
   {% for m in current %}{{ table_card(m) }}{% endfor %}
-{% elif cfg.phase == "setup" %}
+{% elif cfg.phase.is_setup %}
   <p class="muted">Il torneo non è ancora iniziato.</p>
 {% else %}
   <p class="muted">Nessuna partita in attesa{{ " su questo tavolo" if field_no }}.</p>

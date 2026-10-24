@@ -11,7 +11,7 @@
 <div class="card">
   <strong>Giocate al torneo?</strong>
   <p class="muted small">Entrate nel profilo della vostra coppia: girone, tavolo, prossime partite, litri bevuti e avvisi sul telefono quando tocca a voi.</p>
-  {% if cfg.phase == "setup" %}
+  {% if cfg.phase.is_setup %}
     <p class="small">Alla serata inquadrate il <strong>QR all'ingresso</strong>: vi segna presenti.</p>
   {% endif %}
   <a class="btn wide" href="/checkin">Entra con il tuo numero</a>

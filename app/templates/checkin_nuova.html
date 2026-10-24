@@ -2,7 +2,7 @@
 {% block content %}
 <p><a href="/checkin">‹ Tutte le coppie</a></p>
 <h1>Siete una coppia?</h1>
-{% if cfg.phase != "setup" %}
+{% if cfg.phase.started %}
   <div class="card">Il torneo è già iniziato: parlate con l'organizzazione.</div>
 {% elif not allowed %}
   <div class="card">Si fa alla serata: inquadrate il <strong>QR all'ingresso</strong>.</div>

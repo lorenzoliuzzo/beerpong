@@ -11,11 +11,11 @@
     <div class="board-title">🍺 {{ cfg.title }}</div>
     <div class="board-sub">
       {% if provisional %}Si comincia alle {{ cfg.start_time }} · arrivate {{ groups|map(attribute="teams")|sum(start=[])|selectattr("checked_in")|list|length }} coppie su {{ groups|map(attribute="teams")|map("length")|sum }}
-      {% elif cfg.phase == "groups" %}Fase a gironi
-      {% elif cfg.phase == "knockout" %}Eliminazione diretta
+      {% elif cfg.phase == Phase.GROUPS %}Fase a gironi
+      {% elif cfg.phase == Phase.KNOCKOUT %}Eliminazione diretta
       {% else %}Torneo concluso{% endif %}
     </div>
-    {% if cfg.phase in ("setup", "groups") %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
+    {% if not cfg.phase.knockout_reached %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
   </div>
   <div class="board-clock" id="board-clock"></div>
   {% if checkin_qr %}
@@ -49,7 +49,7 @@
 
 {% macro bracket_tree() %}
   <section class="board-bracket">
-    <div class="board-h">Tabellone{% if not ko_started %} <span class="hint">{{ "anteprima: se i gironi finissero adesso" if cfg.phase == "groups" else "si riempie alla fine dei gironi" }}</span>{% endif %}</div>
+    <div class="board-h">Tabellone{% if not ko_started %} <span class="hint">{{ "anteprima: se i gironi finissero adesso" if cfg.phase == Phase.GROUPS else "si riempie alla fine dei gironi" }}</span>{% endif %}</div>
     <div class="tree">
       {% for r in rounds %}
         <div class="tcol">

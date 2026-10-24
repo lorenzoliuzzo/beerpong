@@ -6,7 +6,7 @@
   <div class="meta">
     <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
     <span>{{ m.time }}{{ countdown(m) }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
-      {%- if m.mode == "tiri" and m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Dettagli" if m.done else "● LIVE" }}</a>
+      {%- if m.mode.by_shots and m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Dettagli" if m.done else "● LIVE" }}</a>
       {%- elif m.t1 and m.t2 and m.playing %}<span class="live-pill past">📣 in chiamata</span>{% endif %}</span>
   </div>
   <div class="teams">
@@ -28,9 +28,9 @@
   {% set vol_ok = not ref_ok and can_volunteer(m) %}
   {% if actions and (mine_side or sides or ref_ok or vol_ok) %}
     <div class="actions">
-      {% if mine_side and m.mode == "coppie" and not m.done %}
+      {% if mine_side and m.mode.by_couples and not m.done %}
         <a class="btn small" href="/risultato/{{ m.id }}">📝 Inserisci risultato</a>
-      {% elif mine_side and m.mode == "coppie" and m.done %}
+      {% elif mine_side and m.mode.by_couples and m.done %}
         <a class="btn small ghost" href="/risultato/{{ m.id }}">Correggi risultato</a>
       {% elif mine_side and not m.done %}
         <span class="muted small">🧑‍⚖️ Il risultato lo segna l'arbitro</span>
@@ -40,10 +40,10 @@
       {% elif sides %}
         <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica bicchieri</a>
       {% endif %}
-      {% if ref_ok and m.mode == "tiri" and not m.done %}
+      {% if ref_ok and m.mode.by_shots and not m.done %}
         <a class="btn small" href="/segna/{{ m.id }}">🧑‍⚖️ Segna i tiri</a>
       {% elif ref_ok %}
-        <a class="btn small {{ 'ghost' if m.done }}" href="{{ '/partita/' ~ m.id if m.mode == 'tiri' else '/risultato/' ~ m.id }}">{{ "Correggi" if m.done else "📝 Inserisci risultato" }}</a>
+        <a class="btn small {{ 'ghost' if m.done }}" href="{{ '/partita/' ~ m.id if m.mode.by_shots else '/risultato/' ~ m.id }}">{{ "Correggi" if m.done else "📝 Inserisci risultato" }}</a>
       {% elif vol_ok %}
         <form method="post" action="/partita/{{ m.id }}/arbitra"><button class="small ghost" type="submit">🧑‍⚖️ Arbitra questa partita</button></form>
       {% endif %}
@@ -160,7 +160,7 @@
 {% endmacro %}
 
 {% macro mini(m, mine=None) %}
-<a class="mini {{ 'mine' if mine and m.side(mine) }}" href="{{ ('/live/' ~ m.id) if m.mode == 'tiri' and m.t1 and m.t2 and not m.bye else ('/squadra/' ~ m.t1 ~ '?vs=' ~ m.t2 if m.t1 and m.t2 else '#') }}">
+<a class="mini {{ 'mine' if mine and m.side(mine) }}" href="{{ ('/live/' ~ m.id) if m.mode.by_shots and m.t1 and m.t2 and not m.bye else ('/squadra/' ~ m.t1 ~ '?vs=' ~ m.t2 if m.t1 and m.t2 else '#') }}">
   <span class="{{ 'win' if m.winner == m.t1 }}">{{ m.n1 }}</span>
   {% if m.done %}<strong>{{ m.s1 }}–{{ m.s2 }}</strong>
   {% elif m.live_score %}<strong style="color:#e03131">● {{ m.live_score[0] }}–{{ m.live_score[1] }}</strong>
