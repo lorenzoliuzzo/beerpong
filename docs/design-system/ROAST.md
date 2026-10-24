@@ -20,16 +20,14 @@ A critical review of branch `torneo`, updated on branch `claude/beerpong-app-rev
 - **Self-destruct buttons among routine toggles**: rotating the QR key and cancelling the draw live in a "Zona pericolosa" at the bottom of /admin; cancelling needs ANNULLA typed in; "Sposta orari" is no longer pre-filled.
 - **God modules**: `service.py` is now the package `app/service/` (core, teams, matches, flow, stats, missing, progress, setup, board, access; none over ~500 lines, re-exported as `service.x`), and `main.py` is a 25-line app factory over `app/web/` (common, public, live, checkin, results, referee, admin), each with its own router.
 - **Strings as a state machine**: `Phase`, `Scoring` and `LivePhase` in `app/states.py` are `StrEnum`s; code and templates ask `cfg.phase.is_setup`, `m.mode.by_shots` and the like.
+- **Admin page is a junk drawer**: `/admin` is split via segmented navigation into "Preparazione" (info torneo, iscrizioni/coppie, pagamenti, accessi e impostazioni) and "Serata" (tavoli live, presenze/check-in, solo serata, notifiche, zona pericolosa). Broadcast to every phone requires typing `INVIA` to prevent accidental mass pushes.
+- **Three ways to arrive, four badges**: arrival and check-in vocabulary consolidated: "📱 collegato" remains strictly for paired phones; player arrivals are "✓ arrivato/a <ora>"; couple presence is uniformly "Check-in fatto ✓" / "✓ presente" once both are at the venue.
 
 ## Still open
-
-**Admin page is a junk drawer.** Ten sections in one scroll. The danger zone is done; still to do: split "set up the night" from "run the night", and a typed confirmation for the broadcast to every phone.
 
 **Two homes, five rankings.** "Tavoli" is the home and owns Programma, Tabellone and the live pages; Classifica has five views and Eliminazione repeats Tabellone.
 
 **Players still get homework.** The cup-split nag after every match, for rankings the app itself calls skewed.
-
-**Three ways to arrive, four badges.** QR, 4-digit code or the partner's tick, then "Ci sei", "Check-in fatto", "arrivato/a" and "collegato" for overlapping facts.
 
 **One orange does eight jobs.** Brand, actions, links, active tab, "you", badges, referee score and the urgent banner.
 
