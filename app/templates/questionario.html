@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Due domande · {{ cfg.title }}{% endblock %}
 {% block content %}
-<h1>📋 Due domande veloci</h1>
+<h1>{{ ui.icon("clipboard") }} Due domande veloci</h1>
 <p class="muted">Ci dite quanto mirate bene: a fine serata vediamo se avevate ragione.</p>
 <form method="post" action="/questionario">
   <div class="card">
-    <p class="ref-q" style="text-align:left"><strong>Quanto spesso giocate a beer pong?</strong></p>
+    <p class="ref-q text-left"><strong>Quanto spesso giocate a beer pong?</strong></p>
     <div class="choices">
       {% for key, (label, _) in levels.items() %}
         <label><input type="radio" name="livello" value="{{ key }}" required {{ 'checked' if t.q_level == key }}> {{ label }}</label>
@@ -13,7 +14,7 @@
     </div>
   </div>
   <div class="card">
-    <p class="ref-q" style="text-align:left"><strong>Su 10 tiri, quanti ne mettete?</strong></p>
+    <p class="ref-q text-left"><strong>Su 10 tiri, quanti ne mettete?</strong></p>
     {% for pl in (1, 2) %}
       <label for="mira{{ pl }}">{{ t["p" ~ pl] or "Giocatore " ~ pl }}: <strong data-out="mira{{ pl }}">{{ t["q_aim" ~ pl] if t["q_aim" ~ pl] is not none else 3 }}</strong>/10</label>
       <input id="mira{{ pl }}" name="mira{{ pl }}" type="range" min="0" max="10" step="1" value="{{ t["q_aim" ~ pl] if t["q_aim" ~ pl] is not none else 3 }}"
@@ -21,7 +22,7 @@
     {% endfor %}
   </div>
   <div class="card">
-    <p class="ref-q" style="text-align:left"><strong>Fin dove arrivate?</strong></p>
+    <p class="ref-q text-left"><strong>Fin dove arrivate?</strong></p>
     <div class="choices">
       {% for key, label in goals.items() %}
         <label><input type="radio" name="obiettivo" value="{{ key }}" required {{ 'checked' if t.q_goal == key }}> {{ label }}</label>
@@ -30,6 +31,6 @@
   </div>
   <button class="wide" type="submit">Fatto</button>
 </form>
-<p style="text-align:center"><a href="/io">Non ora</a></p>
-<p style="text-align:center;margin-top:12px"><a href="/io">Salta per ora</a></p>
+<p class="center"><a href="/io">Non ora</a></p>
+<p class="center mt-3"><a href="/io">Salta per ora</a></p>
 {% endblock %}

@@ -1,3 +1,4 @@
+{% import "_ui.html" as ui with context -%}
 <!doctype html>
 <html lang="it">
 <head>
@@ -26,16 +27,16 @@
 
 <div class="demo-guide" id="demo-guide" hidden>
   <div class="demo-guide-card">
-    <h2 style="margin-top:0">Come vuoi provare la demo?</h2>
+    <h2 class="mt-0">Come vuoi provare la demo?</h2>
     <p class="muted small">Le coppie sono inventate e le partite si giocano da sole: puoi cambiare ruolo quando vuoi dalla barra in alto.</p>
     <form method="post" action="/demo/coppia" class="demo-role"><button type="submit">
-      <strong>🍻 Da giocatore</strong><span>Entri in una coppia che gioca tra poco: coppia, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
+      <strong>{{ ui.icon("beer") }} Da giocatore</strong><span>Entri in una coppia che gioca tra poco: coppia, prossima partita, litri bevuti e notifiche «tocca a voi».</span></button></form>
     {% if cfg.scoring.needs_referee %}
     <form method="post" action="/demo/arbitro" class="demo-role"><button type="submit">
-      <strong>🧑‍⚖️ Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
+      <strong>{{ ui.icon("referee") }} Da arbitro</strong><span>Ti diamo un tavolo tutto tuo: avvii la partita e segni ogni tiro, giocatore e bicchiere.</span></button></form>
     {% endif %}
     <form method="post" action="/demo/admin" class="demo-role"><button type="submit">
-      <strong>📋 Da organizzatore</strong><span>La regia: coppie, pagamenti, tavoli in tempo reale, notifiche a tutti.</span></button></form>
+      <strong>{{ ui.icon("clipboard") }} Da organizzatore</strong><span>La regia: coppie, pagamenti, tavoli in tempo reale, notifiche a tutti.</span></button></form>
     <button class="link" type="button" data-demo-close>Guardo e basta</button>
   </div>
 </div>
@@ -44,14 +45,14 @@
   else (("coppia", "Tocca «Attiva le notifiche»: tra un paio di minuti arriva «Preparatevi», poi «Tocca a voi». In Tavoli segui tutte le partite in corso.") if me and not role and path == "/io" else none)) %}
 {% if demo_tip %}
   <div class="demo-tip" data-demo-tip="{{ demo_tip[0] }}" hidden>
-    <span>💡 {{ demo_tip[1] }}</span>
-    <button class="link" type="button" data-demo-tip-close aria-label="Chiudi il suggerimento">✕</button>
+    <span>{{ ui.icon("bulb") }} {{ demo_tip[1] }}</span>
+    <button class="link" type="button" data-demo-tip-close aria-label="Chiudi il suggerimento">{{ ui.icon("close") }}</button>
   </div>
 {% endif %}
 {% endif %}
 {% block header %}
 <header class="top">
-  <a class="brand" href="/">🍺 {{ cfg.title }}</a>
+  <a class="brand" href="/">{{ ui.icon("beer") }} {{ cfg.title }}</a>
   <a class="staff" href="{{ '/admin' if role == 'admin' else ('/arbitro' if role == 'referee' else '/login') }}">{{ "Admin" if role == "admin" else ("Arbitro" if role == "referee" else "Staff") }}</a>
 </header>
 {% endblock %}

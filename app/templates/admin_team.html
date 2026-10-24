@@ -1,15 +1,16 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block content %}
 {% set setup = cfg.phase.is_setup %}
 <p><a href="/admin#coppie">‹ Organizzazione</a></p>
 <h1>{{ t.name if t else "Nuova coppia" }}</h1>
 {% if guest_team %}<p><span class="pill accent">creata al check-in da un iscritto «solo serata»</span></p>{% endif %}
-{% if t and t.note %}<div class="banner todo">📝 {{ t.note }}</div>{% endif %}
+{% if t and t.note %}<div class="banner todo">{{ ui.icon("edit") }} {{ t.note }}</div>{% endif %}
 {% if t and t.photo %}
-  <div class="card" style="display:flex;gap:12px;align-items:center">
+  <div class="card flex gap-3 items-center">
     <img class="team-photo" src="/foto/{{ t.photo }}" alt="Foto di {{ t.name }}">
     <form method="post" action="/admin/squadre/{{ t.id }}/togli-foto" onsubmit="return confirm('Togliere la foto della coppia?')">
-      <p class="muted small" style="margin-top:0">La foto l'ha messa la coppia dal suo profilo.</p>
+      <p class="muted small mt-0">La foto l'ha messa la coppia dal suo profilo.</p>
       <button class="ghost small" type="submit">Togli la foto</button>
     </form>
   </div>
@@ -30,8 +31,8 @@
     <input id="phone1" name="phone1" type="tel" inputmode="tel" value="{{ t.phone1 if t }}">
     <label for="phone2">Secondo telefono</label>
     <input id="phone2" name="phone2" type="tel" inputmode="tel" value="{{ t.phone2 if t }}">
-    {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">📞 Chiama</a></p>{% endif %}
-    <div class="choices" style="margin-top:12px">
+    {% if t and t.phone1 %}<p><a class="btn small ghost" href="tel:{{ t.phone1 }}">{{ ui.icon("phone") }} Chiama</a></p>{% endif %}
+    <div class="choices mt-3">
       <label><input type="checkbox" name="gruppo" value="1" {{ 'checked' if t and t.in_chat }}> Nel gruppo WhatsApp</label>
       <label><input type="checkbox" name="organizzatori" value="1" {{ 'checked' if t and t.organizer }}> Organizzatori (non conta nelle verifiche)</label>
     </div>
@@ -44,14 +45,14 @@
     </div>
   </div>
   <div class="card">
-    <h2 style="margin-top:0">Ticket</h2>
+    <h2 class="mt-0">Ticket</h2>
     <div class="choices">
       <label><input type="radio" name="payment" value="" {{ 'checked' if not t or not t.payment }}> Non dichiarato</label>
       {% for key, label in payments.items() %}
         <label><input type="radio" name="payment" value="{{ key }}" {{ 'checked' if t and t.payment == key }}> {{ label }}</label>
       {% endfor %}
     </div>
-    <div class="choices" style="margin-top:12px">
+    <div class="choices mt-3">
       <label><input type="checkbox" name="pagato" value="1" {{ 'checked' if t and t.paid }}> Pagamento verificato</label>
       {% if setup %}
         <label><input type="checkbox" name="presente" value="1" {{ 'checked' if t and t.checked_in }}> Presente (check-in fatto)</label>
@@ -64,16 +65,16 @@
   </div>
   <button class="wide" type="submit">{{ "Salva" if t else "Aggiungi coppia" }}</button>
   {% if t and t.note %}
-    <button class="wide ghost" type="submit" name="verificata" value="1">✓ Verificata: salva e togli la nota</button>
+    <button class="wide ghost" type="submit" name="verificata" value="1">{{ ui.icon("check") }} Verificata: salva e togli la nota</button>
   {% endif %}
 </form>
 
 {% if t and setup and guests %}
-  <div class="card" style="margin-top:16px">
-    <h2 style="margin-top:0">Collega un iscritto «solo serata»</h2>
+  <div class="card mt-4">
+    <h2 class="mt-0">Collega un iscritto «solo serata»</h2>
     <p class="muted small">Il suo nome va nel posto giocatore libero e il suo numero nel telefono mancante.</p>
     {% for g in guests %}
-      <form method="post" action="/admin/iscritti/{{ g.id }}/collega" class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0">
+      <form method="post" action="/admin/iscritti/{{ g.id }}/collega" class="row flex justify-between items-center gap-2 p-0 pt-2 pb-2">
         <input type="hidden" name="team_id" value="{{ t.id }}"><input type="hidden" name="back" value="/admin/squadre/{{ t.id }}">
         <span><strong>{{ g.name or "Senza nome" }}</strong> <span class="muted small">{{ g.phone }}</span></span>
         <button class="small ghost" type="submit">Collega</button>
@@ -83,9 +84,9 @@
 {% endif %}
 
 {% if t and setup %}
-  <form method="post" action="/admin/squadre/{{ t.id }}/elimina" style="margin-top:24px;text-align:center"
+  <form class="mt-6 center" method="post" action="/admin/squadre/{{ t.id }}/elimina"
         onsubmit='return confirm({{ ("Eliminare " ~ t.name ~ "?")|tojson }})'>
-    <button type="submit" class="link" style="color:var(--err)">Elimina coppia</button>
+    <button type="submit" class="link err-text">Elimina coppia</button>
   </form>
 {% endif %}
 {% endblock %}

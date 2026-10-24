@@ -23,7 +23,7 @@
   {% if plan %}<p class="muted small">Orari previsti. Il primo turno mostra chi passerebbe se i gironi finissero adesso.</p>{% endif %}
   {% for f, ms in by_table %}
     <section class="tavolo-matches-card ko-plan">
-      <h3>🏓 Tavolo {{ f }}</h3>
+      <h3>{{ ui.icon("table") }} Tavolo {{ f }}</h3>
       {{ ui.ko_queue(ms, me.id if me) }}
     </section>
   {% endfor %}
@@ -31,29 +31,29 @@
 {% elif rounds %}
   {% set final = rounds[-1][1][0] %}
   {% if final.done %}
-    <div class="banner gold" style="text-align:center">
+    <div class="banner gold center">
       <div class="label">Campioni del Torneo</div>
-      <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
+      <div class="headline">{{ ui.icon("trophy") }} {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
       Finale {{ final.s1 }}–{{ final.s2 }}
     </div>
   {% endif %}
 
   {% if table_views and cfg.phase == Phase.KNOCKOUT %}
-    <div class="tables-schedule-hub" style="margin-bottom:18px">
-      <h2 style="margin:0 0 8px">🏓 In campo ora</h2>
+    <div class="tables-schedule-hub mb-4">
+      <h2 class="m-0 mb-2">{{ ui.icon("table") }} In campo ora</h2>
       <div class="ko-tables-grid">
         {% for tv in table_views if tv.current or tv.next_match %}
           <div class="t-callout now-callout">
             <div class="tc-header">
-              <span class="live-badge-pulse">● TAVOLO {{ tv.field }}</span>
+              <span class="live-badge-pulse">{{ ui.icon("live") }} TAVOLO {{ tv.field }}</span>
               {% if tv.current %}<span class="muted small">{{ tv.current.label }} · {{ tv.current.time }}</span>{% endif %}
             </div>
             {% if tv.current %}
               {{ ui.mini(tv.current, mine=me.id if me) }}
             {% endif %}
             {% if tv.next_match %}
-              <div class="muted small" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">
-                📣 <strong>Prossima chiamata (~{{ tv.next_match.time }}{{ ui.countdown(tv.next_match) }}):</strong> {{ tv.next_match.n1 }} vs {{ tv.next_match.n2 }}
+              <div class="muted small mt-2 pt-2" style="border-top:1px dashed var(--line)">
+                {{ ui.icon("call") }} <strong>Prossima chiamata (~{{ tv.next_match.time }}{{ ui.countdown(tv.next_match) }}):</strong> {{ tv.next_match.n1 }} vs {{ tv.next_match.n2 }}
               </div>
             {% endif %}
           </div>
@@ -71,13 +71,13 @@
   {% endfor %}
 
   {% if tables %}
-    <details class="section" style="margin-top:24px">
-      <summary>📦 Archivio Fase a Gironi conclusa ({{ tables|length }} gironi)</summary>
+    <details class="section mt-6">
+      <summary>{{ ui.icon("archive") }} Archivio Fase a Gironi conclusa ({{ tables|length }} gironi)</summary>
       <div class="body">
         <p class="muted small">Classifiche definitive della prima fase (<a href="/gironi?archivio=1">apri vista completa gironi e partite →</a>):</p>
         {% for g in tables %}
-          <div style="margin-top:12px">
-            <h3 style="margin:0 0 6px;font-size:0.95rem">{{ g.name }}</h3>
+          <div class="mt-3">
+            <h3 class="m-0 mb-2" style="font-size:0.95rem">{{ g.name }}</h3>
             {{ ui.table(g.rows, T, thirds, mine=me.id if me) }}
           </div>
         {% endfor %}
@@ -89,7 +89,7 @@
   <div class="banner warm">
     <div class="label">Anteprima live</div>
     Se i gironi finissero adesso, il primo turno sarebbe così. Cambia a ogni risultato.
-    <p style="margin-top:8px"><a class="btn small" href="/gironi">← Torna alla Fase a Gironi in corso</a></p>
+    <p class="mt-2"><a class="btn small" href="/gironi">{{ ui.icon("back") }} Torna alla Fase a Gironi in corso</a></p>
   </div>
   {% for a, b in projection %}
     <div class="match ghost-match {{ 'mine' if me and me.id in (a, b) }}">

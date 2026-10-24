@@ -14,8 +14,8 @@
   <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ ov.target }}" aria-valuenow="{{ ov.complete }}">
     <span style="width:{{ [100, (ov.complete * 100 // ov.target) if ov.target else 0]|min }}%"></span>
   </div>
-  <form method="post" action="/admin/mancanti/obiettivo" style="display:flex;gap:8px;align-items:center;margin-top:8px">
-    <span class="muted small" style="flex:1">Obiettivo: {{ ov.target }} coppie{% if ov.complete < ov.target %} · ne mancano {{ ov.target - ov.complete }}{% endif %}</span>
+  <form class="flex gap-2 items-center mt-2" method="post" action="/admin/mancanti/obiettivo">
+    <span class="muted small flex-1">Obiettivo: {{ ov.target }} coppie{% if ov.complete < ov.target %} · ne mancano {{ ov.target - ov.complete }}{% endif %}</span>
     <input name="obiettivo" type="number" inputmode="numeric" min="4" max="64" value="{{ ov.target }}" style="width:90px" aria-label="Obiettivo">
     <button class="small ghost" type="submit">OK</button>
   </form>
@@ -48,7 +48,7 @@
           <p class="muted small">Se è la stessa coppia con un nome nuovo, scegli il nome: viene rinominata invece di aggiungerne un'altra.</p>
           <div class="list">
             {% for t in rec.extra %}
-              <div class="row" style="flex-wrap:wrap">
+              <div class="row wrap">
                 <div class="grow"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></div>
                 <input type="hidden" name="fuori_elenco" value="{{ t.id }}">
                 <select name="rinomina_{{ t.id }}" aria-label="Cosa fare con {{ t.name }}">
@@ -86,9 +86,9 @@
 <div class="list">
   {% for t in ov.unpaid %}
     <div class="row">
-      <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+      <a class="grow plain-link" href="/admin/squadre/{{ t.id }}">
         <div class="title">{{ t.name }}</div>{{ ui.payment_pill(t, payments) }}</a>
-      {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
+      {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">{{ ui.icon("phone") }}</a>{% endif %}
       {{ ui.checks(t, "/admin/mancanti#non-pagato") }}
     </div>
   {% else %}
@@ -100,7 +100,7 @@
 <div class="list">
   {% for t in ov.not_in_chat %}
     <div class="row">
-      <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+      <a class="grow plain-link" href="/admin/squadre/{{ t.id }}">
         <div class="title">{{ t.name }}</div>
         <span class="muted small">{{ t.phone1 or "senza telefono" }}{% if t.phone2 %} · {{ t.phone2 }}{% endif %}</span></a>
       {{ ui.checks(t, "/admin/mancanti#fuori-gruppo") }}
@@ -122,7 +122,7 @@
           {% if not (t.p1 and t.p2) %}<span class="pill warn">giocatori</span>{% endif %}
           {% if not t.phone1 %}<span class="pill">telefono</span>{% endif %}
         </div>
-        {% if t.note %}<div class="small muted">📝 {{ t.note }}</div>{% endif %}
+        {% if t.note %}<div class="small muted">{{ ui.icon("edit") }} {{ t.note }}</div>{% endif %}
       </div>
       <span class="chev">›</span>
     </a>
@@ -135,25 +135,25 @@
 {% for gv in ov.guests %}
   {% set g = gv.guest %}
   <div class="card">
-    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+    <div class="flex justify-between gap-2 items-center">
       <div><div class="title"><strong>{{ g.name or "Senza nome" }}</strong></div>
         <span class="muted small">{{ g.phone }}{% if g.registered_at %} · iscritto il {{ g.registered_at[8:10] }}/{{ g.registered_at[5:7] }} alle {{ g.registered_at[11:16] }}{% endif %}</span></div>
-      <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama">📞</a>
+      <a class="btn small ghost" href="tel:{{ g.phone }}" aria-label="Chiama">{{ ui.icon("phone") }}</a>
     </div>
-    {% for hint in gv.hints %}<p class="small" style="margin:6px 0 0">💡 {{ hint }}</p>{% endfor %}
+    {% for hint in gv.hints %}<p class="small m-0 mt-2">{{ ui.icon("bulb") }} {{ hint }}</p>{% endfor %}
     {% if setup %}
-      <details style="margin-top:8px">
+      <details class="mt-2">
         <summary class="small"><strong>Mettilo in una coppia</strong></summary>
-        <form method="post" action="/admin/iscritti/{{ g.id }}/collega" style="display:flex;gap:8px;margin-top:8px">
+        <form class="flex gap-2 mt-2" method="post" action="/admin/iscritti/{{ g.id }}/collega">
           <select name="team_id" required aria-label="Coppia">
             <option value="">Coppia esistente…</option>
             {% for t in ov.incomplete %}<option value="{{ t.id }}">{{ t.name }} (da completare)</option>{% endfor %}
           </select>
           <button class="small" type="submit">Collega</button>
         </form>
-        <form method="post" action="/admin/iscritti/{{ g.id }}/nuova-coppia" style="margin-top:8px">
+        <form class="mt-2" method="post" action="/admin/iscritti/{{ g.id }}/nuova-coppia">
           <input name="name" placeholder="Nome nuova coppia" aria-label="Nome nuova coppia">
-          <div style="display:flex;gap:8px;margin-top:8px">
+          <div class="flex gap-2 mt-2">
             <input name="compagno" placeholder="Compagno (se lo sai)" aria-label="Compagno">
             <button class="small" type="submit">Crea</button>
           </div>

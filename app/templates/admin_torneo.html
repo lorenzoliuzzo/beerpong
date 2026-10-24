@@ -60,15 +60,15 @@
     <p>Archivia il torneo attuale{% if teams_count %} ({{ teams_count }} coppie){% endif %} e riparte da zero: coppie, iscritti, partite e risultati vengono tolti. PIN, QR e impostazioni restano.</p>
     <form method="post" action="/admin/torneo/nuovo">
       <label for="conferma">Scrivi NUOVO per confermare</label>
-      <div style="display:flex;gap:8px"><input id="conferma" name="conferma" autocomplete="off" required><button type="submit" class="ghost">Ricomincia</button></div>
+      <div class="flex gap-2"><input id="conferma" name="conferma" autocomplete="off" required><button type="submit" class="ghost">Ricomincia</button></div>
     </form>
     {% if archives %}
-      <p class="muted small" style="margin-bottom:4px">Tornei archiviati (nella cartella <code>data/archivio</code>):</p>
+      <p class="muted small mb-1">Tornei archiviati (nella cartella <code>data/archivio</code>):</p>
       <ul class="small">{% for a in archives[:10] %}<li>{{ a.name }}</li>{% endfor %}</ul>
     {% endif %}
   </div>
 </details>
 <style>
-  .two-cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .two-cols { display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3); }
 </style>
 {% endblock %}

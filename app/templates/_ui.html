@@ -1,18 +1,21 @@
+{# One stroke icon from static/icons.svg, sized to the text around it. #}
+{% macro icon(name, cls="") %}<svg class="icon{{ " " ~ cls if cls }}" aria-hidden="true"><use href="/static/icons.svg?v={{ icons_v }}#i-{{ name }}"/></svg>{% endmacro %}
+
 {# "· tra 12 min" after a time: base.html counts down with the server clock; nothing once a match is on. #}
 {% macro countdown(m) %}{% if m.start_iso and not m.done and not m.started_at and not m.bye %}<span class="cd" data-countdown="{{ m.start_iso }}"></span>{% endif %}{% endmacro %}
 
 {% macro match(m, show_label=True, mine=None, actions=True, labels=None) %}
 <div class="match {{ 'mine' if mine and m.side(mine) }}">
   <div class="meta">
-    <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
+    <span>{% if show_label %}{{ m.label }} · {% endif %}{% if m.field %}<strong>{{ icon("table") }} Tavolo {{ m.field }}</strong>{% endif %}</span>
     <span>{{ m.time }}{{ countdown(m) }}{% if m.stage == "ko" and m.slot is not none and m.duration is none %} · senza limite{% endif %}
-      {%- if m.mode.by_shots and m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{{ "Dettagli" if m.done else "● LIVE" }}</a>
-      {%- elif m.t1 and m.t2 and m.playing %}<span class="live-pill past">📣 in chiamata</span>{% endif %}</span>
+      {%- if m.mode.by_shots and m.t1 and m.t2 and not m.bye and (m.done or m.started_at or m.live_score) %}<a class="live-pill {{ 'past' if m.done }}" href="/live/{{ m.id }}">{% if m.done %}Dettagli{% else %}{{ icon("live") }} LIVE{% endif %}</a>
+      {%- elif m.t1 and m.t2 and m.playing %}<span class="live-pill past">{{ icon("call") }} in chiamata</span>{% endif %}</span>
   </div>
   <div class="teams">
     {% if m.t1 %}<a class="t {{ 'win' if m.winner == m.t1 }}" href="/squadra/{{ m.t1 }}">{{ m.n1 }}{% if labels and m.t1 in labels %}<small class="origin">{{ labels[m.t1] }}</small>{% endif %}</a>{% else %}<span class="t muted">{{ m.n1 }}</span>{% endif %}
     {% if m.done and not m.bye %}<span class="sc">{{ m.s1 }}–{{ m.s2 }}</span>
-    {% elif m.live_score %}<span class="sc live-sc" title="Punteggio live"><span class="live-dot" style="margin-right:3px"></span>{{ m.live_score[0] }}–{{ m.live_score[1] }}</span>
+    {% elif m.live_score %}<span class="sc live-sc" title="Punteggio live"><span class="live-dot mr-1"></span>{{ m.live_score[0] }}–{{ m.live_score[1] }}</span>
     {% else %}<span class="sc vs">vs</span>{% endif %}
     {% if m.t2 %}<a class="t r {{ 'win' if m.winner == m.t2 }}" href="/squadra/{{ m.t2 }}">{{ m.n2 }}{% if labels and m.t2 in labels %}<small class="origin">{{ labels[m.t2] }}</small>{% endif %}</a>{% else %}<span class="t r muted">{{ m.n2 }}</span>{% endif %}
   </div>
@@ -29,23 +32,21 @@
   {% if actions and (mine_side or sides or ref_ok or vol_ok) %}
     <div class="actions">
       {% if mine_side and m.mode.by_couples and not m.done %}
-        <a class="btn small" href="/risultato/{{ m.id }}">📝 Inserisci risultato</a>
+        <a class="btn small" href="/risultato/{{ m.id }}">{{ icon("edit") }} Inserisci risultato</a>
       {% elif mine_side and m.mode.by_couples and m.done %}
         <a class="btn small ghost" href="/risultato/{{ m.id }}">Correggi risultato</a>
       {% elif mine_side and not m.done %}
-        <span class="muted small">🧑‍⚖️ Il risultato lo segna l'arbitro</span>
+        <span class="muted small">{{ icon("referee") }} Il risultato lo segna l'arbitro</span>
       {% endif %}
-      {% if sides and (m.split_missing(sides[0]) or (sides|length > 1 and m.split_missing(sides[1]))) %}
-        <a class="btn small" href="/canestri/{{ m.id }}">Dividi i bicchieri</a>
-      {% elif sides %}
-        <a class="btn small ghost" href="/canestri/{{ m.id }}">Modifica bicchieri</a>
+      {% if sides %}
+        <a class="btn small ghost" href="/canestri/{{ m.id }}">Chi ha centrato</a>
       {% endif %}
       {% if ref_ok and m.mode.by_shots and not m.done %}
-        <a class="btn small" href="/segna/{{ m.id }}">🧑‍⚖️ Segna i tiri</a>
+        <a class="btn small" href="/segna/{{ m.id }}">{{ icon("referee") }} Segna i tiri</a>
       {% elif ref_ok %}
-        <a class="btn small {{ 'ghost' if m.done }}" href="{{ '/partita/' ~ m.id if m.mode.by_shots else '/risultato/' ~ m.id }}">{{ "Correggi" if m.done else "📝 Inserisci risultato" }}</a>
+        <a class="btn small {{ 'ghost' if m.done }}" href="{{ '/partita/' ~ m.id if m.mode.by_shots else '/risultato/' ~ m.id }}">{% if m.done %}Correggi{% else %}{{ icon("edit") }} Inserisci risultato{% endif %}</a>
       {% elif vol_ok %}
-        <form method="post" action="/partita/{{ m.id }}/arbitra"><button class="small ghost" type="submit">🧑‍⚖️ Arbitra questa partita</button></form>
+        <form method="post" action="/partita/{{ m.id }}/arbitra"><button class="small ghost" type="submit">{{ icon("referee") }} Arbitra questa partita</button></form>
       {% endif %}
     </div>
   {% endif %}
@@ -80,15 +81,15 @@
 {# Hidden until base.html knows whether this browser can receive notifications. #}
 {% macro push_box() %}
 <div class="card push-box" data-push hidden>
-  <div data-push-state="off"><strong>🔔 Avvisi sul telefono</strong>
+  <div data-push-state="off"><strong>{{ icon("bell") }} Avvisi sul telefono</strong>
     <p class="muted small">Vi avvisiamo quando tocca a voi e quando siete i prossimi, anche col telefono in tasca.</p>
     <button class="wide" type="button" data-push-on>Attiva le notifiche</button></div>
-  <div data-push-state="on" hidden><strong>🔔 Notifiche attive</strong>
+  <div data-push-state="on" hidden><strong>{{ icon("bell") }} Notifiche attive</strong>
     <p class="muted small">Vi avvisiamo quando tocca a voi.</p>
     <button class="link" type="button" data-push-off>Disattiva</button></div>
-  <div data-push-state="ios" hidden><strong>🔔 Avvisi su iPhone</strong>
-    <p class="small">Tocca <strong>Condividi</strong> ⬆️ → <strong>Aggiungi alla schermata Home</strong>, poi apri il sito dall'icona: lì potrai attivare le notifiche.</p></div>
-  <div data-push-state="denied" hidden><strong>🔕 Notifiche bloccate</strong>
+  <div data-push-state="ios" hidden><strong>{{ icon("bell") }} Avvisi su iPhone</strong>
+    <p class="small">Tocca <strong>Condividi</strong> {{ icon("share") }} → <strong>Aggiungi alla schermata Home</strong>, poi apri il sito dall'icona: lì potrai attivare le notifiche.</p></div>
+  <div data-push-state="denied" hidden><strong>{{ icon("bell-off") }} Notifiche bloccate</strong>
     <p class="muted small">Riattivale dalle impostazioni del browser per questo sito.</p></div>
   <div data-push-state="unsupported" hidden><p class="muted small">Questo browser non riceve notifiche: tenete aperta questa pagina, si aggiorna da sola.</p></div>
 </div>
@@ -109,7 +110,7 @@
 {% endmacro %}
 
 {% macro payment_pill(t, payments) %}
-  {% if t.paid %}<span class="pill ok">Pagato ✓</span>
+  {% if t.paid %}<span class="pill ok">Pagato {{ icon("check") }}</span>
   {% elif t.payment == "cassa" %}<span class="pill warn">Paga in cassa</span>
   {% elif t.payment %}<span class="pill accent">{{ "Contanti" if t.payment == "contanti" else "Online" }} · da verificare</span>
   {% else %}<span class="pill warn">Non pagato</span>{% endif %}
@@ -136,7 +137,7 @@
   <div class="steps" aria-label="Avanzamento del torneo">
     {% for s in steps %}
       <div class="step {{ 'done' if s.complete else ('now' if loop.index0 == ns.current) }}">
-        <span class="dot">{% if s.complete %}✓{% else %}{{ loop.index }}{% endif %}</span>
+        <span class="dot">{% if s.complete %}{{ icon("check") }}{% else %}{{ loop.index }}{% endif %}</span>
         <span class="lbl">{{ s.label|replace(" di finale", "") }}</span>
         <span class="cnt">{{ s.done }}/{{ s.total }}</span>
       </div>
@@ -163,7 +164,7 @@
 <a class="mini {{ 'mine' if mine and m.side(mine) }}" href="{{ ('/live/' ~ m.id) if m.mode.by_shots and m.t1 and m.t2 and not m.bye else ('/squadra/' ~ m.t1 ~ '?vs=' ~ m.t2 if m.t1 and m.t2 else '#') }}">
   <span class="{{ 'win' if m.winner == m.t1 }}">{{ m.n1 }}</span>
   {% if m.done %}<strong>{{ m.s1 }}–{{ m.s2 }}</strong>
-  {% elif m.live_score %}<strong style="color:#e03131">● {{ m.live_score[0] }}–{{ m.live_score[1] }}</strong>
+  {% elif m.live_score %}<strong class="err-text">{{ icon("live") }} {{ m.live_score[0] }}–{{ m.live_score[1] }}</strong>
   {% else %}<span class="muted small">{{ m.time }}{{ countdown(m) }}{% if m.field %} · T{{ m.field }}{% endif %}</span>{% endif %}
   <span class="r {{ 'win' if m.winner == m.t2 }}">{{ m.n2 }}</span>
 </a>

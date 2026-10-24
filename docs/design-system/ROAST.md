@@ -22,20 +22,15 @@ A critical review of branch `torneo`, updated on branch `claude/beerpong-app-rev
 - **Strings as a state machine**: `Phase`, `Scoring` and `LivePhase` in `app/states.py` are `StrEnum`s; code and templates ask `cfg.phase.is_setup`, `m.mode.by_shots` and the like.
 - **Admin page is a junk drawer**: `/admin` is split via segmented navigation into "Preparazione" (info torneo, iscrizioni/coppie, pagamenti, accessi e impostazioni) and "Serata" (tavoli live, presenze/check-in, solo serata, notifiche, zona pericolosa). Broadcast to every phone requires typing `INVIA` to prevent accidental mass pushes.
 - **Three ways to arrive, four badges**: arrival and check-in vocabulary consolidated: "📱 collegato" remains strictly for paired phones; player arrivals are "✓ arrivato/a <ora>"; couple presence is uniformly "Check-in fatto ✓" / "✓ presente" once both are at the venue.
+- **One orange did eight jobs**: `accent` orange is now only brand and action (links, buttons, active tab, selection). "You" has its own teal `you` / `you-soft` (★ VOI pill, your rows, matches, group and table); live and urgent ("in campo" banner, match now on a table, overtime) use `live`, the red of `err`; scores, counters and group letters are plain text on a neutral fill. A test keeps orange off the "mine" and live rules.
+- **Everything was bold** (109 declarations at 700–900, 4 at 400): weights are three tokens, `fw-regular` 400 for body and muted meta, `fw-medium` 600 for labels, pills, buttons and your own row, `fw-bold` 700 for headings, scores and big numbers. No 800 or 900 is left, couple names in tables are regular, and a test rejects any raw weight.
+- **Players got homework after every match**: reporting a result no longer jumps to the cup-split form; the profile and Tavoli to-do banners and the admin "bicchieri da dividere" counter are gone. Who sank which cup stays optional, behind a quiet "Chi ha centrato" link on each finished match.
+- **No scale** (16 radii, 24 spacings, 170 inline `style=""`, ~35 stray colours): radii are `radius-sm` 8 / `radius` 14 / `radius-lg` 20 / `radius-pill`; spacing is `sp-half` 2 and `sp-1`…`sp-8` (4, 8, 12, 16, 24, 32); stray colours became tokens (`ink-on-bright`, `paper`, `scrim`, `beer-ink`, `voucher`, `board-*`, live pulses via `color-mix`). Inline styles went from 170 to 28 (bar widths and couple colours, plus a few one-off font sizes) via small utility classes (`mt-3`, `flex gap-2`, `center`, `plain-link` …); panels toggle with `hidden`. A test rejects raw spacing, radii and colours.
+- **Emoji as an icon system** (69 distinct, 234 uses, including the referee's controls): the interface uses one stroke icon set (`static/icons.svg`, 44 symbols in the tab-bar style, `ui.icon("name")`); 160 emoji became icons, among them every referee control. Emoji stay only where they are voice: avatars couples pick, push and WhatsApp texts, flash messages, cheers, podium medals and a few sign-offs (🍻, 👋). A test keeps interface emoji out of the templates.
 
 ## Still open
 
 **Two homes, five rankings.** "Tavoli" is the home and owns Programma, Tabellone and the live pages; Classifica has five views and Eliminazione repeats Tabellone.
-
-**Players still get homework.** The cup-split nag after every match, for rankings the app itself calls skewed.
-
-**One orange does eight jobs.** Brand, actions, links, active tab, "you", badges, referee score and the urgent banner.
-
-**Everything is bold.** 109 declarations at 700–900 against 4 at 400.
-
-**Emoji as an icon system.** About 60 distinct emoji, including the referee's controls.
-
-**No scale.** 13 radii, a dozen spacings, 170 inline `style=""`, about 60 hard-coded colours.
 
 ## What to keep
 

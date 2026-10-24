@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block content %}
 <p><a href="/admin">‹ Organizzazione</a></p>
 <h1>Prova i gironi</h1>
@@ -36,7 +37,7 @@
     </div>
   {% endfor %}
 
-  <a class="btn ghost wide" href="/admin/gironi?base={{ base }}">🔀 Rimescola</a>
+  <a class="btn ghost wide" href="/admin/gironi?base={{ base }}">{{ ui.icon("shuffle") }} Rimescola</a>
   {% if present_only and cfg.phase.is_setup %}
     <form method="post" action="/admin/avvia"
           onsubmit="return confirm('Partire con questi gironi? Le coppie non presenti resteranno fuori.')">

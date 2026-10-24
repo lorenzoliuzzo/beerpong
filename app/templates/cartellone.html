@@ -8,14 +8,14 @@
 {% set ko_started = rounds and rounds[0].matches and rounds[0].matches[0].id is defined %}
 <header class="board-top">
   <div>
-    <div class="board-title">🍺 {{ cfg.title }}</div>
+    <div class="board-title">{{ ui.icon("beer") }} {{ cfg.title }}</div>
     <div class="board-sub">
       {% if provisional %}Si comincia alle {{ cfg.start_time }} · arrivate {{ groups|map(attribute="teams")|sum(start=[])|selectattr("checked_in")|list|length }} coppie su {{ groups|map(attribute="teams")|map("length")|sum }}
       {% elif cfg.phase == Phase.GROUPS %}Fase a gironi
       {% elif cfg.phase == Phase.KNOCKOUT %}Eliminazione diretta
       {% else %}Torneo concluso{% endif %}
     </div>
-    {% if not cfg.phase.knockout_reached %}<a class="board-link" href="/programma">📅 Programma delle partite →</a>{% endif %}
+    {% if not cfg.phase.knockout_reached %}<a class="board-link" href="/programma">{{ ui.icon("calendar") }} Programma delle partite →</a>{% endif %}
   </div>
   <div class="board-clock" id="board-clock"></div>
   {% if checkin_qr %}
@@ -30,7 +30,7 @@
 {% if final and final.done %}
   <div class="board-champion">
     <div class="label">Campioni</div>
-    <div class="name">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
+    <div class="name">{{ ui.icon("trophy") }} {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
     <div>Finale {{ final.n1 }} {{ final.s1 }}–{{ final.s2 }} {{ final.n2 }}</div>
   </div>
 {% endif %}
@@ -72,7 +72,7 @@
           </div>
         </div>
       {% endfor %}
-      <div class="tcol champ"><div class="tround">Campioni</div><div class="tmatches"><div class="tm trophy">🏆<span>{{ (final.n1 if final.winner == final.t1 else final.n2) if final and final.done else "?" }}</span></div></div></div>
+      <div class="tcol champ"><div class="tround">Campioni</div><div class="tmatches"><div class="tm trophy">{{ ui.icon("trophy") }}<span>{{ (final.n1 if final.winner == final.t1 else final.n2) if final and final.done else "?" }}</span></div></div></div>
     </div>
   </section>
 {% endmacro %}
@@ -94,7 +94,7 @@
             {% endfor %}
           {% else %}
             {% for t in g.teams %}
-              <div class="grow plain {{ 'here' if t.checked_in }}"><span class="n">{% if t.checked_in %}<span class="tick">✓</span> {% endif %}{{ t.name }}</span>
+              <div class="grow plain {{ 'here' if t.checked_in }}"><span class="n">{% if t.checked_in %}<span class="tick">{{ ui.icon("check") }}</span> {% endif %}{{ t.name }}</span>
                 <span class="pl">{% if t.p1 %}{{ t.p1 }}{% if t.p2 %} &amp; {{ t.p2 }}{% endif %}{% else %}giocatori da definire{% endif %}</span></div>
             {% endfor %}
           {% endif %}
@@ -132,7 +132,7 @@
 {% endif %}
 
 {% if provisional and rounds %}
-  <div class="board-format">Poi eliminazione diretta: {{ rounds|map(attribute="name")|map("replace", " di finale", "")|join(" → ") }} → 🏆</div>
+  <div class="board-format">Poi eliminazione diretta: {{ rounds|map(attribute="name")|map("replace", " di finale", "")|join(" → ") }} → {{ ui.icon("trophy") }}</div>
 {% endif %}
 
 {% if not ko_started and rounds and not provisional %}{{ bracket_tree() }}{% endif %}

@@ -19,6 +19,25 @@ from app.main import create_app, get_db
 ADMIN_PIN = "123456"
 
 
+def icon(name: str) -> str:
+    return f'<svg class="icon" aria-hidden="true"><use href="/static/icons.svg?v={web_common.templates.env.globals["icons_v"]}#i-{name}"/></svg>'
+
+
+CHART = icon("chart")
+CHAT = icon("chat")
+CHECK = icon("check")
+LIVE = icon("live")
+PHONE = icon("phone")
+PLAY = icon("play")
+ROTATE = icon("rotate")
+STAR = icon("star")
+TABLE = icon("table")
+TARGET = icon("target")
+TROPHY = icon("trophy")
+UNDO = icon("undo")
+WIND = icon("wind")
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("BP_DB", str(tmp_path / "test.db"))
@@ -190,7 +209,7 @@ def test_phase_transition_and_team_profile(client: TestClient) -> None:
     rng = random.Random(77)
     setup_tournament(client, 8, fields=2)
     r_profile = client.get("/squadra/1")
-    assert r_profile.status_code == 200 and "📊 Statistiche" not in r_profile.text  # nothing to show yet
+    assert r_profile.status_code == 200 and f"{CHART} Statistiche" not in r_profile.text  # nothing to show yet
     r_stats = client.get("/squadra/1/statistiche")
     assert "compariranno dopo la prima partita" in r_stats.text and "Posizionamento nei Ranking" not in r_stats.text
 
@@ -344,7 +363,8 @@ def test_team_splits_cups_for_player_ranking(client: TestClient) -> None:
 
     with TestClient(client.app) as phone:  # the partner, invited from the phone that checked in
         phone.get(f"/entra/{db_call(service.invite_token, m.t1, 2)}")
-        assert "Dividete i bicchieri" in phone.get("/").text
+        assert "Dividete i bicchieri" not in phone.get("/").text  # no nag: the split is optional
+        assert f'href="/canestri/{m.id}"' in phone.get("/io").text
         phone.post(f"/canestri/{m.id}", data={"side": 2, "cup1": "1"})  # not their side
         assert db_call(service.match, m.id).split2 is None
         assert "Indica chi ha centrato" in phone.post(f"/canestri/{m.id}", data={"side": 1, "cup1": "1"}).text
@@ -836,15 +856,15 @@ def test_player_journey_checkin_then_group_presence(client: TestClient) -> None:
     client.get(f"/checkin?k={db_call(get_setting, 'reg_key')}")
     check_in(client, 1, phone1=f"+39 333 000 {1:04d}")
 
-    assert "★ Squadra 0 · il vostro profilo" in client.get("/").text
+    assert f"{STAR} Squadra 0 · il vostro profilo" in client.get("/").text
     home = client.get("/io").text
     spot = db_call(lambda db: service.provisional_spot(db, 1, datetime(2026, 10, 23, 18, 0)))
-    assert f"Girone {spot.group.letter} · 🏓 Tavolo {spot.table}" in home
-    assert f"contro <strong>{spot.first_rival['name']}</strong>" in home and "✓ arrivata" in home
+    assert f"Girone {spot.group.letter} · {TABLE} Tavolo {spot.table}" in home
+    assert f"contro <strong>{spot.first_rival['name']}</strong>" in home and f"{CHECK} arrivata" in home
 
     gironi = client.get("/gironi").text
     assert "1/16</div>" in gironi and "coppie arrivate" in gironi
-    assert f'href="/gironi?tavolo={spot.table}" class="on">Tavolo {spot.table} ★' in gironi
+    assert f'href="/gironi?tavolo={spot.table}" class="on">Tavolo {spot.table} {STAR}' in gironi
     assert "arrivate 1 coppie su 16" in client.get("/cartellone").text
 
 
@@ -874,7 +894,7 @@ def test_rankings_are_stats_only(client: TestClient) -> None:
     assert '<tr class="mine' in page_coppie and "Mostra tutta la classifica" not in page_coppie  # 8 couples: no cut yet
     mine = [m for m in db_call(service.matches) if m.side(1)]
     profile = client.get("/io").text
-    assert "● LIVE" not in profile and profile.count("in chiamata") == sum(m.playing for m in mine) <= 1
+    assert f"{LIVE} LIVE" not in profile and profile.count("in chiamata") == sum(m.playing for m in mine) <= 1
     assert "Attiva le notifiche" in profile
 
 
@@ -885,8 +905,8 @@ def test_profile_page_logged_out_and_own_team_redirect(client: TestClient) -> No
     check_in(client, 1)
     assert client.get("/squadra/1", follow_redirects=False).headers["location"] == "/io"
     page = client.get("/io").text
-    assert "★ VOI" in page and "Non siete voi? Esci" in page and "Modifica i vostri dati" in page
-    assert client.get("/squadra/2").status_code == 200 and "★ VOI" not in client.get("/squadra/2").text
+    assert f"{STAR} VOI" in page and "Non siete voi? Esci" in page and "Modifica i vostri dati" in page
+    assert client.get("/squadra/2").status_code == 200 and f"{STAR} VOI" not in client.get("/squadra/2").text
     client.post("/esci-squadra")
     assert "Entrate nel profilo" in client.get("/io").text
 
@@ -1224,7 +1244,7 @@ def test_each_player_gets_their_own_phone_and_invites_the_partner(client: TestCl
     check_in(client, 2, phone1="333 0000001", phone2="347 0000002", both=False)
     page = client.get("/io").text
     assert "Chi sta usando" not in page  # the number said who
-    assert f"Ciao {t['p1']}!" in page and f"{t['p1']} · 📱 collegato" in page and f"{t['p2']} · non ancora" in page
+    assert f"Ciao {t['p1']}!" in page and f"{t['p1']} · {PHONE} collegato" in page and f"{t['p2']} · non ancora" in page
     assert client.get("/io/invito.svg").headers["content-type"].startswith("image/svg+xml")
     invite = re.search(r'data-copy="([^"]+)"', page).group(1)
     assert "/entra/" in invite
@@ -1232,7 +1252,7 @@ def test_each_player_gets_their_own_phone_and_invites_the_partner(client: TestCl
     with TestClient(client.app) as partner:
         page = partner.get(invite[invite.index("/entra/"):]).text
         assert f"Ciao {t['p2']}!" in page and "questo telefono ora è il tuo" in page
-        assert f"{t['p1']} · 📱 collegato" in page and f"{t['p2']} · 📱 collegato" in page
+        assert f"{t['p1']} · {PHONE} collegato" in page and f"{t['p2']} · {PHONE} collegato" in page
         assert "Invita" not in page.split("Mostra di nuovo il QR")[0].split('class="card phones-card"')[1]  # both in
         partner.post("/esci-squadra")
     assert db_call(service.team_devices, 2) == {1: 1, 2: 0}
@@ -1271,7 +1291,7 @@ def test_paid_couples_enter_from_home_and_check_in_at_the_venue(client: TestClie
     ids = {t["name"]: t["id"] for t in db_call(service.teams).values()}
     client.post("/admin/pagamenti/estratto", data={"estratto": f"Satispay {service.pay_code(ids['Gufi'])} 12,50"})
     admin = client.get("/admin").text
-    assert "Confermate (1)" in admin and "💬 Ada" in admin
+    assert "Confermate (1)" in admin and f"{CHAT} Ada" in admin
     link = re.search(r"/accesso/[\w.\-]+", unquote(admin)).group(0)
     client.post("/logout")
     tv = client.get("/cartellone").text
@@ -1361,7 +1381,7 @@ def test_both_players_arrive_and_each_collects_a_first_beer(client: TestClient) 
     with TestClient(client.app) as first, TestClient(client.app) as second:
         first.get(f"/checkin?k={key}")
         first.post("/checkin/accedi", data={"phone": "3330000001"})
-        assert f"{t['p2']} ✓" not in client.get("/arrivi").text and f"{t['p1']} ✓ · manca {t['p2']}" in client.get("/arrivi").text
+        assert f"{t['p2']} {CHECK}" not in client.get("/arrivi").text and f"{t['p1']} {CHECK} · manca {t['p2']}" in client.get("/arrivi").text
         page = first.get("/io").text
         assert f"La prima birra di {t['p1']}" in page and f"La prima birra di {t['p2']}" not in page
         assert not db_call(service.team, 1)["checked_in"]
@@ -1418,10 +1438,10 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     referee_login(client, 1)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     overview = client.get("/arbitro").text
-    assert f'href="/segna/{m.id}"' in overview and "▶ Segna la partita" in overview
+    assert f'href="/segna/{m.id}"' in overview and f"{PLAY} Segna la partita" in overview
     page = client.get(f"/segna/{m.id}").text
     assert 'class="tabbar"' not in page and "/live/" not in page  # the scoring screen stands on its own
-    assert "▶ Inizia: parte il tempo" in page and "Chi tira per primo?" in page and f"{m.n1}</strong>" in page
+    assert f"{PLAY} Inizia: parte il tempo" in page and "Chi tira per primo?" in page and f"{m.n1}</strong>" in page
 
     later = sorted((x for x in db_call(service.matches) if x.field == 1 and not x.done and x.id != m.id), key=lambda x: x.slot)
     client.post(f"/partita/{m.id}/inizia")
@@ -1429,7 +1449,7 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     assert started.started_at is not None and db_call(lambda db: tracking.state(db, m.id)).started_at == started.started_at
     page = client.get(f"/segna/{m.id}").text
     assert 'class="ref-half shooting"' in page and "Inserisci il risultato a mano" in page and 'class="ref-clock"' in page
-    assert "● LIVE" in client.get("/").text
+    assert f"{LIVE} LIVE" in client.get("/").text
     assert "già iniziata" in client.post(f"/partita/{m.id}/inizia").text
     assert db_call(service.match, later[0].id).time >= started.time  # the table's next times run from the start
 
@@ -1438,7 +1458,7 @@ def test_referee_starts_then_ends_the_match(client: TestClient) -> None:
     client.post(f"/partita/{m.id}/inizia")
     client.post(f"/partita/{m.id}", data={"s1": 10, "s2": 6})
     nxt = next(x for x in db_call(service.matches) if x.playing and x.field == 1)
-    assert nxt.id != m.id and "▶ Segna la partita" in client.get("/arbitro").text
+    assert nxt.id != m.id and f"{PLAY} Segna la partita" in client.get("/arbitro").text
 
     other = next(x for x in db_call(service.matches) if x.playing and x.field == 2)
     assert client.post(f"/partita/{other.id}/inizia", follow_redirects=False).headers["location"] == "/login"
@@ -1455,7 +1475,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
     halves = page[page.index('class="ref-table"'):page.index('class="ref-miss"')]
     p1_name = db_call(service.team, m.t2)["p1"]
     assert halves.index('ref-half target') < halves.index('ref-half shooting')  # couple 2 shoots, from the right
-    assert f"🎯 {p1_name}" in halves and "bicchieri (6)" in halves
+    assert f"{TARGET} {p1_name}" in halves and "bicchieri (6)" in halves
     script = page[page.rindex("<script>"):page.rindex("</script>")]
     assert script.count("(() => {") == script.count("})();")  # the scoring script is closed, so it runs
 
@@ -1490,7 +1510,7 @@ def test_referee_scores_every_shot_until_the_rack_is_empty(client: TestClient) -
         shoot(1, 0)
         shoot(2, 0)
     page = client.get(f"/segna/{m.id}").text
-    assert "🏆 Vince" in page and "✓ Conferma 6–1" in page
+    assert f"{TROPHY} Vince" in page and f"{CHECK} Conferma 6–1" in page
     client.post(f"/partita/{m.id}", data={"s1": 6, "s2": 1, "vincitore": 1})
     done = db_call(service.match, m.id)
     assert (done.s1, done.s2, done.winner) == (6, 1, m.t1) and done.split1 == (6, 0)
@@ -1531,7 +1551,7 @@ def test_timeout_confirmation_is_ready_on_the_referee_screen(client: TestClient)
     db_call(lambda db: service.start_match(db, m.id, time.time() - 6 * 60, 1))
     db_call(lambda db: tracking.referee_shot(db, m.id, 1, 3, time.time() - 30, 0))
     page = client.get(f"/segna/{m.id}").text
-    assert 'class="ref-win ref-timeout" hidden' in page and "✓ Conferma 1–0" in page  # shown by the clock
+    assert 'class="ref-win ref-timeout" hidden' in page and f"{CHECK} Conferma 1–0" in page  # shown by the clock
 
 
 def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestClient) -> None:
@@ -1554,7 +1574,7 @@ def test_a_playing_referee_scores_their_own_table_from_the_profile(client: TestC
         profile = phone.get("/io").text
         assert f"B0 arbitra il Tavolo {table}" in profile and 'href="/arbitro"' in profile
         screen = phone.get("/arbitro").text
-        assert f"🏓 Tavolo {table} · Arbitro · B0" in screen and 'class="tabbar"' not in screen
+        assert f"{TABLE} Tavolo {table} · Arbitro · B0" in screen and 'class="tabbar"' not in screen
         mine = next(m for m in db_call(service.matches) if m.playing and m.field == table)
         other = next(m for m in db_call(service.matches) if m.playing and m.field != table)
         phone.post(f"/partita/{mine.id}/inizia", data={"primo": 1})
@@ -1574,12 +1594,12 @@ def test_referee_reracks_on_request_and_can_undo_it(client: TestClient) -> None:
     for n, pl in ((2, 1), (3, 2)):
         client.post(f"/partita/{m.id}/tiro", data={"giocatore": pl, "bicchiere": 0, "n": n})
     page = client.get(f"/segna/{m.id}").text
-    assert "⟲ Riordina" in page  # couple 1 shoots again at couple 2's 4 cups
+    assert f"{ROTATE} Riordina" in page  # couple 1 shoots again at couple 2's 4 cups
     client.post(f"/partita/{m.id}/riordina", data={"lato": 2})
     st = db_call(lambda db: tracking.state(db, m.id))
     assert st.racks[2].cups == {1, 2, 3, 4} and st.rows[2] == live.FORMATIONS[4]
     page = client.get(f"/segna/{m.id}").text
-    assert f"↶ Annulla: riordino bicchieri di {m.n2}" in page
+    assert f"{UNDO} Annulla: riordino bicchieri di {m.n2}" in page
     client.post(f"/partita/{m.id}/annulla-tiro")
     assert db_call(lambda db: tracking.state(db, m.id)).racks[2].cups == {2, 3, 5, 6}
 
@@ -1591,14 +1611,14 @@ def test_a_blown_ball_is_a_miss_and_a_save_for_the_defenders(client: TestClient)
     m = next(m for m in db_call(service.matches) if m.playing and m.field == 1)
     client.post(f"/partita/{m.id}/inizia", data={"primo": 1})
     page = client.get(f"/segna/{m.id}").text
-    assert 'value="soffio"' in page and "💨 Soffiato" in page
+    assert 'value="soffio"' in page and f"{WIND} Soffiato" in page
 
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})
     client.post(f"/partita/{m.id}/tiro", data={"giocatore": 1, "bicchiere": "soffio", "n": 0})  # double tap: one blow
     rv = db_call(lambda db: tracking.referee_view(db, m.id))
     assert rv.state.side_hits(1) == 0 and len(rv.state.racks[2].cups) == 6  # the cup stays: no point
     assert rv.state.attempts[(1, 1)] == 1 and rv.blows == (0, 1)  # a miss for the shooter, a save for couple 2
-    assert "↶ Annulla:" in client.get(f"/segna/{m.id}").text and "💨 soffiato" in client.get(f"/segna/{m.id}").text
+    assert f"{UNDO} Annulla:" in client.get(f"/segna/{m.id}").text and f"{WIND} soffiato" in client.get(f"/segna/{m.id}").text
     assert client.get(f"/api/live/{m.id}").json()["blows"] == [0, 1]
 
     client.post(f"/partita/{m.id}/annulla-tiro")
@@ -1701,6 +1721,56 @@ def test_every_css_variable_used_is_defined() -> None:
     defined = set(re.findall(r"(--[\w-]+)\s*:", text))
     used = set(re.findall(r"var\((--[\w-]+)", text))
     assert used - defined == set()
+
+
+def test_you_and_live_have_their_own_colour_not_the_brand_orange() -> None:
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "style.css").read_text()
+    rules = re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+    for selector, body in rules:
+        selector = selector.strip()
+        if re.search(r"\.mine\b|\.me\b|mine-|my-", selector):
+            assert "--accent" not in body, selector
+        if re.search(r"\.banner\.hot|\.tnow|\.nowcard|\.running|now-callout|regia-now", selector) and "ref-go" not in selector:
+            assert "--accent" not in body, selector
+
+
+def test_font_weights_come_from_the_three_step_scale() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    sources = [app_dir / "static" / "style.css", *sorted((app_dir / "templates").glob("*.html"))]
+    text = "\n".join(p.read_text() for p in sources)
+    weights = re.findall(r"font-weight:\s*([^;\"]+)", text)
+    assert [w for w in weights if not w.startswith("var(--fw-")] == []
+    assert re.findall(r"font:\s*\d{3}\b", text) == []
+    assert set(re.findall(r"--fw-(\w+):", text)) == {"regular", "medium", "bold"}
+
+
+def test_spacing_radii_and_colours_come_from_tokens() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    templates = sorted((app_dir / "templates").glob("*.html"))
+    css = (app_dir / "static" / "style.css").read_text()
+    css = re.sub(r"@media print \{.*?\n\}", "", css, flags=re.S)
+    css += "".join(b for t in templates for b in re.findall(r"<style>(.*?)</style>", t.read_text(), re.S))
+    decls = re.findall(r"(?<![\w-])([a-z-]+):\s*([^;{}]+)", css)
+    spacing = [v for p, v in decls if re.fullmatch(r"(padding|margin|gap)(-\w+)?", p)]
+    assert [v for v in spacing if re.search(r"(?<![\w(.])([2-9]|[12]\d|3[0-2])px", v)] == []
+    radii = [v.strip() for p, v in decls if p == "border-radius"]
+    assert [v for v in radii if not re.fullmatch(r"(var\(--radius(-\w+)?\)|50%|inherit)( !important)?", v)] == []
+    colours = [(p, v) for p, v in decls if not p.startswith("--") and re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", v)]
+    assert colours == []
+    static_styles = [s for t in templates for s in re.findall(r'style="([^"{]*)"', t.read_text())]
+    assert [s for s in static_styles if re.search(r"\b(margin|padding|gap|display|text-align)\b", s)] == []
+
+
+def test_the_interface_uses_icons_and_leaves_emoji_to_the_voice() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    interface = set("🏓📣📝📞📱📋📅🔔🔕📺🔀📊👥💬👀🏆🎯🔥🏁💡🔴📡📦🔮🏅🔭📸🥤💨⏱🛟⚔🎲★▶⟲⇄↶✗✕")
+    for template in sorted((app_dir / "templates").glob("*.html")):
+        text = re.sub(r"\{% for e in \[.*?\] %\}", "", template.read_text())  # the emoji couples pick as avatar
+        assert {c for c in text if c in interface} == set(), template.name
+    sprite = (app_dir / "static" / "icons.svg").read_text()
+    used = {n for t in (app_dir / "templates").glob("*.html") for n in re.findall(r'icon\("([\w-]+)"', t.read_text())}
+    used |= set(re.findall(r'ico\("([\w-]+)"\)', (app_dir / "templates" / "live.html").read_text()))
+    assert {n for n in used if f'id="i-{n}"' not in sprite} == set()
 
 
 def test_only_the_admin_has_a_pin(client: TestClient) -> None:

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db, service, tracking
-from tests.test_app import client, db_call, import_teams  # noqa: F401
+from tests.test_app import STAR, client, db_call, import_teams  # noqa: F401
 from tools import demo_sim
 from tools.populate_demo import setup_demo
 
@@ -30,7 +30,7 @@ def test_demo_shortcuts_enter_as_couple_or_admin(tmp_path: Path, monkeypatch: py
         home = c.get("/").text
         assert all(f'action="/demo/{r}"' in home for r in ("coppia", "arbitro", "admin"))
         r = c.post("/demo/coppia", follow_redirects=False)
-        assert r.headers["location"] == "/io" and "★ VOI" in c.get("/io").text
+        assert r.headers["location"] == "/io" and f"{STAR} VOI" in c.get("/io").text
         assert c.post("/demo/admin", follow_redirects=False).headers["location"] == "/admin"
         assert c.get("/admin").status_code == 200
 

@@ -179,7 +179,6 @@ class TeamDashboard:
     status: str | None
     next_match: MatchView | None
     matches: list[MatchView]
-    to_split: list[MatchView]
     table: GroupTable | None
     position: int | None
     eliminated: bool
@@ -210,7 +209,6 @@ def team_dashboard(db: sqlite3.Connection, team_id: int) -> TeamDashboard | None
         status=status,
         next_match=next((m for m in mine if not m.done), None),
         matches=mine,
-        to_split=[m for m in mine if m.split_missing(m.side(team_id))],
         table=table,
         position=position,
         eliminated=eliminated,

@@ -5,7 +5,7 @@
 {% block header %}
   {% if focused %}
     <header class="top ref-top">
-      <strong>🏓 Tavolo {{ field_no }} · Arbitro{% if not role and me %} · {{ me["p" ~ me.referee_player] }}{% endif %}</strong>
+      <strong>{{ ui.icon("table") }} Tavolo {{ field_no }} · Arbitro{% if not role and me %} · {{ me["p" ~ me.referee_player] }}{% endif %}</strong>
       {% if role == "referee" %}
         <form method="post" action="/logout" onsubmit="return confirm('Uscire dall\'area arbitro?')"><button class="link" type="submit">Esci</button></form>
       {% else %}<a href="/io">‹ Profilo</a>{% endif %}
@@ -28,7 +28,7 @@
     <span class="ref-ov-teams"><strong>{{ m.n1 }}</strong>
       <span class="ref-ov-score">{{ "%d – %d"|format(*m.live_score) if m.started_at and m.live_score else ("in corso" if m.started_at else "vs") }}</span>
       <strong>{{ m.n2 }}</strong></span>
-    <span class="ref-go">{{ "▶ Continua a segnare" if m.started_at else "▶ Segna la partita" }}</span>
+    <span class="ref-go">{{ ui.icon("play") }} {{ "Continua a segnare" if m.started_at else "Segna la partita" }}</span>
   </a>
 {% endmacro %}
 
@@ -47,9 +47,9 @@
 {% if pending %}
   <details class="section" {{ 'open' if not current or not field_no }}>
   <summary>{{ "Prossime al tuo tavolo" if field_no else "A seguire" }} ({{ pending|length }})</summary>
-  <div class="list queue" style="margin:0 12px 12px">
+  <div class="list queue m-0 mr-3 mb-3 ml-3">
     {% for m in pending %}
-      <a class="row" href="{{ '/partita/' ~ m.id if can_referee(m) else '/live/' ~ m.id }}" style="color:inherit;text-decoration:none">
+      <a class="row plain-link" href="{{ '/partita/' ~ m.id if can_referee(m) else '/live/' ~ m.id }}">
         <span class="when">{{ m.time }}<small class="cd-under">{{ ui.countdown(m) }}</small></span>
         <div class="grow"><div class="title">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</div>
           <span class="muted small">{{ m.label }}{% if m.field and not field_no %} · Tavolo {{ m.field }}{% endif %}</span></div>

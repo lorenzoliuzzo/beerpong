@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Info e regole · {{ info.title }}{% endblock %}
 {% block content %}
 <h1>{{ info.title }}</h1>
 {% if info.date %}
-  <p class="muted" style="margin-top:0">📅 {{ info.date[8:10] }}/{{ info.date[5:7] }}/{{ info.date[:4] }} · ore {{ info.start_time }} · {{ info.fields }} tavoli</p>
+  <p class="muted mt-0">{{ ui.icon("calendar") }} {{ info.date[8:10] }}/{{ info.date[5:7] }}/{{ info.date[:4] }} · ore {{ info.start_time }} · {{ info.fields }} tavoli</p>
 {% endif %}
 
 <div class="summary">
@@ -13,7 +14,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Come iscriversi</h2>
+  <h2 class="mt-0">Come iscriversi</h2>
   <ol class="small">
     <li>{% if info.form_url %}Compilate il <a href="{{ info.form_url }}" rel="noopener" target="_blank">modulo di iscrizione</a>{% else %}Il modulo di iscrizione arriva a breve{% endif %}.</li>
     <li>Pagate la quota{% if info.fee %} di {{ info.fee }} €{% endif %} scrivendo nella causale il codice della vostra coppia: ve lo mandiamo noi.</li>
@@ -24,7 +25,7 @@
 
 {% if info.rules %}
   <div class="card">
-    <h2 style="margin-top:0">Regole</h2>
+    <h2 class="mt-0">Regole</h2>
     <p class="pre">{{ info.rules }}</p>
   </div>
 {% endif %}

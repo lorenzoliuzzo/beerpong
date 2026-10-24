@@ -77,9 +77,6 @@ class MatchView:
     def side(self, team: int | None) -> int | None:
         return 1 if team is not None and team == self.t1 else 2 if team is not None and team == self.t2 else None
 
-    def split_missing(self, side: int) -> bool:
-        return self.done and not self.bye and (self.split1 if side == 1 else self.split2) is None
-
 
 @dataclass
 class GroupTable:
