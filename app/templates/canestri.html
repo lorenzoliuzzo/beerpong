@@ -6,7 +6,7 @@
   {% set team = T[m.t1 if side == 1 else m.t2] %}
   {% set mine = hits[side] %}
   <form class="card" method="post" action="/canestri/{{ m.id }}">
-    <h2 style="margin-top:0">{{ team.name }} · {{ mine|length }} bicchieri</h2>
+    <h2 class="mt-0">{{ team.name }} · {{ mine|length }} bicchieri</h2>
     <input type="hidden" name="side" value="{{ side }}">
     {% if mine %}
       <p class="muted small">Per ogni bicchiere centrato, chi l'ha messo?</p>
@@ -24,6 +24,6 @@
   </form>
 {% endfor %}
 <style>
-  .split-cup { display:flex; align-items:center; gap:10px; margin:6px 0; }
+  .split-cup { display:flex; align-items:center; gap:var(--sp-3); margin:var(--sp-2) 0; }
 </style>
 {% endblock %}

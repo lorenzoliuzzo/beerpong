@@ -17,10 +17,10 @@
   <a class="btn wide" href="/checkin">Entra con il tuo numero</a>
 </div>
 {% if teams %}
-  <h2 style="margin-top:18px">Tutte le coppie</h2>
+  <h2 class="mt-4">Tutte le coppie</h2>
   <div class="list">
     {% for t in teams.values() if t.checked_in %}
-      <a class="row" href="/squadra/{{ t.id }}" style="text-decoration:none;color:inherit">
+      <a class="row plain-link" href="/squadra/{{ t.id }}">
         <div class="grow">
           <div class="title">{{ t.name }}</div>
           <span class="muted small">{{ ui.players(t) }}</span>

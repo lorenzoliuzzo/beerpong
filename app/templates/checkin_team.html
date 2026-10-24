@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui with context %}
 {% block content %}
 <p><a href="/checkin">‹ Tutte le coppie</a></p>
-<div style="display:flex;align-items:center;gap:10px;margin:8px 0 2px">{{ ui.avatar(t) }}<h1 style="margin:0">{{ t.name }}</h1></div>
+<div class="flex items-center gap-3 m-0 mt-2 mb-half">{{ ui.avatar(t) }}<h1 class="m-0">{{ t.name }}</h1></div>
 <p class="muted">{{ ui.players(t) }}</p>
 
 {% if me and me.id == t.id %}

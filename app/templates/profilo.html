@@ -7,7 +7,7 @@
 <p class="muted">Come vi vedono gli altri: sui tavoli, in classifica e sulla TV.</p>
 
 <div class="card">
-  <h2 style="margin-top:0">📸 Foto della coppia</h2>
+  <h2 class="mt-0">📸 Foto della coppia</h2>
   <div class="photo-edit">
     <img id="photo-preview" class="team-photo" src="{{ '/foto/' ~ t.photo if t.photo else '' }}" alt="Foto di {{ t.name }}" {{ 'hidden' if not t.photo }}>
     <div>
@@ -20,14 +20,14 @@
 </div>
 
 <form class="card" method="post" action="/io/coppia" id="coppia">
-  <h2 style="margin-top:0">👥 La coppia</h2>
+  <h2 class="mt-0">👥 La coppia</h2>
   <label for="name">Nome della coppia</label>
   <input id="name" name="name" value="{{ t.name }}" maxlength="40" required autocomplete="off">
   {% for i in (1, 2) %}
     <label for="p{{ i }}">{{ "Tu" if me_player == i else "Il compagno" }}</label>
     <input id="p{{ i }}" name="p{{ i }}" value="{{ t['p' ~ i] }}" maxlength="40" required autocomplete="off" placeholder="Nome">
-    <input name="phone{{ i }}" type="tel" inputmode="tel" value="{{ t['phone' ~ i] }}" aria-label="Telefono di {{ t['p' ~ i] or 'giocatore ' ~ i }}"
-           placeholder="{{ 'Il tuo numero' if me_player == i else 'Il suo numero: così entra anche lui con il suo' }}" style="margin-top:6px">
+    <input class="mt-2" name="phone{{ i }}" type="tel" inputmode="tel" value="{{ t['phone' ~ i] }}" aria-label="Telefono di {{ t['p' ~ i] or 'giocatore ' ~ i }}"
+           placeholder="{{ 'Il tuo numero' if me_player == i else 'Il suo numero: così entra anche lui con il suo' }}">
   {% endfor %}
   <p class="muted small">Ognuno entra con il proprio numero, che dice chi è.</p>
   <button class="wide ghost" type="submit">Salva i dati</button>
@@ -62,15 +62,15 @@
 </form>
 
 <style>
-  .photo-edit { display:flex; gap:12px; align-items:center; }
-  .emoji-pick { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
-  .emoji-pick .chip { font-size:1.3rem; padding:4px 8px; }
-  .color-pick { display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 10px; }
+  .photo-edit { display:flex; gap:var(--sp-3); align-items:center; }
+  .emoji-pick { display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-bottom:var(--sp-2); }
+  .emoji-pick .chip { font-size:1.3rem; padding:var(--sp-1) var(--sp-2); }
+  .color-pick { display:flex; flex-wrap:wrap; gap:var(--sp-2); margin:var(--sp-1) 0 var(--sp-3); }
   .swatch input { position:absolute; opacity:0; }
   .swatch span { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%;
     background:var(--sw); border:3px solid transparent; cursor:pointer; color:var(--muted); }
-  .swatch.none span { background:var(--surface, #fff); border-color:var(--line, #ddd); }
-  .swatch input:checked + span { border-color:var(--text); box-shadow:0 0 0 2px var(--bg, #fff) inset; }
+  .swatch.none span { background:var(--surface); border-color:var(--line); }
+  .swatch input:checked + span { border-color:var(--text); box-shadow:0 0 0 2px var(--bg) inset; }
 </style>
 <script>
   document.querySelectorAll("[data-emoji]").forEach((b) => b.addEventListener("click", () => {

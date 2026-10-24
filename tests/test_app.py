@@ -1725,6 +1725,23 @@ def test_font_weights_come_from_the_three_step_scale() -> None:
     assert set(re.findall(r"--fw-(\w+):", text)) == {"regular", "medium", "bold"}
 
 
+def test_spacing_radii_and_colours_come_from_tokens() -> None:
+    app_dir = Path(__file__).resolve().parent.parent / "app"
+    templates = sorted((app_dir / "templates").glob("*.html"))
+    css = (app_dir / "static" / "style.css").read_text()
+    css = re.sub(r"@media print \{.*?\n\}", "", css, flags=re.S)
+    css += "".join(b for t in templates for b in re.findall(r"<style>(.*?)</style>", t.read_text(), re.S))
+    decls = re.findall(r"(?<![\w-])([a-z-]+):\s*([^;{}]+)", css)
+    spacing = [v for p, v in decls if re.fullmatch(r"(padding|margin|gap)(-\w+)?", p)]
+    assert [v for v in spacing if re.search(r"(?<![\w(.])([2-9]|[12]\d|3[0-2])px", v)] == []
+    radii = [v.strip() for p, v in decls if p == "border-radius"]
+    assert [v for v in radii if not re.fullmatch(r"(var\(--radius(-\w+)?\)|50%|inherit)( !important)?", v)] == []
+    colours = [(p, v) for p, v in decls if not p.startswith("--") and re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", v)]
+    assert colours == []
+    static_styles = [s for t in templates for s in re.findall(r'style="([^"{]*)"', t.read_text())]
+    assert [s for s in static_styles if re.search(r"\b(margin|padding|gap|display|text-align)\b", s)] == []
+
+
 def test_only_the_admin_has_a_pin(client: TestClient) -> None:
     db_call(lambda db: (set_setting(db, "ref_pin_1", "654321"), set_setting(db, "referees", "pin"), db.commit()))
     init_db()  # an older database: its table PINs go, and "PIN only" becomes "organizers only"

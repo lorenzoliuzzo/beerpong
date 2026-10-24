@@ -22,10 +22,10 @@
       <input id="p2" name="p2" maxlength="40" required autocomplete="off">
       <label for="phone2">Telefono del compagno (facoltativo, per entrare con il suo numero)</label>
       <input id="phone2" name="phone2" type="tel" inputmode="tel">
-      <label style="margin-top:8px"><input type="checkbox" name="insieme" value="1" checked> Il compagno è qui con me</label>
+      <label class="mt-2"><input type="checkbox" name="insieme" value="1" checked> Il compagno è qui con me</label>
     </div>
     <div class="card">
-      <h2 style="margin-top:0">Avete pagato il ticket?</h2>
+      <h2 class="mt-0">Avete pagato il ticket?</h2>
       <div class="choices">
         {% for key, label in payments.items() %}
           <label><input type="radio" name="payment" value="{{ key }}" required> {{ label }}</label>

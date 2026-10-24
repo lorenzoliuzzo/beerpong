@@ -48,33 +48,33 @@
   <p><a class="btn ghost wide" href="/checkin">Il tuo compagno ha già fatto il check-in? Entra qui</a></p>
 
 {% elif cfg.phase == Phase.FINISHED and final %}
-  <div class="banner gold" style="text-align:center">
+  <div class="banner gold center">
     <div class="label">Campioni del Torneo</div>
     <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
-    <p style="margin-top:6px">Finale vinta {{ final.s1 }}–{{ final.s2 }}</p>
+    <p class="mt-2">Finale vinta {{ final.s1 }}–{{ final.s2 }}</p>
   </div>
 {% endif %}
 
 <div class="slim-head">
   <div>
-    <h1 style="margin:0">Tavoli</h1>
+    <h1 class="m-0">Tavoli</h1>
     {% if cfg.phase.started %}
       <span class="muted small">Fase attiva: <strong>{{ current_phase_label }}</strong></span>
     {% endif %}
   </div>
-  <div style="display:flex;align-items:center;gap:8px">
+  <div class="flex items-center gap-2">
     <div class="clock-pill" id="tournament-clock-box" data-server-ts="{{ server_ts }}" title="Orologio torneo">
       <span class="clock-dot"></span>
       <strong id="live-server-clock">{{ server_clock }}</strong>
     </div>
-    <a href="/cartellone" class="pill" target="_blank" style="text-decoration:none" title="Versione TV">📺 TV</a>
+    <a href="/cartellone" class="pill no-underline" target="_blank" title="Versione TV">📺 TV</a>
   </div>
 </div>
 
 {{ ui.progress(progress) }}
 
 {% if cfg.phase.started %}
-  <div class="stats-grid" style="margin-bottom:12px">
+  <div class="stats-grid mb-3">
     <div class="stat-box">
       <span class="lbl">Litri bevuti</span>
       <div class="val">{{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L 🍺</div>
@@ -94,11 +94,11 @@
 {% endif %}
 
 {% if cfg.phase.is_setup %}
-  <a class="btn ghost wide" href="/programma" style="margin:0 0 12px">📅 Programma delle partite · si comincia alle {{ cfg.start_time }}</a>
+  <a class="btn ghost wide m-0 mb-3" href="/programma">📅 Programma delle partite · si comincia alle {{ cfg.start_time }}</a>
 {% endif %}
 
 {% if removed_tables %}
-  <p class="muted small" style="margin:0 0 10px">
+  <p class="muted small m-0 mb-3">
     ℹ️ In <strong>{{ current_phase_label }}</strong> restano attivi {{ table_views|length }} tavol{{ 'o' if table_views|length == 1 else 'i' }}
     (i tavoli secondari {% for rf in removed_tables %}Tavolo {{ rf }}{% if not loop.last %}, {% endif %}{% endfor %} sono stati rimossi con l'avanzare del torneo).
   </p>
@@ -106,7 +106,7 @@
 
 {% if table_views and cfg.phase.started %}
   <!-- SWITCH PRINCIPALE DELLA FASE CORRENTE: TAVOLI vs GRUPPI DELLA FASE -->
-  <nav class="segmented" style="margin-bottom:12px">
+  <nav class="segmented mb-3">
     <a href="/gironi?sez=tavoli"
        id="nav-sez-tavoli"
        class="{{ 'on' if active_sez == 'tavoli' }}"
@@ -130,7 +130,7 @@
   <!-- =========================================================================
        SEZIONE 1: TAVOLI ATTIVI NELLA FASE CORRENTE (2 principali + 2 secondari)
        ========================================================================= -->
-  <div id="sez-tavoli" {% if active_sez != 'tavoli' %}style="display:none"{% endif %}>
+  <div id="sez-tavoli" {% if active_sez != 'tavoli' %}hidden{% endif %}>
     <div class="tavolo-tabs" role="tablist" aria-label="Seleziona tavolo">
       {% for tv in table_views %}
         {% set is_my_t = (my_table == tv.field) %}
@@ -140,7 +140,7 @@
                 onclick="selectTavolo({{ tv.field }})">
           <div class="tt-top">
             <span class="tt-name">Tavolo {{ tv.field }}</span>
-            <span class="pill {{ 'ok' if tv.is_main }}" style="font-size:0.62rem;padding:1px 6px">{{ tv.kind }}</span>
+            <span class="pill tiny {{ 'ok' if tv.is_main }}">{{ tv.kind }}</span>
             {% if is_my_t %}<span class="tt-star">★</span>{% endif %}
             {% if tv.current %}<span class="tt-live-dot"></span>{% endif %}
           </div>
@@ -156,7 +156,7 @@
     </div>
 
     {% for tv in table_views %}
-      <div class="tavolo-workspace" id="tavolo-panel-{{ tv.field }}" {% if active_tavolo != tv.field %}style="display:none"{% endif %}>
+      <div class="tavolo-workspace" id="tavolo-panel-{{ tv.field }}" {% if active_tavolo != tv.field %}hidden{% endif %}>
 
         <!-- IN CAMPO ORA + PROSSIMA CHIAMATA -->
         <div class="regia-card">
@@ -170,7 +170,7 @@
             {% if tv.current %}
               {{ ui.match(tv.current, show_label=False, mine=me.id if me, labels=labels if is_ko_phase else none) }}
             {% else %}
-              <p class="muted small" style="margin:4px 0 0">Partite di {{ tv.phase_label }} al Tavolo {{ tv.field }} completate.</p>
+              <p class="muted small m-0 mt-1">Partite di {{ tv.phase_label }} al Tavolo {{ tv.field }} completate.</p>
             {% endif %}
           </div>
 
@@ -227,11 +227,11 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="muted small" style="margin:6px 0 0">Nessuna partita in coda per questa fase.</p>
+              <p class="muted small m-0 mt-2">Nessuna partita in coda per questa fase.</p>
             {% endif %}
           </div>
 
-          <div class="tm-pane" id="tm-{{ tv.field }}-played" style="display:none">
+          <div class="tm-pane" id="tm-{{ tv.field }}-played" hidden>
             {% if tv.played %}
               <div class="matches-list">
                 {% for m in tv.played|reverse %}
@@ -239,12 +239,12 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="muted small" style="margin:6px 0 0">Ancora nessuna partita conclusa in questa fase.</p>
+              <p class="muted small m-0 mt-2">Ancora nessuna partita conclusa in questa fase.</p>
             {% endif %}
           </div>
 
           {% if is_ko_phase %}
-            <div class="tm-pane" id="tm-{{ tv.field }}-ko-all" style="display:none">
+            <div class="tm-pane" id="tm-{{ tv.field }}-ko-all" hidden>
               <div class="matches-list">
                 {% for m in tv.phase_matches %}
                   {{ ui.match(m, show_label=False, mine=me.id if me, labels=labels) }}
@@ -253,7 +253,7 @@
             </div>
           {% else %}
             {% for g in tv.groups %}
-              <div class="tm-pane" id="tm-{{ tv.field }}-grp-{{ g.grp }}" style="display:none">
+              <div class="tm-pane" id="tm-{{ tv.field }}-grp-{{ g.grp }}" hidden>
                 <div class="matches-list">
                   {% for m in g.matches %}
                     {{ ui.mini(m, mine=me.id if me) }}
@@ -282,7 +282,7 @@
   <!-- =========================================================================
        SEZIONE 2: GRUPPI DELLA FASE CORRENTE (Gironi A–H oppure Gruppi Ottavi/Quarti/Semi/Finale)
        ========================================================================= -->
-  <div id="sez-classifiche" {% if active_sez != 'classifiche' %}style="display:none"{% endif %}>
+  <div id="sez-classifiche" {% if active_sez != 'classifiche' %}hidden{% endif %}>
     {% if is_ko_phase %}
       <div id="ko-groups-container">
         {% for tv in table_views %}
@@ -292,7 +292,7 @@
               <h2>{{ tv.phase_label }} · Tavolo {{ tv.field }} ({{ tv.kind }})</h2>
               <span class="muted small">{{ tv.done_count }}/{{ tv.total_count }}</span>
             </div>
-            <div class="table-wrap" style="margin-bottom:10px">
+            <div class="table-wrap mb-3">
               <table>
                 <tr><th>Coppia</th><th>Origine</th><th>Esito ({{ tv.phase_label|replace(" di finale", "") }})</th></tr>
                 {% for m in tv.phase_matches %}
@@ -354,12 +354,12 @@
           {% endfor %}
         </div>
 
-        <input type="search"
+        <input class="mt-2" type="search"
                id="team-group-search"
                placeholder="🔍 Cerca coppia o giocatore…"
                oninput="searchTeamInGroups(this.value)"
                aria-label="Cerca coppia nei gironi"
-               style="margin-top:6px">
+              >
       </div>
 
       <div id="groups-container" class="{{ 'mode-all' if active_grp == 'all' else 'mode-single' }}">
@@ -370,7 +370,7 @@
           <section class="group anchor group-section"
                    id="g{{ g.grp }}"
                    data-search="{% for r in g.rows %}{{ T[r.team].name|lower }} {{ T[r.team].p1|lower }} {{ T[r.team].p2|lower }} {% endfor %}{{ g.name|lower }}"
-                   {% if not is_visible %}style="display:none"{% endif %}>
+                   {% if not is_visible %}hidden{% endif %}>
             <div class="group-head clickable-head" onclick="if(document.getElementById('groups-container').classList.contains('mode-all')) filterGirone('g{{ g.grp }}')">
               <span class="badge">{{ g.name|replace("Girone ", "") }}</span>
               <h2>{{ g.name }}</h2>
@@ -401,7 +401,7 @@
       </div>
 
       {% if projection and cfg.phase == Phase.GROUPS %}
-        <details class="section" style="margin-top:16px">
+        <details class="section mt-4">
           <summary>🔮 Accoppiamenti Ottavi (simulazione live)</summary>
           <div class="body">
             {% for a, b in projection %}
@@ -438,7 +438,7 @@
     {% for g in gs %}
       {% set here = g.teams|selectattr("checked_in")|list|length %}
       <div class="card">
-        <div class="presence-group"><h2 style="margin:0">Girone {{ g.letter }}</h2>
+        <div class="presence-group"><h2 class="m-0">Girone {{ g.letter }}</h2>
           <span class="pill {{ 'ok' if here == g.teams|length }}">{{ here }}/{{ g.teams|length }} arrivate</span></div>
         <div class="list">
           {% for t in g.teams %}
@@ -452,8 +452,8 @@
     {% endfor %}
   {% endfor %}
 {% else %}
-  <div class="card" style="text-align:center;padding:24px 16px">
-    <div style="font-size:2rem;margin-bottom:6px">🎲</div>
+  <div class="card center pt-6 pr-4 pb-6 pl-4">
+    <div class="mb-2" style="font-size:2rem">🎲</div>
     <strong>Gironi in fase di sorteggio</strong>
     <p class="muted small">Verranno pubblicati alla chiusura del check-in.</p>
   </div>
@@ -479,8 +479,8 @@ function switchMainSez(sez) {
   const sCls = document.getElementById('sez-classifiche');
   const bTav = document.getElementById('nav-sez-tavoli');
   const bCls = document.getElementById('nav-sez-classifiche');
-  if (sTav) sTav.style.display = (sez === 'tavoli') ? '' : 'none';
-  if (sCls) sCls.style.display = (sez === 'classifiche') ? '' : 'none';
+  if (sTav) sTav.hidden = !(sez === 'tavoli');
+  if (sCls) sCls.hidden = !(sez === 'classifiche');
   if (bTav) bTav.classList.toggle('on', sez === 'tavoli');
   if (bCls) bCls.classList.toggle('on', sez === 'classifiche');
   try {
@@ -495,7 +495,7 @@ function selectTavolo(fieldNo) {
     btn.classList.toggle('on', Number(btn.dataset.tavolo) === fieldNo);
   });
   document.querySelectorAll('.tavolo-workspace').forEach(panel => {
-    panel.style.display = (panel.id === 'tavolo-panel-' + fieldNo) ? '' : 'none';
+    panel.hidden = !(panel.id === 'tavolo-panel-' + fieldNo);
   });
   try {
     const u = new URL(location.href);
@@ -510,7 +510,7 @@ function switchQueueTab(fieldNo, paneKey, btnEl) {
   if (card) {
     card.querySelectorAll('.tm-tab').forEach(b => b.classList.toggle('on', b === btnEl));
     card.querySelectorAll('.tm-pane').forEach(p => {
-      p.style.display = (p.id === 'tm-' + fieldNo + '-' + paneKey) ? '' : 'none';
+      p.hidden = !(p.id === 'tm-' + fieldNo + '-' + paneKey);
     });
   }
 }
@@ -530,7 +530,7 @@ function filterGirone(groupId) {
   }
 
   document.querySelectorAll('.group-section').forEach(sec => {
-    sec.style.display = (groupId === 'all' || sec.id === groupId) ? '' : 'none';
+    sec.hidden = !(groupId === 'all' || sec.id === groupId);
   });
 
   try {
@@ -552,7 +552,7 @@ function searchTeamInGroups(query) {
   }
   document.querySelectorAll('.group-section').forEach(sec => {
     const hay = sec.dataset.search || '';
-    sec.style.display = hay.includes(q) ? '' : 'none';
+    sec.hidden = !(hay.includes(q));
   });
 }
 </script>

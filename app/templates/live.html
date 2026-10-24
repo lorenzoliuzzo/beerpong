@@ -2,7 +2,7 @@
 {% block title %}{{ m.n1 }} vs {{ m.n2 }} · LIVE{% endblock %}
 {% block content %}
 <div id="live" data-match="{{ m.id }}">
-  <div class="slim-head" style="margin-bottom:8px">
+  <div class="slim-head mb-2">
     <span class="muted small">{{ m.label }}{% if m.field %} · <strong>🏓 Tavolo {{ m.field }}</strong>{% endif %}</span>
     {% if m.field %}
       <a class="btn small ghost" href="/gironi?sez=tavoli&amp;tavolo={{ m.field }}">← Tavolo {{ m.field }}</a>
@@ -14,7 +14,7 @@
   <section class="arena">
     <div class="vs">
       <div class="side s1">
-        <a class="tname" data-f="name1" href="/squadra/{{ m.t1 }}" style="text-decoration:none;color:inherit">{{ m.n1 }}</a>
+        <a class="tname plain-link" data-f="name1" href="/squadra/{{ m.t1 }}">{{ m.n1 }}</a>
         <div class="tmeta" data-f="meta1"></div>
         <div class="streak" id="streak1" hidden></div>
       </div>
@@ -24,7 +24,7 @@
         <div class="clock-sub" id="clock-sub"></div>
       </div>
       <div class="side s2">
-        <a class="tname" data-f="name2" href="/squadra/{{ m.t2 }}" style="text-decoration:none;color:inherit">{{ m.n2 }}</a>
+        <a class="tname plain-link" data-f="name2" href="/squadra/{{ m.t2 }}">{{ m.n2 }}</a>
         <div class="tmeta" data-f="meta2"></div>
         <div class="streak" id="streak2" hidden></div>
       </div>
@@ -52,7 +52,7 @@
 
     <div id="result" class="banner gold" hidden></div>
 
-    <p class="muted small" style="text-align:center">🧑‍⚖️ I tiri li segna l'arbitro del tavolo.</p>
+    <p class="muted small center">🧑‍⚖️ I tiri li segna l'arbitro del tavolo.</p>
     <div class="pstats" id="pstats" hidden></div>
   </section>
 

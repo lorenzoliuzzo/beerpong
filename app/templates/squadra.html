@@ -8,7 +8,7 @@
 <div class="team-profile-hero {{ 'colored' if t.color }}" style="{{ ('--team: ' ~ ui.team_color(t)) if t.color }}">
   <div class="tph-top">
     {{ ui.avatar(t, "big") }}
-    <div style="flex:1">
+    <div class="flex-1">
       <div class="tph-badges">
         {% if profile and profile.grp_name %}
           <a href="/gironi?g={{ t.grp }}" class="pill ok">{{ profile.grp_name }}</a>
@@ -26,8 +26,8 @@
           <span class="pill warn">📣 Prossima chiamata</span>
         {% endif %}
       </div>
-      <h1 style="margin:6px 0 2px">{{ t.name }}</h1>
-      <p class="muted" style="margin:0;font-size:1rem">👥 {{ ui.players(t) }}</p>
+      <h1 class="m-0 mt-2 mb-half">{{ t.name }}</h1>
+      <p class="muted m-0" style="font-size:1rem">👥 {{ ui.players(t) }}</p>
       {% if t.motto %}<p class="tph-motto">«{{ t.motto }}»</p>{% endif %}
       {% if own %}
         <div class="tph-own"><span class="badge you" title="Il vostro profilo">★ VOI</span>
@@ -37,16 +37,16 @@
   </div>
 
   {% if dash.status == "now" and dash.next_match %}
-    <div class="banner hot" style="margin-top:12px;margin-bottom:0">
+    <div class="banner hot mt-3 mb-0">
       <div class="label">🔴 In campo in questo momento · Tavolo {{ dash.next_match.field }}</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
       {% if dash.next_match.live_score %}
-        <div class="headline" style="margin-top:4px">{{ dash.next_match.live_score[0] }}–{{ dash.next_match.live_score[1] }}</div>
+        <div class="headline mt-1">{{ dash.next_match.live_score[0] }}–{{ dash.next_match.live_score[1] }}</div>
       {% endif %}
-      {% if own and dash.next_match.mode.by_couples %}<a class="btn wide" style="margin-top:8px" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
+      {% if own and dash.next_match.mode.by_couples %}<a class="btn wide mt-2" href="/risultato/{{ dash.next_match.id }}">📝 Finita? Inserite il risultato</a>{% endif %}
     </div>
   {% elif dash.status == "next" and dash.next_match %}
-    <div class="banner warm" style="margin-top:12px;margin-bottom:0">
+    <div class="banner warm mt-3 mb-0">
       <div class="label">📣 Preparatevi · Prossima chiamata al Tavolo {{ dash.next_match.field }} (~{{ dash.next_match.time }}{{ ui.countdown(dash.next_match) }})</div>
       <strong>{{ dash.next_match.n1 }} vs {{ dash.next_match.n2 }}</strong>
     </div>
@@ -57,7 +57,7 @@
   {% set mate = 3 - me_player if me_player else none %}
   {% if cfg.phase.is_setup and not t.checked_in %}
     <div class="card arrive">
-      <h2 style="margin:0 0 6px">Arrivo alla serata</h2>
+      <h2 class="m-0 mb-2">Arrivo alla serata</h2>
       <div class="phones">
         {% for i in (1, 2) %}
           <span class="pill {{ 'ok' if t['arrived' ~ i ~ '_at'] }}">{{ t["p" ~ i] }} · {{ ("✓ arrivato/a " ~ t['arrived' ~ i ~ '_at'][11:16]) if t['arrived' ~ i ~ '_at'] else "in arrivo" }}</span>
@@ -70,7 +70,7 @@
             <input name="codice" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required aria-label="Codice della serata" autocomplete="off">
           {% endif %}
           {% if not t["arrived" ~ mate ~ "_at"] %}
-            <label class="small" style="margin:6px 0"><input type="checkbox" name="compagno" value="1"> Anche {{ t["p" ~ mate] }} è qui con me (se non ha il telefono)</label>
+            <label class="small m-0 mt-2 mb-2"><input type="checkbox" name="compagno" value="1"> Anche {{ t["p" ~ mate] }} è qui con me (se non ha il telefono)</label>
           {% endif %}
           <button class="wide" type="submit">🍺 Sono arrivato/a</button>
         </form>
@@ -100,7 +100,7 @@
         </form>
       </details>
     {% else %}
-      <p class="muted small" style="text-align:center">🍺 Prima birra di {{ t["p" ~ i] }} ritirata alle {{ taken[11:16] }}</p>
+      <p class="muted small center">🍺 Prima birra di {{ t["p" ~ i] }} ritirata alle {{ taken[11:16] }}</p>
     {% endif %}
   {% endfor %}
 {% endif %}
@@ -117,7 +117,7 @@
 
 {% if own %}
   <div class="card phones-card">
-    <h2 style="margin:0 0 6px">Ciao {{ t["p" ~ me_player] }}! 👋</h2>
+    <h2 class="m-0 mb-2">Ciao {{ t["p" ~ me_player] }}! 👋</h2>
     <div class="phones">
       {% for i in (1, 2) %}
         <span class="pill {{ 'ok' if devices[i] }}">{{ t["p" ~ i] }} · {{ "📱 collegato" if devices[i] else "non ancora" }}</span>
@@ -138,23 +138,23 @@
   </div>
   {% if cfg.phase.is_setup %}
     {% if t.checked_in %}
-    <div class="banner" style="margin-top:12px">
+    <div class="banner mt-3">
       <div class="label">Check-in fatto ✓</div>
       {{ ui.payment_pill(t, payments) }}
     </div>
     {% endif %}
     {% if spot %}
       <div class="card">
-        <div class="label muted small" style="font-weight:var(--fw-medium);text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
-        <div class="headline" style="font-size:1.3rem;font-weight:var(--fw-bold);margin:4px 0">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
-        {% if spot.first_time %}<p style="margin:0 0 8px">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
+        <div class="label muted small fw-medium" style="text-transform:uppercase;letter-spacing:.05em">Il vostro girone (provvisorio)</div>
+        <div class="headline fw-bold m-0 mt-1 mb-1" style="font-size:1.3rem">Girone {{ spot.group.letter }}{% if spot.table %} · 🏓 Tavolo {{ spot.table }}{% endif %}</div>
+        {% if spot.first_time %}<p class="m-0 mb-2">Prima partita verso le <strong>{{ spot.first_time }}</strong> contro <strong>{{ spot.first_rival.name }}</strong></p>{% endif %}
         <div class="list">
           {% for m in spot.group.teams %}
             <div class="row {{ 'mine' if m.id == t.id }}"><div class="grow"><div class="title">{{ m.name }}</div><span class="muted small">{{ ui.players(m) }}</span></div>
               {% if m.checked_in %}<span class="pill ok">✓ arrivata</span>{% else %}<span class="pill">in arrivo</span>{% endif %}</div>
           {% endfor %}
         </div>
-        <p class="muted small" style="margin:8px 0 0">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
+        <p class="muted small m-0 mt-2">Il sorteggio diventa definitivo all'avvio: entra solo chi ha fatto il check-in.</p>
       </div>
       <p><a class="btn ghost wide" href="/arrivi">👀 Chi è arrivato</a></p>
       <p><a class="btn ghost wide" href="/gironi">Tutti i gironi</a></p>
@@ -166,7 +166,7 @@
 
 <!-- CLASSIFICA DEL GIRONE -->
 {% if dash.table %}
-  <div class="section-head" style="margin-top:22px">
+  <div class="section-head mt-6">
     <h2>{{ dash.table.name }}{% if dash.position %} · {{ dash.position }}° posto{% endif %}</h2>
     <a href="/gironi?g={{ t.grp }}" class="small">Vai al girone ›</a>
   </div>
@@ -179,51 +179,51 @@
   {% set ko_matches = dash.matches|selectattr("stage", "equalto", "ko")|list %}
   {% set done_matches = dash.matches|selectattr("done")|list %}
 
-  <div class="section-head" style="margin-top:22px">
+  <div class="section-head mt-6">
     <h2>📅 Partite di {{ t.name }}</h2>
     <span class="muted small">{{ done_matches|length }}/{{ dash.matches|length }} giocate</span>
   </div>
 
-  <nav class="segmented" style="margin-bottom:12px">
+  <nav class="segmented mb-3">
     <a href="#per-fase" id="tab-matches-phase" class="on" onclick="switchTeamMatches('phase'); return false;">Per fase</a>
     <a href="#fatte" id="tab-matches-done" onclick="switchTeamMatches('done'); return false;">Partite fatte ({{ done_matches|length }})</a>
   </nav>
 
   <div id="pane-matches-phase">
     {% if group_matches %}
-      <h3 style="margin:10px 0 6px;font-size:0.95rem">🏁 Fase a Gironi · {{ dash.table.name if dash.table else "Girone" }}</h3>
+      <h3 class="m-0 mt-3 mb-2" style="font-size:0.95rem">🏁 Fase a Gironi · {{ dash.table.name if dash.table else "Girone" }}</h3>
       {% for m in group_matches %}
-        <div class="muted small" style="margin:6px 0 2px;font-weight:var(--fw-medium)">Giornata {{ loop.index }}</div>
+        <div class="muted small fw-medium m-0 mt-2 mb-half">Giornata {{ loop.index }}</div>
         {{ ui.match(m, show_label=False, mine=t.id) }}
       {% endfor %}
     {% endif %}
 
     {% if ko_matches %}
-      <h3 style="margin:16px 0 6px;font-size:0.95rem">🏆 Fase a Eliminazione Diretta</h3>
+      <h3 class="m-0 mt-4 mb-2" style="font-size:0.95rem">🏆 Fase a Eliminazione Diretta</h3>
       {% for m in ko_matches %}
-        <div class="muted small" style="margin:6px 0 2px;font-weight:var(--fw-medium)">{{ m.label }}</div>
+        <div class="muted small fw-medium m-0 mt-2 mb-half">{{ m.label }}</div>
         {{ ui.match(m, show_label=False, mine=t.id) }}
       {% endfor %}
     {% endif %}
   </div>
 
-  <div id="pane-matches-done" style="display:none">
+  <div id="pane-matches-done" hidden>
     {% if done_matches %}
       {% for m in done_matches %}
         {{ ui.match(m, mine=t.id) }}
       {% endfor %}
     {% else %}
-      <div class="card" style="padding:16px;text-align:center">
-        <p class="muted small" style="margin:0">Nessuna partita ancora conclusa per {{ t.name }}.</p>
+      <div class="card pt-4 pr-4 pb-4 pl-4 center">
+        <p class="muted small m-0">Nessuna partita ancora conclusa per {{ t.name }}.</p>
       </div>
     {% endif %}
   </div>
 {% elif cfg.phase.is_setup %}
-  <p class="muted" style="margin-top:18px">Il calendario comparirà all'inizio del torneo.</p>
+  <p class="muted mt-4">Il calendario comparirà all'inizio del torneo.</p>
 {% endif %}
 
 {% if profile and profile.played %}
-  <a class="list" href="/squadra/{{ t.id }}/statistiche" style="display:block;text-decoration:none;margin-top:18px">
+  <a class="list block no-underline mt-4" href="/squadra/{{ t.id }}/statistiche">
     <div class="row"><div class="grow"><div class="title">📊 Statistiche</div>
       <span class="muted small">Classifiche, precisione, litri bevuti, dove centrate</span></div><span class="chev">›</span></div>
   </a>
@@ -255,8 +255,8 @@ function switchTeamMatches(mode) {
   const pDone = document.getElementById('pane-matches-done');
   const tPhase = document.getElementById('tab-matches-phase');
   const tDone = document.getElementById('tab-matches-done');
-  if (pPhase) pPhase.style.display = (mode === 'phase') ? '' : 'none';
-  if (pDone) pDone.style.display = (mode === 'done') ? '' : 'none';
+  if (pPhase) pPhase.hidden = !(mode === 'phase');
+  if (pDone) pDone.hidden = !(mode === 'done');
   if (tPhase) tPhase.classList.toggle('on', mode === 'phase');
   if (tDone) tDone.classList.toggle('on', mode === 'done');
 }

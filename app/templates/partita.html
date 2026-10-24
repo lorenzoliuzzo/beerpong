@@ -2,8 +2,8 @@
 {% import "_ui.html" as ui with context %}
 {% block content %}
 <p><a href="/arbitro">‹ {{ "Tavolo " ~ m.field if m.field else "Partite" }}</a></p>
-<h1 style="margin-bottom:2px">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</h1>
-<p class="muted" style="margin-top:0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.time %} · {{ m.time }}{% endif %}</p>
+<h1 class="mb-half">{{ m.n1 }} <span class="muted">vs</span> {{ m.n2 }}</h1>
+<p class="muted mt-0">{{ m.label }}{% if m.field %} · Tavolo {{ m.field }}{% endif %}{% if m.time %} · {{ m.time }}{% endif %}</p>
 <form method="post" action="/partita/{{ m.id }}">
   <div class="card">
     {% if live_score %}<p class="small">📡 Dai tiri segnalati live: <strong>{{ live_score[0] }}–{{ live_score[1] }}</strong> (già inserito, controlla)</p>{% endif %}
@@ -15,7 +15,7 @@
   </div>
   {% if m.stage == "ko" %}
     <div class="card">
-      <h2 style="margin-top:0">Solo se finisce pari: chi vince all'overtime?</h2>
+      <h2 class="mt-0">Solo se finisce pari: chi vince all'overtime?</h2>
       <div class="choices">
         <label><input type="radio" name="vincitore" value="1" {{ 'checked' if m.done and m.s1 == m.s2 and m.winner == m.t1 }}> {{ m.n1 }}</label>
         <label><input type="radio" name="vincitore" value="2" {{ 'checked' if m.done and m.s1 == m.s2 and m.winner == m.t2 }}> {{ m.n2 }}</label>

@@ -7,7 +7,7 @@
   <span class="pill">🍺 {{ "%.1f"|format(tournament_liters or 0)|replace(".", ",") }} L bevuti live</span>
 </div>
 
-<nav class="segmented" style="margin-bottom:12px">
+<nav class="segmented mb-3">
   <a href="/classifiche?vista=gironi" class="{{ 'on' if view == 'gironi' }}">Gironi</a>
   <a href="/classifiche?vista=eliminazione" class="{{ 'on' if view == 'eliminazione' }}">Eliminazione</a>
   <a href="/classifiche?vista=coppie" class="{{ 'on' if view == 'coppie' }}">Coppie</a>
@@ -35,28 +35,28 @@
     </div>
     <p class="muted small">Passano il turno le prime 2 di ogni girone{% if thirds > 0 %}, più le {{ thirds }} migliori terze{% endif %}.</p>
     {% for g in tables %}
-      <section class="group grp-standing-sec" data-grp="g{{ g.grp }}" style="margin-bottom:16px">
+      <section class="group grp-standing-sec mb-4" data-grp="g{{ g.grp }}">
         <div class="group-head">
           <span class="badge">{{ g.name|replace("Girone ", "") }}</span>
-          <h2 style="margin:0">{{ g.name }}</h2>
+          <h2 class="m-0">{{ g.name }}</h2>
           <span class="muted small">{{ g.matches|selectattr("done")|list|length }}/{{ g.matches|length }} partite</span>
         </div>
         {{ ui.table(g.rows, T, thirds, mine=me.id if me) }}
       </section>
     {% endfor %}
   {% else %}
-    <div class="card" style="padding:20px 16px;text-align:center">
-      <p class="muted" style="margin:0">Le classifiche dei gironi compariranno all'avvio del torneo.</p>
+    <div class="card pt-6 pr-4 pb-6 pl-4 center">
+      <p class="muted m-0">Le classifiche dei gironi compariranno all'avvio del torneo.</p>
     </div>
   {% endif %}
 
   {% if rounds %}
-    <div class="section-head" style="margin-top:22px">
+    <div class="section-head mt-6">
       <h2>🏆 Fase a Eliminazione Diretta</h2>
       <a href="/classifiche?vista=eliminazione" class="small">Dettaglio turni ›</a>
     </div>
     {% for name, ms in rounds %}
-      <h3 style="margin:12px 0 6px">{{ name }}</h3>
+      <h3 class="m-0 mt-3 mb-2">{{ name }}</h3>
       {% for m in ms if not m.bye %}{{ ui.match(m, show_label=False, mine=me.id if me, labels=labels) }}{% endfor %}
     {% endfor %}
   {% endif %}
@@ -65,7 +65,7 @@
   {% if rounds %}
     {% set final = rounds[-1][1][0] %}
     {% if final.done %}
-      <div class="banner gold" style="text-align:center">
+      <div class="banner gold center">
         <div class="label">Campioni del Torneo</div>
         <div class="headline">🏆 {{ final.n1 if final.winner == final.t1 else final.n2 }}</div>
         Finale {{ final.s1 }}–{{ final.s2 }}
@@ -76,10 +76,10 @@
       {% for name, ms in rounds %}<a href="#ko-r{{ loop.index }}">{{ name|replace(" di finale", "") }}</a>{% endfor %}
     </nav>
     {% for name, ms in rounds %}
-      <section class="group" id="ko-r{{ loop.index }}" style="margin-bottom:18px">
+      <section class="group mb-4" id="ko-r{{ loop.index }}">
         <div class="group-head">
           <span class="badge">{{ loop.index }}</span>
-          <h2 style="margin:0">{{ name }}</h2>
+          <h2 class="m-0">{{ name }}</h2>
           <span class="muted small">{{ ms|rejectattr("bye")|selectattr("done")|list|length }}/{{ ms|rejectattr("bye")|list|length }} concluse</span>
         </div>
         {% for m in ms if not m.bye %}
@@ -102,8 +102,8 @@
       </div>
     {% endfor %}
   {% else %}
-    <div class="card" style="padding:20px 16px;text-align:center">
-      <p class="muted" style="margin:0">Il tabellone di eliminazione diretta verrà generato alla conclusione dei gironi.</p>
+    <div class="card pt-6 pr-4 pb-6 pl-4 center">
+      <p class="muted m-0">Il tabellone di eliminazione diretta verrà generato alla conclusione dei gironi.</p>
     </div>
   {% endif %}
 
@@ -246,8 +246,8 @@
     {% if shots.players|length > 5 %}<button class="link show-all" type="button" data-show-all>Mostra tutta la classifica ({{ shots.players|length }})</button>{% endif %}
     </div>
   {% else %}
-    <div class="card" style="padding:24px 16px;text-align:center">
-      <div style="font-size:2rem;margin-bottom:8px">🎯</div>
+    <div class="card pt-6 pr-4 pb-6 pl-4 center">
+      <div class="mb-2" style="font-size:2rem">🎯</div>
       <div class="title">Nessun tiro segnalato finora</div>
       <p class="muted">Le percentuali di precisione, i premi (Bomber, Cecchino, Re dell'ultimo bicchiere) e la mappa termica appariranno appena gli arbitri iniziano a segnare i tiri.</p>
     </div>
@@ -263,7 +263,7 @@ function filterGironeStandings(groupId) {
     c.classList.toggle('on', c.dataset.grp === groupId);
   });
   document.querySelectorAll('.grp-standing-sec').forEach(sec => {
-    sec.style.display = (groupId === 'all' || sec.dataset.grp === groupId) ? '' : 'none';
+    sec.hidden = !(groupId === 'all' || sec.dataset.grp === groupId);
   });
 }
 function filterStatsByGrp(groupId) {
@@ -273,9 +273,9 @@ function filterStatsByGrp(groupId) {
   document.querySelectorAll('table.ranked').forEach(t => t.classList.toggle('all', groupId !== 'all'));
   document.querySelectorAll('.stat-row').forEach(row => {
     if (groupId === 'all' || row.dataset.grp === groupId) {
-      row.style.display = '';
+      row.hidden = false;
     } else {
-      row.style.display = 'none';
+      row.hidden = true;
     }
   });
 }

@@ -69,7 +69,7 @@
       {% for t in chk.rows %}
         {% set failing = chk.checks[t.id] %}
         <div class="row" id="t{{ t.id }}" data-f="{{ (failing + ['dasistemare'] if failing else [])|join(' ') }}">
-          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none">
+          <a class="grow plain-link" href="/admin/squadre/{{ t.id }}">
             <div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span>
             {% if t.organizer or t.note or t.checked_in or not (t.p1 and t.p2) or not t.phone1 %}<div class="pills">
               {% if t.organizer %}<span class="pill">organizzatori</span>{% endif %}
@@ -209,7 +209,7 @@
       {% if cfg.phase.in_play %}
         <form method="post" action="/admin/sposta">
           <label for="minuti">Siamo in ritardo di (minuti, negativo per anticipare)</label>
-          <div style="display:flex;gap:8px">
+          <div class="flex gap-2">
             <input id="minuti" name="minuti" type="number" inputmode="numeric" placeholder="5" required>
             <button type="submit" class="ghost">Sposta orari</button>
           </div>
@@ -234,7 +234,7 @@
       <div class="list">
         {% for t in ov.missing %}
           <div class="row">
-            <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></a>
+            <a class="grow plain-link" href="/admin/squadre/{{ t.id }}"><div class="title">{{ t.name }}</div><span class="muted small">{{ ui.players(t) }}</span></a>
             {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
             {% if setup and t.p1 and t.p2 %}
             <form method="post" action="/admin/squadre/{{ t.id }}/presente"><input type="hidden" name="presente" value="1"><button class="small" type="submit">Presente</button></form>
@@ -248,7 +248,7 @@
     <div class="list">
       {% for t in ov.present %}
         <div class="row">
-          <a class="grow" href="/admin/squadre/{{ t.id }}" style="color:inherit;text-decoration:none"><div class="title">{{ t.name }}{% if t.id in ov.guest_teams %} <span class="pill accent">da «solo serata»</span>{% endif %}</div>
+          <a class="grow plain-link" href="/admin/squadre/{{ t.id }}"><div class="title">{{ t.name }}{% if t.id in ov.guest_teams %} <span class="pill accent">da «solo serata»</span>{% endif %}</div>
             <span class="muted small">{{ ui.players(t) }}{% if t.phone1 %} · {{ t.phone1 }}{% endif %}</span></a>
           {% if t.phone1 %}<a class="btn small ghost" href="tel:{{ t.phone1 }}" aria-label="Chiama {{ t.name }}">📞</a>{% endif %}
           {% if setup %}
@@ -308,7 +308,7 @@
     <details class="pin-reveal"><summary>Mostra il PIN admin</summary><p><code>{{ admin_pin }}</code></p></details>
     <form method="post" action="/admin/pin">
       <label for="pin">Nuovo PIN admin (almeno 6 cifre)</label>
-      <div style="display:flex;gap:8px"><input id="pin" name="pin" inputmode="numeric" required><button type="submit" class="ghost">Cambia</button></div>
+      <div class="flex gap-2"><input id="pin" name="pin" inputmode="numeric" required><button type="submit" class="ghost">Cambia</button></div>
     </form>
   </div>
 </details>
