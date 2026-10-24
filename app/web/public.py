@@ -43,7 +43,7 @@ def groups_page(
     archivio: str = "",
     db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
-    if sez == "classifiche" or g or archivio:  # groups moved to Classifica: old links land there
+    if (sez == "classifiche" or g or archivio) and not tavolo:  # groups moved to Classifica: old links land there
         return redirect("/classifiche?" + urlencode({"vista": "gironi", **({"g": g} if g else {})}))
     all_views = service.matches(db)
     tables = service.group_tables(db)
@@ -239,7 +239,8 @@ def rankings(request: Request, vista: str = "", g: str = "", per: str = "", db: 
     return page(
         request, db, "classifiche.html", view=view, tables=tables, rounds=rounds,
         thirds=service.thirds_needed(db), T=service.teams(db),
-        labels=service.standing_labels(db), projection=service.projected_first_round(db),
+        labels=service.standing_labels(db) if view == "tabellone" else {},
+        projection=service.projected_first_round(db) if view == "tabellone" else [],
         mine=mine, scorers=scorers, team_stats=team_stats,
         active_grp=active_group(g, tables, service.team(db, team_id) if team_id else None),
         per="tavolo" if per == "tavolo" else "turno", by_table=sorted(by_table.items()), plan=plan,

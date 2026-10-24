@@ -171,7 +171,7 @@ async def until_champion(admin: httpx.AsyncClient, st: Stats, minutes: float) ->
         await st.call("admin", admin, "GET", "/admin")
         r = await st.call("page", admin, "GET", "/classifiche?vista=tabellone")
         if r is not None and "Campioni del Torneo" in r.text:
-            return re.search(r'<div class="headline">🏆 ([^<]+)</div>', r.text).group(1)
+            return re.search(r'<div class="headline">(?:<svg.*?</svg>)?\s*([^<]+)</div>', r.text, re.S).group(1).strip()
         print(f"  … {st.matches} partite confermate, {st.taps} tiri", flush=True)
     return ""
 

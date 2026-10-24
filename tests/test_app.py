@@ -193,6 +193,7 @@ def test_one_home_for_now_one_for_standings(client: TestClient) -> None:
     assert 'class="on">Tabellone' in client.get("/classifiche?vista=eliminazione").text
     assert 'class="on">Giocatori' in client.get("/classifiche?vista=tiri").text
     assert "nav-sez-classifiche" not in client.get("/").text
+    assert client.get("/gironi?tavolo=1&g=0", follow_redirects=False).status_code == 200  # a table asked for: stay on Tavoli
 
 
 def test_asynchronous_tables_and_group_mapping(client: TestClient) -> None:
