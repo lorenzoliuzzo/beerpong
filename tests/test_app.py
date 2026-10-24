@@ -972,8 +972,8 @@ def test_qr_then_phone_checks_in_and_opens_the_profile(client: TestClient) -> No
     # each player arrives on their own: the couple is present once both have
     r = client.post("/checkin/accedi", data={"phone": "+39 333 111 0003"}, follow_redirects=False)
     lontre = db_call(service.team, ids["Lontre"])
-    assert r.headers["location"] == "/questionario" and lontre["arrived1_at"] and not lontre["checked_in"]
-    assert "Ci sei ✓ Manca Dora" in client.get("/questionario").text
+    assert r.headers["location"] == "/io" and lontre["arrived1_at"] and not lontre["checked_in"]  # no quiz in the way
+    assert "Ci sei ✓ Manca Dora" in client.get("/io").text
     client.post("/io/arrivo", data={"compagno": "1"})  # Dora has no phone: Ciro confirms her
     assert db_call(service.team, ids["Lontre"])["checked_in"] == 1
 

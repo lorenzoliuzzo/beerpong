@@ -735,7 +735,7 @@ def checkin_phone(
     else:
         flash(request, f"Bentornato/a, {t[f'p{player}']}!")
     enter_team(request, db, t["id"], player)
-    return redirect("/io" if t["q_at"] else "/questionario")
+    return redirect("/io")  # the questionnaire is an invitation on the profile, never a gate before it
 
 
 AT_VENUE = "Alla serata inquadra il QR all'ingresso, o scrivi nel profilo il codice della serata: ti segna arrivato/a."
